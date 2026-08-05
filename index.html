@@ -276,7 +276,16 @@
       obj.position.sub(center); // recenter at origin
 
       const radius = 0.5 * Math.max(size.x, size.y, size.z) || 1;
-      const dist = radius / Math.sin((camera.fov * Math.PI / 180) / 2) * 1.4;
+      // Fit must respect the viewport aspect ratio: a model as wide as it is tall
+      // overflows horizontally on portrait/narrow screens if we only satisfy the
+      // vertical FOV. Compute the distance for BOTH the vertical and horizontal
+      // FOV and take the larger, so the model fits in whichever dimension is
+      // tighter (the horizontal one when aspect < 1).
+      const fovV = camera.fov * Math.PI / 180;
+      const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
+      const distV = radius / Math.sin(fovV / 2);
+      const distH = radius / Math.sin(fovH / 2);
+      const dist = Math.max(distV, distH) * 1.4;
       camera.position.set(dist * 0.6, dist * 0.5, dist * 0.8);
       camera.near = Math.max(dist / 1000, 0.01);
       camera.far = dist * 1000;
@@ -464,6 +473,10 @@
     addEventListener('resize', () => {
       camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
       renderer.setSize(innerWidth, innerHeight);
+      // Re-frame so the fit distance is recomputed for the new aspect ratio;
+      // otherwise an orientation change (landscape->portrait) leaves the model
+      // overflowing horizontally even though the projection was updated.
+      fitView();
     });
 
     // Respect prefers-reduced-motion: skip the perpetual placeholder rotation so
