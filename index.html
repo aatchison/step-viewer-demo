@@ -11,8 +11,10 @@
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     #app { position: fixed; inset: 0; }
     header { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
-      display: flex; align-items: center; gap: .75rem; padding: .6rem 1rem;
+      display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .6rem 1rem;
       background: linear-gradient(#0e1116cc, #0e111600); pointer-events: none; }
+    /* Let flex children shrink instead of forcing the bar wider than a phone. */
+    header > * { min-width: 0; }
     header h1 { font-size: 1rem; font-weight: 600; margin: 0; letter-spacing: .2px; }
     header .tag { font-size: .72rem; opacity: .6; }
     header .spacer { flex: 1; }
@@ -69,6 +71,22 @@
     #drop-overlay.active { display: flex; }
     #drop-overlay span { font-size: 1.1rem; font-weight: 600; color: #cfe0ff;
       padding: 1rem 1.5rem; border-radius: 10px; background: #1b2029cc; }
+    /* Narrow phones (~360px): drop the decorative subtitle so the header controls
+       fit on one wrapped bar instead of overflowing. */
+    @media (max-width: 640px) {
+      header .tag { display: none; }
+    }
+    /* Touch devices: enlarge the interactive targets to a 44px minimum and give a
+       bit more breathing room so they're comfortable to tap. */
+    @media (pointer: coarse) {
+      header { gap: 1rem; }
+      #open-btn, #fit-btn { min-height: 44px; padding: .5rem 1rem; }
+      #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
+      #wire-toggle input { width: 20px; height: 20px; }
+      #gallery { gap: .75rem; }
+      #gallery .sample { min-height: 44px; padding: .5rem 1.1rem;
+        display: inline-flex; align-items: center; }
+    }
   </style>
 </head>
 <body>
@@ -136,6 +154,11 @@
     scene.add(placeholder);
 
     const hint = document.getElementById('hint');
+    // Touch devices orbit/zoom with gestures, not a scroll wheel — word the
+    // interaction hint to match the pointer modality.
+    const coarsePointer = matchMedia('(pointer: coarse)').matches;
+    const zoomHint = coarsePointer ? 'drag to orbit · pinch to zoom'
+                                   : 'drag to orbit · scroll to zoom';
     const spinner = document.getElementById('spinner');
     const toast = document.getElementById('toast');
     let spin = placeholder; // object the render loop rotates (null once static model loads)
@@ -259,7 +282,7 @@
       applyWireframe(model); // honor the current toggle on the freshly loaded model
       frameObject(model);
       markFirstRender(); // first successful render clears the loader + stall watch
-      hint.textContent = `${label} · drag to orbit · scroll to zoom`;
+      hint.textContent = `${label} · ${zoomHint}`;
     }
 
     // Read a user-supplied File and load it, reporting failures via the hint.
