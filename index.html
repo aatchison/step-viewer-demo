@@ -50,11 +50,22 @@
       color: #cfe0ff; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
       padding: .35rem .7rem; }
     #fit-btn:hover { background: #232a35; border-color: #3a4150; }
+    /* Header buttons carry both a text label and an icon glyph. The label shows on
+       wide screens; the icon is swapped in on compact/narrow screens (see the
+       max-width:600px block). aria-label on each control keeps its accessible name
+       intact when the visible text collapses to the icon. */
+    .btn-icon { display: none; font-size: 1rem; line-height: 1; }
     canvas { display: block; }
+    /* Bottom cluster — gallery and hint share ONE stacked container so they can
+       never overlap, no matter how far the pills wrap on narrow screens. Column
+       flow (gallery above hint) with a fixed gap guarantees separation; the
+       container is click-through and only the pills re-enable pointer events. */
+    #bottom-cluster { position: fixed; left: 0; right: 0; bottom: 1rem; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; gap: .6rem;
+      padding: 0 1rem; pointer-events: none; }
     /* Solid muted token instead of an opacity fade so the first-paint guidance and
        interaction hints stay readable against the dark canvas. */
-    #hint { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
-      z-index: 10; font-size: .8rem; color: #8b949e; max-width: min(92vw, 640px);
+    #hint { font-size: .8rem; color: #8b949e; max-width: min(92vw, 640px);
       text-align: center; }
     /* Loading spinner — centered, shown while a STEP file parses. */
     #spinner { position: fixed; top: 50%; left: 50%; z-index: 15;
@@ -76,10 +87,10 @@
       padding: .6rem .9rem; box-shadow: 0 6px 20px #0008; pointer-events: none;
       opacity: 0; transition: opacity .2s ease; }
     #toast.active { opacity: 1; pointer-events: auto; }
-    /* Sample gallery strip — one button per bundled model. */
-    #gallery { position: fixed; left: 0; right: 0; bottom: 2.4rem; z-index: 10;
-      display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem;
-      padding: 0 1rem; pointer-events: none; }
+    /* Sample gallery strip — one button per bundled model. Positioning is owned by
+       #bottom-cluster; here it only lays the pills out (wrap + centered). */
+    #gallery { width: 100%; display: flex; justify-content: center; flex-wrap: wrap;
+      gap: .5rem; pointer-events: none; }
     #gallery .sample { pointer-events: auto; cursor: pointer; font: inherit;
       font-size: .78rem; color: #cfe0ff; background: #1b2029cc; border: 1px solid #2a2f3a;
       border-radius: 999px; padding: .3rem .8rem; backdrop-filter: blur(4px); }
@@ -110,6 +121,22 @@
       #gallery .sample { min-height: 44px; padding: .5rem 1.1rem;
         display: inline-flex; align-items: center; }
     }
+    /* Small screens (~600px): compact the header controls to icon-only so the bar
+       stays a single row on a 390px phone instead of wrapping to two rows of
+       bulky buttons. Each label collapses to its icon (the checkbox stands in as
+       the wireframe glyph); the accessible name is preserved by aria-label, so
+       this trims only the *visual* bulk. Touch targets stay >=44px: the
+       (pointer: coarse) block above sets min-height, and min-width:44px here
+       keeps the now-square icon buttons comfortably tappable. Placed after the
+       coarse block so these paddings win on equal specificity. */
+    @media (max-width: 600px) {
+      header { gap: .5rem; padding: .5rem .75rem; }
+      #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label { display: none; }
+      #fit-btn .btn-icon, #open-btn .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn { min-width: 44px; padding: .4rem;
+        display: inline-flex; align-items: center; justify-content: center; }
+      #wire-toggle { min-width: 44px; padding: .4rem; gap: 0; justify-content: center; }
+    }
   </style>
 </head>
 <body>
@@ -120,16 +147,20 @@
     <span class="tag">three.js · occt-import-js · demo</span>
     <span class="spacer"></span>
     <label id="wire-toggle" title="Toggle wireframe (W)">
-      <input id="wire-check" type="checkbox" /> Wireframe
+      <input id="wire-check" type="checkbox" aria-label="Wireframe" /> <span class="btn-label">Wireframe</span>
     </label>
-    <button id="fit-btn" type="button" title="Reset / fit view (F, or double-click canvas)">Fit view</button>
-    <button id="open-btn" type="button">Open STEP file…</button>
+    <button id="fit-btn" type="button" title="Reset / fit view (F, or double-click canvas)" aria-label="Fit view"><span class="btn-icon" aria-hidden="true">⛶</span><span class="btn-label">Fit view</span></button>
+    <button id="open-btn" type="button" aria-label="Open STEP file"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label">Open STEP file…</span></button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
-  <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
-       load start / success / error text set here is read out to AT users. -->
-  <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · press W to toggle wireframe</div>
-  <nav id="gallery" aria-label="Sample models"></nav>
+  <!-- Bottom cluster: gallery stacked directly above the hint in a single
+       container so they share layout and can never overlap. -->
+  <div id="bottom-cluster">
+    <nav id="gallery" aria-label="Sample models"></nav>
+    <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
+         load start / success / error text set here is read out to AT users. -->
+    <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · press W to toggle wireframe</div>
+  </div>
   <!-- Loader is `active` in static markup so it paints immediately on first load,
        before the ES module (and the multi-MB three.js + occt/WASM download) run.
        The module clears it once the first model actually renders. -->
@@ -148,12 +179,22 @@
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
     import { loadStepFromArrayBuffer } from './src/step.js';
 
     const app = document.getElementById('app');
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
+    // Filmic tone mapping so the environment-lit metal highlights roll off
+    // gracefully instead of clipping to flat white — key to reading curvature.
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    // The corner orientation gizmo (ViewHelper) is drawn as a second overlay pass
+    // after the main scene, so the renderer must not auto-clear between the two —
+    // the render loop clears once up front instead.
+    renderer.autoClear = false;
     app.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -164,18 +205,59 @@
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
 
-    scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x20242c, 1.1));
-    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    // Image-based lighting: a prefiltered RoomEnvironment gives every surface a
+    // soft studio reflection so curvature reads instead of a flat monochrome
+    // fill. Built once at startup (RoomEnvironment is a tiny procedural scene, no
+    // network fetch — stays zero-build) and assigned as scene.environment, which
+    // all MeshStandardMaterials pick up automatically.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    // Three-point-ish rig layered on top of the IBL: a warm key for primary
+    // form, a cool fill to lift the shadow side without flattening, and a rim
+    // from behind to separate the silhouette from the dark background.
+    scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x20242c, 0.5));
+    const key = new THREE.DirectionalLight(0xfff2e0, 1.1);
     key.position.set(5, 8, 6); scene.add(key);
-    scene.add(new THREE.GridHelper(10, 10, 0x2a2f3a, 0x1b1f27));
-    // X/Y/Z orientation reference sitting at the origin next to the grid.
-    scene.add(new THREE.AxesHelper(2));
+    const fill = new THREE.DirectionalLight(0x9fc0ff, 0.35);
+    fill.position.set(-6, 2, 4); scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.6);
+    rim.position.set(-3, 5, -7); scene.add(rim);
+    // Ground grid — rebuilt on every fit to sit at the model's base and scale to
+    // its footprint (see groundTo), so it reads as a floor the model rests on
+    // instead of a fixed 10-unit plane the model floats above or clips through.
+    let groundGrid = null;
+    // Screen-space orientation gizmo: a small fixed XYZ indicator drawn in the
+    // bottom-right corner as an overlay pass. Unlike a world-space AxesHelper it
+    // never gets swallowed by geometry and stays the same size regardless of zoom.
+    const viewHelper = new ViewHelper(camera, renderer.domElement);
+
+    // (Re)build the ground grid to rest at the model's base (bounding-box min-Y)
+    // and span its footprint. `size` is the model's world-space dimensions; the
+    // caller has already recentered the model on the origin, so the base sits at
+    // y = -size.y/2. A tiny downward nudge avoids z-fighting with a flat base.
+    function groundTo(size) {
+      if (groundGrid) {
+        scene.remove(groundGrid);
+        groundGrid.geometry.dispose();
+        groundGrid.material.dispose();
+      }
+      const footprint = Math.max(size.x, size.z) || 1;
+      const extent = footprint * 2.5; // a bit wider than the model so it reads as floor
+      groundGrid = new THREE.GridHelper(extent, 20, 0x2a2f3a, 0x1b1f27);
+      groundGrid.position.y = -size.y / 2 - footprint * 0.001;
+      scene.add(groundGrid);
+    }
 
     // Placeholder object — shown while the sample loads and kept as a fallback
     // if STEP parsing fails, so the scene always stays alive.
     const placeholder = new THREE.Mesh(
       new THREE.TorusKnotGeometry(0.7, 0.24, 160, 24),
-      new THREE.MeshStandardMaterial({ color: 0x4f9dff, metalness: 0.35, roughness: 0.4 })
+      // Match the loaded-mesh look (see src/step.js): brushed-metal metalness /
+      // roughness plus envMapIntensity so the RoomEnvironment reflections read.
+      new THREE.MeshStandardMaterial({
+        color: 0x4f9dff, metalness: 0.6, roughness: 0.35, envMapIntensity: 1.0,
+      })
     );
     scene.add(placeholder);
 
@@ -275,8 +357,21 @@
       const center = box.getCenter(new THREE.Vector3());
       obj.position.sub(center); // recenter at origin
 
+      // Drop the ground grid to the (now recentered) model's base and size it to
+      // the model so it grounds the object instead of floating in the void.
+      groundTo(size);
+
       const radius = 0.5 * Math.max(size.x, size.y, size.z) || 1;
-      const dist = radius / Math.sin((camera.fov * Math.PI / 180) / 2) * 1.4;
+      // Fit must respect the viewport aspect ratio: a model as wide as it is tall
+      // overflows horizontally on portrait/narrow screens if we only satisfy the
+      // vertical FOV. Compute the distance for BOTH the vertical and horizontal
+      // FOV and take the larger, so the model fits in whichever dimension is
+      // tighter (the horizontal one when aspect < 1).
+      const fovV = camera.fov * Math.PI / 180;
+      const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
+      const distV = radius / Math.sin(fovV / 2);
+      const distH = radius / Math.sin(fovH / 2);
+      const dist = Math.max(distV, distH) * 1.4;
       camera.position.set(dist * 0.6, dist * 0.5, dist * 0.8);
       camera.near = Math.max(dist / 1000, 0.01);
       camera.far = dist * 1000;
@@ -418,6 +513,11 @@
     document.getElementById('fit-btn').addEventListener('click', fitView);
     renderer.domElement.addEventListener('dblclick', fitView);
 
+    // Clicking a face/axis of the corner gizmo snaps the camera to that view.
+    // handleClick raycasts only the small corner region and returns false
+    // elsewhere, so ordinary canvas clicks/drags pass through untouched.
+    renderer.domElement.addEventListener('pointerup', (e) => { viewHelper.handleClick(e); });
+
     // --- File picker ---
     const fileInput = document.getElementById('file-input');
     document.getElementById('open-btn').addEventListener('click', () => fileInput.click());
@@ -464,16 +564,28 @@
     addEventListener('resize', () => {
       camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
       renderer.setSize(innerWidth, innerHeight);
+      // Re-frame so the fit distance is recomputed for the new aspect ratio;
+      // otherwise an orientation change (landscape->portrait) leaves the model
+      // overflowing horizontally even though the projection was updated.
+      fitView();
     });
 
     // Respect prefers-reduced-motion: skip the perpetual placeholder rotation so
     // the loading state stays static for users who opt out of motion. Live so a
     // mid-session OS setting change is honored.
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    const clock = new THREE.Clock();
     renderer.setAnimationLoop(() => {
+      const delta = clock.getDelta();
       if (spin && !reduceMotion.matches) spin.rotation.y += 0.005;
+      // Advance the gizmo's snap-to-axis animation (armed by clicking a gizmo
+      // axis); it drives camera.position, which OrbitControls.update reads back.
+      if (viewHelper.animating) viewHelper.update(delta);
       controls.update();
+      // autoClear is off: clear once, draw the scene, then overlay the gizmo.
+      renderer.clear();
       renderer.render(scene, camera);
+      viewHelper.render(renderer);
     });
   </script>
 </body>

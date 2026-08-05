@@ -88,14 +88,32 @@ export async function loadStepFromArrayBuffer(buf) {
       color = new THREE.Color(resultMesh.color[0], resultMesh.color[1], resultMesh.color[2]);
     }
 
+    // Brushed-metal PBR: higher metalness + lower roughness than before, with
+    // envMapIntensity so the scene's RoomEnvironment IBL produces the highlights
+    // and reflections that make curvature read as CAD rather than flat toy blue.
     const material = new THREE.MeshStandardMaterial({
       color,
-      metalness: 0.35,
-      roughness: 0.5,
+      metalness: 0.6,
+      roughness: 0.35,
+      envMapIntensity: 1.0,
       side: THREE.DoubleSide,
     });
 
-    group.add(new THREE.Mesh(geometry, material));
+    const mesh = new THREE.Mesh(geometry, material);
+
+    // Faint edge lines for mechanical crispness. EdgesGeometry with a 30° crease
+    // threshold keeps only real feature edges (not every triangle), so smooth
+    // fillets stay clean. Added as a child so it inherits the mesh transform and
+    // is disposed with the group; the wireframe toggle leaves it untouched
+    // (LineBasicMaterial ignores `wireframe`).
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geometry, 30),
+      new THREE.LineBasicMaterial({ color: 0x0a0d12, transparent: true, opacity: 0.35 })
+    );
+    edges.raycast = () => {}; // decorative overlay — never a pick/hit target
+    mesh.add(edges);
+
+    group.add(mesh);
   }
 
   return group;
