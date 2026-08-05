@@ -162,7 +162,7 @@
     <label id="wire-toggle" title="Toggle wireframe (W)">
       <input id="wire-check" type="checkbox" aria-label="Wireframe" /> <span class="btn-icon" aria-hidden="true">▦</span><span class="btn-label">Wireframe</span>
     </label>
-    <button id="fit-btn" type="button" title="Fit / reset view (F, or double-click canvas)" aria-label="Fit view"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label">Fit view</span></button>
+    <button id="fit-btn" type="button" title="Fit / reset view (R or F, or double-click canvas)" aria-label="Fit view"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label">Fit view</span></button>
     <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label">Open STEP file…</span></button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
@@ -172,7 +172,7 @@
     <nav id="gallery" aria-label="Sample models"></nav>
     <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
          load start / success / error text set here is read out to AT users. -->
-    <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · press W to toggle wireframe</div>
+    <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · keys: 1–4 samples, R reset, W wireframe</div>
   </div>
   <!-- Loader is `active` in static markup so it paints immediately on first load,
        before the ES module (and the multi-MB three.js + occt/WASM download) run.
@@ -365,7 +365,10 @@
     // kept on screen until the first model actually renders.
     const dropHint = coarsePointer ? 'tap a model in the gallery below'
                                     : 'pick a model from the gallery below, or drag & drop a .step / .stp file';
-    hint.textContent = `${dropHint} · ${zoomHint} · press W to toggle wireframe`;
+    // On touch devices there's no keyboard, so only surface the key shortcuts on
+    // fine-pointer (mouse/keyboard) devices; touch users get the gesture hint only.
+    const keyHint = coarsePointer ? '' : ' · keys: 1–4 samples, R reset, W wireframe';
+    hint.textContent = `${dropHint} · ${zoomHint}${keyHint}`;
     const spinner = document.getElementById('spinner');
     const toast = document.getElementById('toast');
     let spin = placeholder; // object the render loop rotates (null once static model loads)
@@ -569,16 +572,18 @@
       }
     }
 
-    for (const sample of SAMPLES) {
+    SAMPLES.forEach((sample, i) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'sample';
       btn.textContent = sample.label;
       btn.dataset.file = sample.file;
       btn.setAttribute('aria-pressed', 'false');
+      // Surface the number-key shortcut (1–4) on the pill so it's discoverable.
+      btn.title = `${sample.label} (press ${i + 1})`;
       btn.addEventListener('click', () => loadSample(sample));
       gallery.appendChild(btn);
-    }
+    });
 
     // Show the first bundled sample on page load. Arm the stall watchdog for this
     // initial engine + model download so a slow/broken CDN doesn't hang forever.
@@ -599,7 +604,17 @@
       const tag = e.target && e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
-      if (e.key === 'f' || e.key === 'F') fitView();
+      // R and F both re-fit/reset the view (same as the Fit button).
+      if (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R') fitView();
+      // Number keys 1–4 load the matching gallery sample (Gear/Block/Tetra/
+      // Pyramid) and update the active pill via loadSample. Skip while a load is
+      // already in flight (pills are disabled during a fetch) so rapid key
+      // presses don't stack concurrent loads — mirrors the disabled-click guard.
+      if (e.key >= '1' && e.key <= '4') {
+        const sample = SAMPLES[Number(e.key) - 1];
+        const loading = gallery.querySelector('.sample:disabled');
+        if (sample && !loading) loadSample(sample);
+      }
     });
 
     // --- Reset / fit view (button, `F` key, double-click canvas) ---
