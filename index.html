@@ -99,6 +99,27 @@
       padding: .6rem .9rem; box-shadow: 0 6px 20px #0008; pointer-events: none;
       opacity: 0; transition: opacity .2s ease; }
     #toast.active { opacity: 1; pointer-events: auto; }
+    /* Model-info HUD — a subtle read-out of the current model's name, triangle
+       count, and bounding-box dimensions (medium-severity polish: these were
+       computed then discarded). Parked at the top-right just under the
+       orientation gizmo (GIZMO_TOP 68 + GIZMO_DIM 128 = 196px; 13rem/208px clears
+       it) where the canvas is empty at every width — clear of the header (top),
+       the gizmo (above it), and the centered bottom cluster (below). Right-aligned
+       to hug the same edge as the gizmo. Informational only, so pointer-events:
+       none lets orbit drags pass straight through. Tokens mirror the gallery pills
+       (translucent #1b2029 fill, #2a2f3a border, blur) so it reads as one system. */
+    #model-info { position: fixed; top: 13rem; right: 1rem; z-index: 10;
+      display: flex; flex-direction: column; align-items: flex-end; gap: .1rem;
+      max-width: min(60vw, 220px); text-align: right; pointer-events: none;
+      background: #1b2029cc; border: 1px solid #2a2f3a; border-radius: 8px;
+      padding: .35rem .55rem; backdrop-filter: blur(4px); }
+    /* display:flex above overrides the hidden attribute's default display:none —
+       restore it so the panel stays invisible until the first model renders. */
+    #model-info[hidden] { display: none; }
+    #model-info .mi-name { max-width: 100%; font-size: .78rem; font-weight: 600;
+      color: #cfe0ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #model-info .mi-stats { font-size: .7rem; color: #8b949e;
+      font-variant-numeric: tabular-nums; }
     /* Sample gallery strip — one button per bundled model. Positioning is owned by
        #bottom-cluster; here it only lays the pills out (wrap + centered). */
     #gallery { width: 100%; display: flex; justify-content: center; flex-wrap: wrap;
@@ -177,6 +198,13 @@
   <!-- Loader is `active` in static markup so it paints immediately on first load,
        before the ES module (and the multi-MB three.js + occt/WASM download) run.
        The module clears it once the first model actually renders. -->
+  <!-- Model-info HUD: name · triangle count · bounding-box dims for the current
+       model, populated on every load/swap (see updateModelInfo). Hidden until the
+       first model renders. aria-live=polite announces stat changes to AT users. -->
+  <div id="model-info" hidden aria-live="polite">
+    <span class="mi-name"></span>
+    <span class="mi-stats"></span>
+  </div>
   <div id="spinner" class="active" role="status" aria-label="Loading"></div>
   <div id="toast" role="alert"></div>
   <div id="drop-overlay"><span>Drop a .step / .stp file to load</span></div>
@@ -378,6 +406,50 @@
     // Show/hide the centered loading spinner while a STEP file parses.
     function setLoading(on) { spinner.classList.toggle('active', on); }
 
+    // --- Model-info HUD -------------------------------------------------------
+    // Surface the current model's name, triangle count, and bounding-box size —
+    // basic CAD stats that were previously computed then discarded.
+    const modelInfo = document.getElementById('model-info');
+    const miName = modelInfo.querySelector('.mi-name');
+    const miStats = modelInfo.querySelector('.mi-stats');
+
+    // Compact dimension formatting: whole numbers past 100, one decimal past 10,
+    // two below — keeps a tiny 0.80 gear and a 250 block both legible.
+    function fmtDim(n) {
+      const a = Math.abs(n);
+      if (a >= 100) return Math.round(n).toString();
+      if (a >= 10) return n.toFixed(1);
+      return n.toFixed(2);
+    }
+
+    // Sum triangles across every Mesh in the group. Skips the decorative edge
+    // LineSegments (lines, not tris) and any non-mesh child: indexed geometry
+    // counts index/3, otherwise position-count/3.
+    function countTriangles(group) {
+      let tris = 0;
+      group.traverse((obj) => {
+        if (!obj.isMesh || !obj.geometry) return;
+        const g = obj.geometry;
+        if (g.index) tris += g.index.count / 3;
+        else if (g.attributes.position) tris += g.attributes.position.count / 3;
+      });
+      return Math.round(tris);
+    }
+
+    // Refresh the HUD for the freshly loaded model. Called from the single
+    // load/swap path (showStepFromArrayBuffer) so it covers gallery picks, number
+    // keys, file-open, and drag-drop alike. getSize is translation-invariant, so
+    // it's correct whether or not frameObject has recentered the group yet.
+    function updateModelInfo(group, label) {
+      const size = new THREE.Box3().setFromObject(group).getSize(new THREE.Vector3());
+      const tris = countTriangles(group);
+      miName.textContent = label;
+      miName.title = label; // full name on hover when the label is ellipsized
+      miStats.textContent =
+        `${tris.toLocaleString()} tris · ${fmtDim(size.x)} × ${fmtDim(size.y)} × ${fmtDim(size.z)}`;
+      modelInfo.hidden = false;
+    }
+
     // Non-blocking error toast; auto-dismisses. A new message resets the timer.
     let toastTimer = null;
     function showToast(msg) {
@@ -504,6 +576,7 @@
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
       frameObject(model);
+      updateModelInfo(model, label); // refresh the name/tris/dims HUD for the swap
       markFirstRender(); // first successful render clears the loader + stall watch
       hint.textContent = `${label} · ${zoomHint}`;
     }
