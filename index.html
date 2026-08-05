@@ -43,6 +43,7 @@
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
+    #help-btn:focus-visible, #help-close:focus-visible,
     #gallery .sample:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
@@ -54,12 +55,61 @@
       padding: .3rem .6rem; }
     #wire-toggle:hover { background: #232a35; border-color: #3a4150; }
     #wire-toggle input { accent-color: #4f9dff; margin: 0; cursor: pointer; }
+    /* Active/pressed wireframe state — mirrors the gallery `.is-active` accent
+       (lifted #eaf2ff text over a translucent blue fill with the accent border)
+       so "wireframe is on" reads at a glance beyond the checkbox tick, and the
+       control matches the same on-state visual language as the gallery pills.
+       The hover tokens above still apply on top of this via later-in-cascade
+       :hover; keep this after :hover so the active fill wins when not hovering. */
+    #wire-toggle.is-active { color: #eaf2ff; background: #1f3350cc;
+      border-color: #4f9dff; }
+    #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
     #fit-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
       color: #cfe0ff; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
       padding: .35rem .7rem; }
     #fit-btn:hover { background: #232a35; border-color: #3a4150; }
+    /* Help affordance — a compact circular "?" button in the header that opens the
+       keyboard-shortcuts panel. Neutral tokens like the fit/wireframe controls so
+       it sits below the accent primary action; header is click-through so re-enable
+       pointer events. Fixed square so the glyph stays optically centered in a
+       circle at every width. */
+    #help-btn { pointer-events: auto; cursor: pointer; font: inherit;
+      font-size: .9rem; font-weight: 700; line-height: 1; color: #cfe0ff;
+      background: #1b2029; border: 1px solid #2a2f3a; border-radius: 999px;
+      width: 1.9rem; height: 1.9rem; display: inline-flex; align-items: center;
+      justify-content: center; flex: none; }
+    #help-btn:hover { background: #232a35; border-color: #3a4150; }
+    /* Shortcuts dialog — a small dismissible panel listing the keyboard/pointer
+       shortcuts. Native <dialog> so Escape-to-close and focus trapping come for
+       free (opened with showModal). Tokens mirror the gallery pills / model-info
+       HUD (translucent #1b2029 fill, #2a2f3a border, blur) so it reads as one
+       system. Centered by the native modal positioning; width caps below the
+       narrowest phone so it never overflows. */
+    #help-dialog { margin: auto; max-width: min(92vw, 340px); width: 100%;
+      color: #e6edf3; background: #12161df2; border: 1px solid #2a2f3a;
+      border-radius: 12px; padding: 0; box-shadow: 0 10px 30px #000a;
+      backdrop-filter: blur(6px); }
+    #help-dialog::backdrop { background: #05070acc; }
+    .help-head { display: flex; align-items: center; justify-content: space-between;
+      gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid #2a2f3a; }
+    .help-head h2 { margin: 0; font-size: .95rem; font-weight: 700;
+      letter-spacing: .2px; }
+    #help-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
+      color: #8b949e; background: transparent; border: 1px solid transparent;
+      border-radius: 6px; width: 1.9rem; height: 1.9rem; display: inline-flex;
+      align-items: center; justify-content: center; flex: none; }
+    #help-close:hover { color: #e6edf3; background: #232a35; border-color: #3a4150; }
+    .help-list { list-style: none; margin: 0; padding: .5rem 1rem .85rem;
+      display: grid; gap: .4rem; font-size: .82rem; }
+    .help-list li { display: flex; align-items: baseline; gap: .55rem; color: #cfe0ff; }
+    /* Keycap chips — monospace, bordered pills so the trigger reads as a key. */
+    .help-list .k { flex: none; min-width: 1.5rem; text-align: center;
+      font: 600 .72rem ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #eaf2ff; background: #1f3350cc; border: 1px solid #4f9dff;
+      border-radius: 5px; padding: .12rem .35rem; }
+    .help-list .d { color: #c2ccd6; }
     /* Header buttons carry both a text label and an icon glyph. The label shows on
        wide screens; the icon is swapped in on compact/narrow screens (see the
        max-width:600px block) so each collapsed control keeps a recognizable glyph
@@ -99,6 +149,27 @@
       padding: .6rem .9rem; box-shadow: 0 6px 20px #0008; pointer-events: none;
       opacity: 0; transition: opacity .2s ease; }
     #toast.active { opacity: 1; pointer-events: auto; }
+    /* Model-info HUD — a subtle read-out of the current model's name, triangle
+       count, and bounding-box dimensions (medium-severity polish: these were
+       computed then discarded). Parked at the top-right just under the
+       orientation gizmo (GIZMO_TOP 68 + GIZMO_DIM 128 = 196px; 13rem/208px clears
+       it) where the canvas is empty at every width — clear of the header (top),
+       the gizmo (above it), and the centered bottom cluster (below). Right-aligned
+       to hug the same edge as the gizmo. Informational only, so pointer-events:
+       none lets orbit drags pass straight through. Tokens mirror the gallery pills
+       (translucent #1b2029 fill, #2a2f3a border, blur) so it reads as one system. */
+    #model-info { position: fixed; top: 13rem; right: 1rem; z-index: 10;
+      display: flex; flex-direction: column; align-items: flex-end; gap: .1rem;
+      max-width: min(60vw, 220px); text-align: right; pointer-events: none;
+      background: #1b2029cc; border: 1px solid #2a2f3a; border-radius: 8px;
+      padding: .35rem .55rem; backdrop-filter: blur(4px); }
+    /* display:flex above overrides the hidden attribute's default display:none —
+       restore it so the panel stays invisible until the first model renders. */
+    #model-info[hidden] { display: none; }
+    #model-info .mi-name { max-width: 100%; font-size: .78rem; font-weight: 600;
+      color: #cfe0ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #model-info .mi-stats { font-size: .7rem; color: #8b949e;
+      font-variant-numeric: tabular-nums; }
     /* Sample gallery strip — one button per bundled model. Positioning is owned by
        #bottom-cluster; here it only lays the pills out (wrap + centered). */
     #gallery { width: 100%; display: flex; justify-content: center; flex-wrap: wrap;
@@ -129,6 +200,7 @@
       #open-btn, #fit-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
+      #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
       #gallery { gap: .75rem; }
       #gallery .sample { min-height: 44px; padding: .5rem 1.1rem;
         display: inline-flex; align-items: center; }
@@ -162,21 +234,48 @@
     <label id="wire-toggle" title="Toggle wireframe (W)">
       <input id="wire-check" type="checkbox" aria-label="Wireframe" /> <span class="btn-icon" aria-hidden="true">▦</span><span class="btn-label">Wireframe</span>
     </label>
-    <button id="fit-btn" type="button" title="Fit / reset view (F, or double-click canvas)" aria-label="Fit view"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label">Fit view</span></button>
+    <button id="fit-btn" type="button" title="Fit / reset view (R or F, or double-click canvas)" aria-label="Fit view"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label">Fit view</span></button>
     <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label">Open STEP file…</span></button>
+    <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog">?</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
+  <!-- Keyboard-shortcuts / controls help. Native <dialog> (opened via showModal)
+       so Escape-to-close and focus trapping are handled by the platform; the ×
+       button and a backdrop click also dismiss it. Opened from the header "?"
+       button or the `?` key. aria-labelledby ties the accessible name to the
+       heading. -->
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <div class="help-head">
+      <h2 id="help-title">Shortcuts &amp; controls</h2>
+      <button id="help-close" type="button" aria-label="Close help">×</button>
+    </div>
+    <ul class="help-list">
+      <li><span class="k">Drag</span><span class="d">Orbit the model</span></li>
+      <li><span class="k">Scroll</span><span class="d">Zoom in / out</span></li>
+      <li><span class="k">W</span><span class="d">Toggle wireframe</span></li>
+      <li><span class="k">F</span><span class="k">R</span><span class="d">Fit / reset view</span></li>
+      <li><span class="k">1</span><span class="k">4</span><span class="d">Load gallery samples</span></li>
+      <li><span class="k">Drop</span><span class="d">Open a .step / .stp file</span></li>
+    </ul>
+  </dialog>
   <!-- Bottom cluster: gallery stacked directly above the hint in a single
        container so they share layout and can never overlap. -->
   <div id="bottom-cluster">
     <nav id="gallery" aria-label="Sample models"></nav>
     <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
          load start / success / error text set here is read out to AT users. -->
-    <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · press W to toggle wireframe</div>
+    <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · keys: 1–4 samples, R reset, W wireframe</div>
   </div>
   <!-- Loader is `active` in static markup so it paints immediately on first load,
        before the ES module (and the multi-MB three.js + occt/WASM download) run.
        The module clears it once the first model actually renders. -->
+  <!-- Model-info HUD: name · triangle count · bounding-box dims for the current
+       model, populated on every load/swap (see updateModelInfo). Hidden until the
+       first model renders. aria-live=polite announces stat changes to AT users. -->
+  <div id="model-info" hidden aria-live="polite">
+    <span class="mi-name"></span>
+    <span class="mi-stats"></span>
+  </div>
   <div id="spinner" class="active" role="status" aria-label="Loading"></div>
   <div id="toast" role="alert"></div>
   <div id="drop-overlay"><span>Drop a .step / .stp file to load</span></div>
@@ -365,15 +464,115 @@
     // kept on screen until the first model actually renders.
     const dropHint = coarsePointer ? 'tap a model in the gallery below'
                                     : 'pick a model from the gallery below, or drag & drop a .step / .stp file';
-    hint.textContent = `${dropHint} · ${zoomHint} · press W to toggle wireframe`;
+    // On touch devices there's no keyboard, so only surface the key shortcuts on
+    // fine-pointer (mouse/keyboard) devices; touch users get the gesture hint only.
+    const keyHint = coarsePointer ? '' : ' · keys: 1–4 samples, R reset, W wireframe';
+    hint.textContent = `${dropHint} · ${zoomHint}${keyHint}`;
     const spinner = document.getElementById('spinner');
     const toast = document.getElementById('toast');
     let spin = placeholder; // object the render loop rotates (null once static model loads)
     let currentModel = null; // the loaded STEP Group currently in the scene, if any
     let wireframe = false; // wireframe render state, applied to loaded meshes
+    // prefers-reduced-motion query. Declared here (used by both the model swap-in
+    // transition below and the placeholder-spin gate in the render loop). Live, so
+    // a mid-session OS setting change is honored.
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
     // Show/hide the centered loading spinner while a STEP file parses.
     function setLoading(on) { spinner.classList.toggle('active', on); }
+
+    // --- Model-info HUD -------------------------------------------------------
+    // Surface the current model's name, triangle count, and bounding-box size —
+    // basic CAD stats that were previously computed then discarded.
+    const modelInfo = document.getElementById('model-info');
+    const miName = modelInfo.querySelector('.mi-name');
+    const miStats = modelInfo.querySelector('.mi-stats');
+
+    // Compact dimension formatting: whole numbers past 100, one decimal past 10,
+    // two below — keeps a tiny 0.80 gear and a 250 block both legible.
+    function fmtDim(n) {
+      const a = Math.abs(n);
+      if (a >= 100) return Math.round(n).toString();
+      if (a >= 10) return n.toFixed(1);
+      return n.toFixed(2);
+    }
+
+    // Sum triangles across every Mesh in the group. Skips the decorative edge
+    // LineSegments (lines, not tris) and any non-mesh child: indexed geometry
+    // counts index/3, otherwise position-count/3.
+    function countTriangles(group) {
+      let tris = 0;
+      group.traverse((obj) => {
+        if (!obj.isMesh || !obj.geometry) return;
+        const g = obj.geometry;
+        if (g.index) tris += g.index.count / 3;
+        else if (g.attributes.position) tris += g.attributes.position.count / 3;
+      });
+      return Math.round(tris);
+    }
+
+    // Refresh the HUD for the freshly loaded model. Called from the single
+    // load/swap path (showStepFromArrayBuffer) so it covers gallery picks, number
+    // keys, file-open, and drag-drop alike. getSize is translation-invariant, so
+    // it's correct whether or not frameObject has recentered the group yet.
+    function updateModelInfo(group, label) {
+      const size = new THREE.Box3().setFromObject(group).getSize(new THREE.Vector3());
+      const tris = countTriangles(group);
+      miName.textContent = label;
+      miName.title = label; // full name on hover when the label is ellipsized
+      miStats.textContent =
+        `${tris.toLocaleString()} tris · ${fmtDim(size.x)} × ${fmtDim(size.y)} × ${fmtDim(size.z)}`;
+      modelInfo.hidden = false;
+    }
+
+    // --- Model swap-in transition ---------------------------------------------
+    // A freshly parsed model eases in (slight scale-up + fade) instead of popping
+    // hard. Cheap: it drives group.scale and material.opacity from the existing
+    // render loop for ~260ms, then restores opaque rendering so there's no
+    // lingering blend/z-order cost. Honors prefers-reduced-motion — opted-out
+    // users get no animation; the model simply appears at full size/opacity.
+    const SWAP_MS = 260;
+    const SWAP_FROM = 0.92; // starting scale factor (eases up to 1.0)
+    let swapAnim = null; // { group, mats, start } while a transition is in flight
+
+    function startSwapIn(group) {
+      if (reduceMotion.matches) return; // no motion for opt-out users
+      // Fade only the shaded mesh materials. Deferred edge LineSegments aren't in
+      // the group yet (built in an idle slot) and carry their own opacity, so
+      // they're intentionally left out — they pop in a beat later regardless.
+      const mats = [];
+      group.traverse((obj) => {
+        if (!obj.isMesh || !obj.material) return;
+        const arr = Array.isArray(obj.material) ? obj.material : [obj.material];
+        arr.forEach((m) => {
+          mats.push({ m, wasTransparent: m.transparent, base: m.opacity });
+          m.transparent = true;
+          m.opacity = 0;
+        });
+      });
+      group.scale.setScalar(SWAP_FROM);
+      swapAnim = { group, mats, start: performance.now() };
+    }
+
+    // Advance the in-flight swap-in transition; called once per frame from the
+    // render loop. No-op when nothing is animating.
+    function updateSwapIn(now) {
+      if (!swapAnim) return;
+      const t = Math.min((now - swapAnim.start) / SWAP_MS, 1);
+      const e = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      swapAnim.group.scale.setScalar(SWAP_FROM + (1 - SWAP_FROM) * e);
+      swapAnim.mats.forEach(({ m, base }) => { m.opacity = base * e; });
+      if (t >= 1) {
+        // Settle exactly, and drop transparency back for materials that were
+        // opaque before so full-opacity metal renders in the opaque pass again.
+        swapAnim.mats.forEach(({ m, wasTransparent, base }) => {
+          m.opacity = base;
+          if (!wasTransparent) m.transparent = false;
+        });
+        swapAnim.group.scale.setScalar(1);
+        swapAnim = null;
+      }
+    }
 
     // Non-blocking error toast; auto-dismisses. A new message resets the timer.
     let toastTimer = null;
@@ -500,7 +699,9 @@
       currentModel = model;
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
-      frameObject(model);
+      frameObject(model); // frame at scale 1 before the transition shrinks it
+      updateModelInfo(model, label); // refresh the name/tris/dims HUD for the swap
+      startSwapIn(model); // ease the new model in (scale + fade) instead of popping
       markFirstRender(); // first successful render clears the loader + stall watch
       hint.textContent = `${label} · ${zoomHint}`;
     }
@@ -569,16 +770,18 @@
       }
     }
 
-    for (const sample of SAMPLES) {
+    SAMPLES.forEach((sample, i) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'sample';
       btn.textContent = sample.label;
       btn.dataset.file = sample.file;
       btn.setAttribute('aria-pressed', 'false');
+      // Surface the number-key shortcut (1–4) on the pill so it's discoverable.
+      btn.title = `${sample.label} (press ${i + 1})`;
       btn.addEventListener('click', () => loadSample(sample));
       gallery.appendChild(btn);
-    }
+    });
 
     // Show the first bundled sample on page load. Arm the stall watchdog for this
     // initial engine + model download so a slow/broken CDN doesn't hang forever.
@@ -587,19 +790,57 @@
 
     // --- Wireframe toggle (checkbox + `W` key) ---
     const wireCheck = document.getElementById('wire-check');
+    const wireToggle = document.getElementById('wire-toggle');
     function setWireframe(on) {
       wireframe = on;
       wireCheck.checked = on;
+      // Accent the whole control when on (mirrors the gallery is-active pill) so
+      // the state reads beyond the checkbox tick.
+      wireToggle.classList.toggle('is-active', on);
       applyWireframe(currentModel);
     }
     wireCheck.addEventListener('change', () => setWireframe(wireCheck.checked));
+
+    // --- Shortcuts help dialog (header "?" button + `?` key) ---
+    // Native <dialog>.showModal() gives Escape-to-close and focus trapping for
+    // free; the × button and a backdrop click also dismiss it.
+    const helpBtn = document.getElementById('help-btn');
+    const helpDialog = document.getElementById('help-dialog');
+    const helpClose = document.getElementById('help-close');
+    function openHelp() { if (!helpDialog.open) helpDialog.showModal(); }
+    helpBtn.addEventListener('click', openHelp);
+    helpClose.addEventListener('click', () => helpDialog.close());
+    // Dismiss on a backdrop click: showModal centers the panel, so a click whose
+    // target is the <dialog> element itself (not its content) landed on the
+    // backdrop area.
+    helpDialog.addEventListener('click', (e) => {
+      if (e.target === helpDialog) helpDialog.close();
+    });
+
     addEventListener('keydown', (e) => {
-      // Ignore when typing in a field or with modifier keys held.
+      // Ignore when typing in a field or with modifier keys held. `?` is Shift+/,
+      // so allow Shift through (checked after the modifier guard below).
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const tag = e.target && e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      // `?` opens the shortcuts help from anywhere. Handle before the dialog-open
+      // guard so it still works, and independent of the viewer shortcuts.
+      if (e.key === '?') { openHelp(); return; }
+      // While the modal help is open, let the platform own the keys (Escape
+      // closes it, Tab cycles its focus) instead of firing viewer shortcuts.
+      if (helpDialog.open) return;
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
-      if (e.key === 'f' || e.key === 'F') fitView();
+      // R and F both re-fit/reset the view (same as the Fit button).
+      if (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R') fitView();
+      // Number keys 1–4 load the matching gallery sample (Gear/Block/Tetra/
+      // Pyramid) and update the active pill via loadSample. Skip while a load is
+      // already in flight (pills are disabled during a fetch) so rapid key
+      // presses don't stack concurrent loads — mirrors the disabled-click guard.
+      if (e.key >= '1' && e.key <= '4') {
+        const sample = SAMPLES[Number(e.key) - 1];
+        const loading = gallery.querySelector('.sample:disabled');
+        if (sample && !loading) loadSample(sample);
+      }
     });
 
     // --- Reset / fit view (button, `F` key, double-click canvas) ---
@@ -678,13 +919,13 @@
     });
 
     // Respect prefers-reduced-motion: skip the perpetual placeholder rotation so
-    // the loading state stays static for users who opt out of motion. Live so a
-    // mid-session OS setting change is honored.
-    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    // the loading state stays static for users who opt out of motion (reduceMotion
+    // is declared above, near the other render-state flags).
     const clock = new THREE.Clock();
     renderer.setAnimationLoop(() => {
       const delta = clock.getDelta();
       if (spin && !reduceMotion.matches) spin.rotation.y += 0.005;
+      updateSwapIn(performance.now()); // advance any in-flight model swap-in ease
       // Advance the gizmo's snap-to-axis animation (armed by clicking a gizmo
       // axis); it drives camera.position, which OrbitControls.update reads back.
       if (viewHelper.animating) viewHelper.update(delta);
