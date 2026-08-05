@@ -402,6 +402,10 @@
     let spin = placeholder; // object the render loop rotates (null once static model loads)
     let currentModel = null; // the loaded STEP Group currently in the scene, if any
     let wireframe = false; // wireframe render state, applied to loaded meshes
+    // prefers-reduced-motion query. Declared here (used by both the model swap-in
+    // transition below and the placeholder-spin gate in the render loop). Live, so
+    // a mid-session OS setting change is honored.
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
     // Show/hide the centered loading spinner while a STEP file parses.
     function setLoading(on) { spinner.classList.toggle('active', on); }
@@ -448,6 +452,55 @@
       miStats.textContent =
         `${tris.toLocaleString()} tris · ${fmtDim(size.x)} × ${fmtDim(size.y)} × ${fmtDim(size.z)}`;
       modelInfo.hidden = false;
+    }
+
+    // --- Model swap-in transition ---------------------------------------------
+    // A freshly parsed model eases in (slight scale-up + fade) instead of popping
+    // hard. Cheap: it drives group.scale and material.opacity from the existing
+    // render loop for ~260ms, then restores opaque rendering so there's no
+    // lingering blend/z-order cost. Honors prefers-reduced-motion — opted-out
+    // users get no animation; the model simply appears at full size/opacity.
+    const SWAP_MS = 260;
+    const SWAP_FROM = 0.92; // starting scale factor (eases up to 1.0)
+    let swapAnim = null; // { group, mats, start } while a transition is in flight
+
+    function startSwapIn(group) {
+      if (reduceMotion.matches) return; // no motion for opt-out users
+      // Fade only the shaded mesh materials. Deferred edge LineSegments aren't in
+      // the group yet (built in an idle slot) and carry their own opacity, so
+      // they're intentionally left out — they pop in a beat later regardless.
+      const mats = [];
+      group.traverse((obj) => {
+        if (!obj.isMesh || !obj.material) return;
+        const arr = Array.isArray(obj.material) ? obj.material : [obj.material];
+        arr.forEach((m) => {
+          mats.push({ m, wasTransparent: m.transparent, base: m.opacity });
+          m.transparent = true;
+          m.opacity = 0;
+        });
+      });
+      group.scale.setScalar(SWAP_FROM);
+      swapAnim = { group, mats, start: performance.now() };
+    }
+
+    // Advance the in-flight swap-in transition; called once per frame from the
+    // render loop. No-op when nothing is animating.
+    function updateSwapIn(now) {
+      if (!swapAnim) return;
+      const t = Math.min((now - swapAnim.start) / SWAP_MS, 1);
+      const e = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      swapAnim.group.scale.setScalar(SWAP_FROM + (1 - SWAP_FROM) * e);
+      swapAnim.mats.forEach(({ m, base }) => { m.opacity = base * e; });
+      if (t >= 1) {
+        // Settle exactly, and drop transparency back for materials that were
+        // opaque before so full-opacity metal renders in the opaque pass again.
+        swapAnim.mats.forEach(({ m, wasTransparent, base }) => {
+          m.opacity = base;
+          if (!wasTransparent) m.transparent = false;
+        });
+        swapAnim.group.scale.setScalar(1);
+        swapAnim = null;
+      }
     }
 
     // Non-blocking error toast; auto-dismisses. A new message resets the timer.
@@ -575,8 +628,9 @@
       currentModel = model;
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
-      frameObject(model);
+      frameObject(model); // frame at scale 1 before the transition shrinks it
       updateModelInfo(model, label); // refresh the name/tris/dims HUD for the swap
+      startSwapIn(model); // ease the new model in (scale + fade) instead of popping
       markFirstRender(); // first successful render clears the loader + stall watch
       hint.textContent = `${label} · ${zoomHint}`;
     }
@@ -766,13 +820,13 @@
     });
 
     // Respect prefers-reduced-motion: skip the perpetual placeholder rotation so
-    // the loading state stays static for users who opt out of motion. Live so a
-    // mid-session OS setting change is honored.
-    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    // the loading state stays static for users who opt out of motion (reduceMotion
+    // is declared above, near the other render-state flags).
     const clock = new THREE.Clock();
     renderer.setAnimationLoop(() => {
       const delta = clock.getDelta();
       if (spin && !reduceMotion.matches) spin.rotation.y += 0.005;
+      updateSwapIn(performance.now()); // advance any in-flight model swap-in ease
       // Advance the gizmo's snap-to-axis animation (armed by clicking a gizmo
       // axis); it drives camera.position, which OrbitControls.update reads back.
       if (viewHelper.animating) viewHelper.update(delta);
