@@ -179,12 +179,17 @@
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
     import { loadStepFromArrayBuffer } from './src/step.js';
 
     const app = document.getElementById('app');
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
+    // Filmic tone mapping so the environment-lit metal highlights roll off
+    // gracefully instead of clipping to flat white — key to reading curvature.
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
     app.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -195,9 +200,24 @@
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
 
-    scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x20242c, 1.1));
-    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    // Image-based lighting: a prefiltered RoomEnvironment gives every surface a
+    // soft studio reflection so curvature reads instead of a flat monochrome
+    // fill. Built once at startup (RoomEnvironment is a tiny procedural scene, no
+    // network fetch — stays zero-build) and assigned as scene.environment, which
+    // all MeshStandardMaterials pick up automatically.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    // Three-point-ish rig layered on top of the IBL: a warm key for primary
+    // form, a cool fill to lift the shadow side without flattening, and a rim
+    // from behind to separate the silhouette from the dark background.
+    scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x20242c, 0.5));
+    const key = new THREE.DirectionalLight(0xfff2e0, 1.1);
     key.position.set(5, 8, 6); scene.add(key);
+    const fill = new THREE.DirectionalLight(0x9fc0ff, 0.35);
+    fill.position.set(-6, 2, 4); scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.6);
+    rim.position.set(-3, 5, -7); scene.add(rim);
     scene.add(new THREE.GridHelper(10, 10, 0x2a2f3a, 0x1b1f27));
     // X/Y/Z orientation reference sitting at the origin next to the grid.
     scene.add(new THREE.AxesHelper(2));
@@ -206,7 +226,11 @@
     // if STEP parsing fails, so the scene always stays alive.
     const placeholder = new THREE.Mesh(
       new THREE.TorusKnotGeometry(0.7, 0.24, 160, 24),
-      new THREE.MeshStandardMaterial({ color: 0x4f9dff, metalness: 0.35, roughness: 0.4 })
+      // Match the loaded-mesh look (see src/step.js): brushed-metal metalness /
+      // roughness plus envMapIntensity so the RoomEnvironment reflections read.
+      new THREE.MeshStandardMaterial({
+        color: 0x4f9dff, metalness: 0.6, roughness: 0.35, envMapIntensity: 1.0,
+      })
     );
     scene.add(placeholder);
 
