@@ -180,6 +180,7 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
     import { loadStepFromArrayBuffer } from './src/step.js';
 
     const app = document.getElementById('app');
@@ -190,6 +191,10 @@
     // gracefully instead of clipping to flat white — key to reading curvature.
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
+    // The corner orientation gizmo (ViewHelper) is drawn as a second overlay pass
+    // after the main scene, so the renderer must not auto-clear between the two —
+    // the render loop clears once up front instead.
+    renderer.autoClear = false;
     app.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -218,9 +223,31 @@
     fill.position.set(-6, 2, 4); scene.add(fill);
     const rim = new THREE.DirectionalLight(0xffffff, 0.6);
     rim.position.set(-3, 5, -7); scene.add(rim);
-    scene.add(new THREE.GridHelper(10, 10, 0x2a2f3a, 0x1b1f27));
-    // X/Y/Z orientation reference sitting at the origin next to the grid.
-    scene.add(new THREE.AxesHelper(2));
+    // Ground grid — rebuilt on every fit to sit at the model's base and scale to
+    // its footprint (see groundTo), so it reads as a floor the model rests on
+    // instead of a fixed 10-unit plane the model floats above or clips through.
+    let groundGrid = null;
+    // Screen-space orientation gizmo: a small fixed XYZ indicator drawn in the
+    // bottom-right corner as an overlay pass. Unlike a world-space AxesHelper it
+    // never gets swallowed by geometry and stays the same size regardless of zoom.
+    const viewHelper = new ViewHelper(camera, renderer.domElement);
+
+    // (Re)build the ground grid to rest at the model's base (bounding-box min-Y)
+    // and span its footprint. `size` is the model's world-space dimensions; the
+    // caller has already recentered the model on the origin, so the base sits at
+    // y = -size.y/2. A tiny downward nudge avoids z-fighting with a flat base.
+    function groundTo(size) {
+      if (groundGrid) {
+        scene.remove(groundGrid);
+        groundGrid.geometry.dispose();
+        groundGrid.material.dispose();
+      }
+      const footprint = Math.max(size.x, size.z) || 1;
+      const extent = footprint * 2.5; // a bit wider than the model so it reads as floor
+      groundGrid = new THREE.GridHelper(extent, 20, 0x2a2f3a, 0x1b1f27);
+      groundGrid.position.y = -size.y / 2 - footprint * 0.001;
+      scene.add(groundGrid);
+    }
 
     // Placeholder object — shown while the sample loads and kept as a fallback
     // if STEP parsing fails, so the scene always stays alive.
@@ -329,6 +356,10 @@
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
       obj.position.sub(center); // recenter at origin
+
+      // Drop the ground grid to the (now recentered) model's base and size it to
+      // the model so it grounds the object instead of floating in the void.
+      groundTo(size);
 
       const radius = 0.5 * Math.max(size.x, size.y, size.z) || 1;
       // Fit must respect the viewport aspect ratio: a model as wide as it is tall
@@ -482,6 +513,11 @@
     document.getElementById('fit-btn').addEventListener('click', fitView);
     renderer.domElement.addEventListener('dblclick', fitView);
 
+    // Clicking a face/axis of the corner gizmo snaps the camera to that view.
+    // handleClick raycasts only the small corner region and returns false
+    // elsewhere, so ordinary canvas clicks/drags pass through untouched.
+    renderer.domElement.addEventListener('pointerup', (e) => { viewHelper.handleClick(e); });
+
     // --- File picker ---
     const fileInput = document.getElementById('file-input');
     document.getElementById('open-btn').addEventListener('click', () => fileInput.click());
@@ -538,10 +574,18 @@
     // the loading state stays static for users who opt out of motion. Live so a
     // mid-session OS setting change is honored.
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    const clock = new THREE.Clock();
     renderer.setAnimationLoop(() => {
+      const delta = clock.getDelta();
       if (spin && !reduceMotion.matches) spin.rotation.y += 0.005;
+      // Advance the gizmo's snap-to-axis animation (armed by clicking a gizmo
+      // axis); it drives camera.position, which OrbitControls.update reads back.
+      if (viewHelper.animating) viewHelper.update(delta);
       controls.update();
+      // autoClear is off: clear once, draw the scene, then overlay the gizmo.
+      renderer.clear();
       renderer.render(scene, camera);
+      viewHelper.render(renderer);
     });
   </script>
 </body>
