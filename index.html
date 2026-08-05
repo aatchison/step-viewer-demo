@@ -43,6 +43,7 @@
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
+    #help-btn:focus-visible, #help-close:focus-visible,
     #gallery .sample:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
@@ -54,12 +55,61 @@
       padding: .3rem .6rem; }
     #wire-toggle:hover { background: #232a35; border-color: #3a4150; }
     #wire-toggle input { accent-color: #4f9dff; margin: 0; cursor: pointer; }
+    /* Active/pressed wireframe state — mirrors the gallery `.is-active` accent
+       (lifted #eaf2ff text over a translucent blue fill with the accent border)
+       so "wireframe is on" reads at a glance beyond the checkbox tick, and the
+       control matches the same on-state visual language as the gallery pills.
+       The hover tokens above still apply on top of this via later-in-cascade
+       :hover; keep this after :hover so the active fill wins when not hovering. */
+    #wire-toggle.is-active { color: #eaf2ff; background: #1f3350cc;
+      border-color: #4f9dff; }
+    #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
     #fit-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
       color: #cfe0ff; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
       padding: .35rem .7rem; }
     #fit-btn:hover { background: #232a35; border-color: #3a4150; }
+    /* Help affordance — a compact circular "?" button in the header that opens the
+       keyboard-shortcuts panel. Neutral tokens like the fit/wireframe controls so
+       it sits below the accent primary action; header is click-through so re-enable
+       pointer events. Fixed square so the glyph stays optically centered in a
+       circle at every width. */
+    #help-btn { pointer-events: auto; cursor: pointer; font: inherit;
+      font-size: .9rem; font-weight: 700; line-height: 1; color: #cfe0ff;
+      background: #1b2029; border: 1px solid #2a2f3a; border-radius: 999px;
+      width: 1.9rem; height: 1.9rem; display: inline-flex; align-items: center;
+      justify-content: center; flex: none; }
+    #help-btn:hover { background: #232a35; border-color: #3a4150; }
+    /* Shortcuts dialog — a small dismissible panel listing the keyboard/pointer
+       shortcuts. Native <dialog> so Escape-to-close and focus trapping come for
+       free (opened with showModal). Tokens mirror the gallery pills / model-info
+       HUD (translucent #1b2029 fill, #2a2f3a border, blur) so it reads as one
+       system. Centered by the native modal positioning; width caps below the
+       narrowest phone so it never overflows. */
+    #help-dialog { margin: auto; max-width: min(92vw, 340px); width: 100%;
+      color: #e6edf3; background: #12161df2; border: 1px solid #2a2f3a;
+      border-radius: 12px; padding: 0; box-shadow: 0 10px 30px #000a;
+      backdrop-filter: blur(6px); }
+    #help-dialog::backdrop { background: #05070acc; }
+    .help-head { display: flex; align-items: center; justify-content: space-between;
+      gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid #2a2f3a; }
+    .help-head h2 { margin: 0; font-size: .95rem; font-weight: 700;
+      letter-spacing: .2px; }
+    #help-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
+      color: #8b949e; background: transparent; border: 1px solid transparent;
+      border-radius: 6px; width: 1.9rem; height: 1.9rem; display: inline-flex;
+      align-items: center; justify-content: center; flex: none; }
+    #help-close:hover { color: #e6edf3; background: #232a35; border-color: #3a4150; }
+    .help-list { list-style: none; margin: 0; padding: .5rem 1rem .85rem;
+      display: grid; gap: .4rem; font-size: .82rem; }
+    .help-list li { display: flex; align-items: baseline; gap: .55rem; color: #cfe0ff; }
+    /* Keycap chips — monospace, bordered pills so the trigger reads as a key. */
+    .help-list .k { flex: none; min-width: 1.5rem; text-align: center;
+      font: 600 .72rem ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #eaf2ff; background: #1f3350cc; border: 1px solid #4f9dff;
+      border-radius: 5px; padding: .12rem .35rem; }
+    .help-list .d { color: #c2ccd6; }
     /* Header buttons carry both a text label and an icon glyph. The label shows on
        wide screens; the icon is swapped in on compact/narrow screens (see the
        max-width:600px block) so each collapsed control keeps a recognizable glyph
@@ -150,6 +200,7 @@
       #open-btn, #fit-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
+      #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
       #gallery { gap: .75rem; }
       #gallery .sample { min-height: 44px; padding: .5rem 1.1rem;
         display: inline-flex; align-items: center; }
@@ -185,8 +236,28 @@
     </label>
     <button id="fit-btn" type="button" title="Fit / reset view (R or F, or double-click canvas)" aria-label="Fit view"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label">Fit view</span></button>
     <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label">Open STEP file…</span></button>
+    <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog">?</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
+  <!-- Keyboard-shortcuts / controls help. Native <dialog> (opened via showModal)
+       so Escape-to-close and focus trapping are handled by the platform; the ×
+       button and a backdrop click also dismiss it. Opened from the header "?"
+       button or the `?` key. aria-labelledby ties the accessible name to the
+       heading. -->
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <div class="help-head">
+      <h2 id="help-title">Shortcuts &amp; controls</h2>
+      <button id="help-close" type="button" aria-label="Close help">×</button>
+    </div>
+    <ul class="help-list">
+      <li><span class="k">Drag</span><span class="d">Orbit the model</span></li>
+      <li><span class="k">Scroll</span><span class="d">Zoom in / out</span></li>
+      <li><span class="k">W</span><span class="d">Toggle wireframe</span></li>
+      <li><span class="k">F</span><span class="k">R</span><span class="d">Fit / reset view</span></li>
+      <li><span class="k">1</span><span class="k">4</span><span class="d">Load gallery samples</span></li>
+      <li><span class="k">Drop</span><span class="d">Open a .step / .stp file</span></li>
+    </ul>
+  </dialog>
   <!-- Bottom cluster: gallery stacked directly above the hint in a single
        container so they share layout and can never overlap. -->
   <div id="bottom-cluster">
@@ -719,17 +790,45 @@
 
     // --- Wireframe toggle (checkbox + `W` key) ---
     const wireCheck = document.getElementById('wire-check');
+    const wireToggle = document.getElementById('wire-toggle');
     function setWireframe(on) {
       wireframe = on;
       wireCheck.checked = on;
+      // Accent the whole control when on (mirrors the gallery is-active pill) so
+      // the state reads beyond the checkbox tick.
+      wireToggle.classList.toggle('is-active', on);
       applyWireframe(currentModel);
     }
     wireCheck.addEventListener('change', () => setWireframe(wireCheck.checked));
+
+    // --- Shortcuts help dialog (header "?" button + `?` key) ---
+    // Native <dialog>.showModal() gives Escape-to-close and focus trapping for
+    // free; the × button and a backdrop click also dismiss it.
+    const helpBtn = document.getElementById('help-btn');
+    const helpDialog = document.getElementById('help-dialog');
+    const helpClose = document.getElementById('help-close');
+    function openHelp() { if (!helpDialog.open) helpDialog.showModal(); }
+    helpBtn.addEventListener('click', openHelp);
+    helpClose.addEventListener('click', () => helpDialog.close());
+    // Dismiss on a backdrop click: showModal centers the panel, so a click whose
+    // target is the <dialog> element itself (not its content) landed on the
+    // backdrop area.
+    helpDialog.addEventListener('click', (e) => {
+      if (e.target === helpDialog) helpDialog.close();
+    });
+
     addEventListener('keydown', (e) => {
-      // Ignore when typing in a field or with modifier keys held.
+      // Ignore when typing in a field or with modifier keys held. `?` is Shift+/,
+      // so allow Shift through (checked after the modifier guard below).
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const tag = e.target && e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      // `?` opens the shortcuts help from anywhere. Handle before the dialog-open
+      // guard so it still works, and independent of the viewer shortcuts.
+      if (e.key === '?') { openHelp(); return; }
+      // While the modal help is open, let the platform own the keys (Escape
+      // closes it, Tab cycles its focus) instead of firing viewer shortcuts.
+      if (helpDialog.open) return;
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
       // R and F both re-fit/reset the view (same as the Fit button).
       if (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R') fitView();
