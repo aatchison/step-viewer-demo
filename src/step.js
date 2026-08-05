@@ -96,14 +96,16 @@ export async function loadStepFromArrayBuffer(buf) {
       color = new THREE.Color(resultMesh.color[0], resultMesh.color[1], resultMesh.color[2]);
     }
 
-    // Brushed-metal PBR: higher metalness + lower roughness than before, with
-    // envMapIntensity so the scene's RoomEnvironment IBL produces the highlights
-    // and reflections that make curvature read as CAD rather than flat toy blue.
+    // Machined-metal PBR: near-full metalness with a tight satin roughness so the
+    // scene's RoomEnvironment IBL yields the crisp reflections of a milled aluminum
+    // part rather than flat toy blue. The blue accent identity is kept via `color`;
+    // envMapIntensity is lifted slightly so the reflections read strongly under the
+    // filmic tone map.
     const material = new THREE.MeshStandardMaterial({
       color,
-      metalness: 0.6,
-      roughness: 0.35,
-      envMapIntensity: 1.0,
+      metalness: 0.85,
+      roughness: 0.3,
+      envMapIntensity: 1.15,
       side: THREE.DoubleSide,
     });
 

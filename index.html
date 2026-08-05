@@ -241,6 +241,29 @@
     // its footprint (see groundTo), so it reads as a floor the model rests on
     // instead of a fixed 10-unit plane the model floats above or clips through.
     let groundGrid = null;
+    // Soft contact shadow that sits under the model on the grid so it reads as
+    // resting on the floor instead of floating. A radial-gradient sprite (one
+    // textured quad) rather than a real shadow map: it needs no per-model shadow
+    // camera to tune across the sample footprints and costs one transparent draw,
+    // keeping the scene performant and zero-build. Rebuilt with the grid in
+    // groundTo so it always matches the current model's base and footprint.
+    let groundShadow = null;
+    // Radial dark-to-transparent blob, built once and shared across rebuilds.
+    const shadowTexture = (() => {
+      const S = 256;
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = S;
+      const ctx = cv.getContext('2d');
+      const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+      g.addColorStop(0, 'rgba(0,0,0,0.55)');
+      g.addColorStop(0.5, 'rgba(0,0,0,0.22)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, S, S);
+      const tex = new THREE.CanvasTexture(cv);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    })();
     // Screen-space orientation gizmo: a small fixed XYZ indicator drawn as an
     // overlay pass. Unlike a world-space AxesHelper it never gets swallowed by
     // geometry and stays the same size regardless of zoom.
@@ -285,21 +308,45 @@
         groundGrid.geometry.dispose();
         groundGrid.material.dispose();
       }
+      if (groundShadow) {
+        scene.remove(groundShadow);
+        groundShadow.geometry.dispose();
+        groundShadow.material.dispose(); // shared shadowTexture is NOT disposed here
+      }
       const footprint = Math.max(size.x, size.z) || 1;
       const extent = footprint * 2.5; // a bit wider than the model so it reads as floor
+      const baseY = -size.y / 2;
       groundGrid = new THREE.GridHelper(extent, 20, 0x2a2f3a, 0x1b1f27);
-      groundGrid.position.y = -size.y / 2 - footprint * 0.001;
+      groundGrid.position.y = baseY - footprint * 0.001;
       scene.add(groundGrid);
+
+      // Contact shadow: a flat quad carrying the radial blob, centered under the
+      // recentered model (origin in X/Z) and scaled to ~1.8x the footprint so the
+      // soft edge fades out before the grid boundary. depthWrite:false + a raised
+      // renderOrder blend it over the grid lines without z-fighting; it sits a hair
+      // above the grid (and just below the model base) so it grounds the part.
+      const shadowSize = footprint * 1.8;
+      groundShadow = new THREE.Mesh(
+        new THREE.PlaneGeometry(shadowSize, shadowSize),
+        new THREE.MeshBasicMaterial({
+          map: shadowTexture, transparent: true, depthWrite: false, opacity: 0.9,
+        })
+      );
+      groundShadow.rotation.x = -Math.PI / 2; // lay the quad flat on the ground plane
+      groundShadow.position.y = baseY + footprint * 0.0005;
+      groundShadow.renderOrder = 1;
+      groundShadow.raycast = () => {}; // decorative — never a pick/hit target
+      scene.add(groundShadow);
     }
 
     // Placeholder object — shown while the sample loads and kept as a fallback
     // if STEP parsing fails, so the scene always stays alive.
     const placeholder = new THREE.Mesh(
       new THREE.TorusKnotGeometry(0.7, 0.24, 160, 24),
-      // Match the loaded-mesh look (see src/step.js): brushed-metal metalness /
+      // Match the loaded-mesh look (see src/step.js): machined-metal metalness /
       // roughness plus envMapIntensity so the RoomEnvironment reflections read.
       new THREE.MeshStandardMaterial({
-        color: 0x4f9dff, metalness: 0.6, roughness: 0.35, envMapIntensity: 1.0,
+        color: 0x4f9dff, metalness: 0.85, roughness: 0.3, envMapIntensity: 1.15,
       })
     );
     scene.add(placeholder);
