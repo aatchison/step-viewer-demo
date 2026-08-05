@@ -51,10 +51,16 @@
       padding: .35rem .7rem; }
     #fit-btn:hover { background: #232a35; border-color: #3a4150; }
     canvas { display: block; }
+    /* Bottom cluster — gallery and hint share ONE stacked container so they can
+       never overlap, no matter how far the pills wrap on narrow screens. Column
+       flow (gallery above hint) with a fixed gap guarantees separation; the
+       container is click-through and only the pills re-enable pointer events. */
+    #bottom-cluster { position: fixed; left: 0; right: 0; bottom: 1rem; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; gap: .6rem;
+      padding: 0 1rem; pointer-events: none; }
     /* Solid muted token instead of an opacity fade so the first-paint guidance and
        interaction hints stay readable against the dark canvas. */
-    #hint { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
-      z-index: 10; font-size: .8rem; color: #8b949e; max-width: min(92vw, 640px);
+    #hint { font-size: .8rem; color: #8b949e; max-width: min(92vw, 640px);
       text-align: center; }
     /* Loading spinner — centered, shown while a STEP file parses. */
     #spinner { position: fixed; top: 50%; left: 50%; z-index: 15;
@@ -76,10 +82,10 @@
       padding: .6rem .9rem; box-shadow: 0 6px 20px #0008; pointer-events: none;
       opacity: 0; transition: opacity .2s ease; }
     #toast.active { opacity: 1; pointer-events: auto; }
-    /* Sample gallery strip — one button per bundled model. */
-    #gallery { position: fixed; left: 0; right: 0; bottom: 2.4rem; z-index: 10;
-      display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem;
-      padding: 0 1rem; pointer-events: none; }
+    /* Sample gallery strip — one button per bundled model. Positioning is owned by
+       #bottom-cluster; here it only lays the pills out (wrap + centered). */
+    #gallery { width: 100%; display: flex; justify-content: center; flex-wrap: wrap;
+      gap: .5rem; pointer-events: none; }
     #gallery .sample { pointer-events: auto; cursor: pointer; font: inherit;
       font-size: .78rem; color: #cfe0ff; background: #1b2029cc; border: 1px solid #2a2f3a;
       border-radius: 999px; padding: .3rem .8rem; backdrop-filter: blur(4px); }
@@ -126,10 +132,14 @@
     <button id="open-btn" type="button">Open STEP file…</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
-  <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
-       load start / success / error text set here is read out to AT users. -->
-  <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · press W to toggle wireframe</div>
-  <nav id="gallery" aria-label="Sample models"></nav>
+  <!-- Bottom cluster: gallery stacked directly above the hint in a single
+       container so they share layout and can never overlap. -->
+  <div id="bottom-cluster">
+    <nav id="gallery" aria-label="Sample models"></nav>
+    <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
+         load start / success / error text set here is read out to AT users. -->
+    <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · press W to toggle wireframe</div>
+  </div>
   <!-- Loader is `active` in static markup so it paints immediately on first load,
        before the ES module (and the multi-MB three.js + occt/WASM download) run.
        The module clears it once the first model actually renders. -->
