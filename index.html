@@ -191,7 +191,7 @@
     // gracefully instead of clipping to flat white — key to reading curvature.
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
-    // The corner orientation gizmo (ViewHelper) is drawn as a second overlay pass
+    // The orientation gizmo (ViewHelper) is drawn as a second overlay pass
     // after the main scene, so the renderer must not auto-clear between the two —
     // the render loop clears once up front instead.
     renderer.autoClear = false;
@@ -227,10 +227,39 @@
     // its footprint (see groundTo), so it reads as a floor the model rests on
     // instead of a fixed 10-unit plane the model floats above or clips through.
     let groundGrid = null;
-    // Screen-space orientation gizmo: a small fixed XYZ indicator drawn in the
-    // bottom-right corner as an overlay pass. Unlike a world-space AxesHelper it
-    // never gets swallowed by geometry and stays the same size regardless of zoom.
+    // Screen-space orientation gizmo: a small fixed XYZ indicator drawn as an
+    // overlay pass. Unlike a world-space AxesHelper it never gets swallowed by
+    // geometry and stays the same size regardless of zoom.
     const viewHelper = new ViewHelper(camera, renderer.domElement);
+    // ViewHelper hardcodes a 128px box in the *bottom-right* corner (both its
+    // render viewport and its click hit-test). That corner collides with the
+    // centered #bottom-cluster (gallery pills + hint) on narrow/medium widths.
+    // Relocate the gizmo to the top-right, tucked just under the header, where
+    // the canvas is always empty — clear of the bottom cluster at every width
+    // and clear of the header row above it. GIZMO_TOP is the inset from the top
+    // edge (must exceed the header height, ~60px on a compact touch header).
+    const GIZMO_DIM = 128;
+    const GIZMO_TOP = 68;
+    // The framebuffer uses a bottom-left origin, so a box whose top edge sits
+    // GIZMO_TOP px below the canvas top has its lower edge at this y.
+    const gizmoViewportY = () => innerHeight - GIZMO_DIM - GIZMO_TOP;
+    // ViewHelper.render issues exactly one setViewport(x, 0, dim, dim) for the
+    // gizmo pass (then restores the full viewport). Intercept that single call
+    // and raise its y; everything else (the full-frame restore, width != dim)
+    // passes through untouched.
+    const vhRender = viewHelper.render.bind(viewHelper);
+    viewHelper.render = (r) => {
+      const setViewport = r.setViewport.bind(r);
+      r.setViewport = (x, y, w, h) => {
+        if (y === 0 && w === GIZMO_DIM && h === GIZMO_DIM) {
+          setViewport(x, gizmoViewportY(), w, h);
+        } else {
+          setViewport(x, y, w, h);
+        }
+      };
+      vhRender(r);
+      r.setViewport = setViewport; // restore the un-patched method
+    };
 
     // (Re)build the ground grid to rest at the model's base (bounding-box min-Y)
     // and span its footprint. `size` is the model's world-space dimensions; the
@@ -513,10 +542,24 @@
     document.getElementById('fit-btn').addEventListener('click', fitView);
     renderer.domElement.addEventListener('dblclick', fitView);
 
-    // Clicking a face/axis of the corner gizmo snaps the camera to that view.
-    // handleClick raycasts only the small corner region and returns false
-    // elsewhere, so ordinary canvas clicks/drags pass through untouched.
-    renderer.domElement.addEventListener('pointerup', (e) => { viewHelper.handleClick(e); });
+    // Clicking a face/axis of the gizmo snaps the camera to that view. Because
+    // we moved the gizmo's render to the top-right but ViewHelper.handleClick
+    // still hit-tests its original bottom-right box, translate the click into
+    // that box before forwarding. The X box is identical (both right-aligned),
+    // so only Y shifts: a click at actualY maps to the same fractional position
+    // in the bottom-right box by adding the constant gap between the two boxes.
+    // Only clicks that actually fall inside the visible top-right gizmo box are
+    // forwarded, so ordinary canvas clicks/drags pass through untouched.
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      const el = renderer.domElement;
+      const inX = e.clientX >= el.clientWidth - GIZMO_DIM;
+      const inY = e.clientY >= GIZMO_TOP && e.clientY <= GIZMO_TOP + GIZMO_DIM;
+      if (!inX || !inY) return;
+      viewHelper.handleClick({
+        clientX: e.clientX,
+        clientY: e.clientY + (innerHeight - GIZMO_DIM - GIZMO_TOP),
+      });
+    });
 
     // --- File picker ---
     const fileInput = document.getElementById('file-input');
