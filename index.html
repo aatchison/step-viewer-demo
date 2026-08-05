@@ -48,11 +48,13 @@
     /* Sample gallery strip — one button per bundled model. */
     #gallery { position: fixed; left: 0; right: 0; bottom: 2.4rem; z-index: 10;
       display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem;
-      padding: 0 1rem; }
+      padding: 0 1rem; pointer-events: none; }
     #gallery .sample { pointer-events: auto; cursor: pointer; font: inherit;
       font-size: .78rem; color: #cfe0ff; background: #1b2029cc; border: 1px solid #2a2f3a;
       border-radius: 999px; padding: .3rem .8rem; backdrop-filter: blur(4px); }
     #gallery .sample:hover { background: #232a35; border-color: #3a4150; }
+    #gallery .sample.is-active { color: #eaf2ff; background: #1f3350cc;
+      border-color: #4f9dff; }
     #gallery .sample:disabled { opacity: .5; cursor: progress; }
     /* Full-window drag-over affordance. */
     #drop-overlay { position: fixed; inset: 0; z-index: 20; display: none;
@@ -221,7 +223,7 @@
     // Bundled models under ./samples/. Each parses via occt-import-js (verified
     // in CI-style node checks) and loads through the same path as user files.
     const SAMPLES = [
-      { file: 'sample.step',  label: 'Cube' },
+      { file: 'sample.step',  label: 'Gear' },
       { file: 'block.step',   label: 'Block' },
       { file: 'tetra.step',   label: 'Tetrahedron' },
       { file: 'pyramid.step', label: 'Pyramid' },
@@ -241,6 +243,12 @@
         if (!res.ok) throw new Error(`${sample.file} HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
         await showStepFromArrayBuffer(buf, sample.label);
+        // Highlight the pill for the model now on screen.
+        buttons.forEach((b) => {
+          const active = b.dataset.file === sample.file;
+          b.classList.toggle('is-active', active);
+          b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = `Could not load ${sample.label} — see console`;
@@ -256,6 +264,8 @@
       btn.type = 'button';
       btn.className = 'sample';
       btn.textContent = sample.label;
+      btn.dataset.file = sample.file;
+      btn.setAttribute('aria-pressed', 'false');
       btn.addEventListener('click', () => loadSample(sample));
       gallery.appendChild(btn);
     }
