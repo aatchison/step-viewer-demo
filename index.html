@@ -15,23 +15,32 @@
       background: linear-gradient(#0e1116cc, #0e111600); pointer-events: none; }
     /* Let flex children shrink instead of forcing the bar wider than a phone. */
     header > * { min-width: 0; }
-    header h1 { font-size: 1rem; font-weight: 600; margin: 0; letter-spacing: .2px; }
-    header .tag { font-size: .72rem; opacity: .6; }
+    /* Product wordmark — the top of the visual hierarchy, outranking the controls. */
+    header h1 { font-size: 1.2rem; font-weight: 700; margin: 0; letter-spacing: .2px;
+      display: inline-flex; align-items: center; gap: .4rem; }
+    header h1 .glyph { font-size: 1.1rem; line-height: 1; }
+    /* Muted tech subtitle — solid token instead of an opacity fade so it stays
+       legible while still reading as secondary to the wordmark. */
+    header .tag { font-size: .72rem; font-weight: 400; color: #8b949e; }
     header .spacer { flex: 1; }
-    /* Re-enable pointer events on the button (header itself is click-through). */
+    /* Primary action — accent-filled so "Open STEP file…" reads as the main call
+       to action above the neutral wireframe/fit controls. Re-enable pointer events
+       (header itself is click-through). */
     #open-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
-      color: #e6edf3; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
-      padding: .35rem .7rem; }
-    #open-btn:hover { background: #232a35; border-color: #3a4150; }
+      font-weight: 600; color: #0b1220; background: #4f9dff; border: 1px solid #4f9dff;
+      border-radius: 6px; padding: .35rem .7rem; }
+    #open-btn:hover { background: #6fb0ff; border-color: #6fb0ff; }
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
     #gallery .sample:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
+    /* Secondary control — neutral text/fill so it sits below the accent primary
+       action in the visual hierarchy. */
     #wire-toggle { pointer-events: auto; cursor: pointer; user-select: none;
       display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem;
-      color: #cfe0ff; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
+      color: #e6edf3; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
       padding: .3rem .6rem; }
     #wire-toggle:hover { background: #232a35; border-color: #3a4150; }
     #wire-toggle input { accent-color: #4f9dff; margin: 0; cursor: pointer; }
@@ -42,8 +51,11 @@
       padding: .35rem .7rem; }
     #fit-btn:hover { background: #232a35; border-color: #3a4150; }
     canvas { display: block; }
+    /* Solid muted token instead of an opacity fade so the first-paint guidance and
+       interaction hints stay readable against the dark canvas. */
     #hint { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
-      z-index: 10; font-size: .8rem; opacity: .55; }
+      z-index: 10; font-size: .8rem; color: #8b949e; max-width: min(92vw, 640px);
+      text-align: center; }
     /* Loading spinner — centered, shown while a STEP file parses. */
     #spinner { position: fixed; top: 50%; left: 50%; z-index: 15;
       width: 42px; height: 42px; margin: -21px 0 0 -21px; display: none;
@@ -104,7 +116,7 @@
   <div id="app" role="img"
        aria-label="Interactive 3D view of the loaded STEP model. Drag to orbit, scroll or pinch to zoom."></div>
   <header>
-    <h1>STEP Viewer</h1>
+    <h1><span class="glyph" aria-hidden="true">◈</span>STEP Viewer</h1>
     <span class="tag">three.js · occt-import-js · demo</span>
     <span class="spacer"></span>
     <label id="wire-toggle" title="Toggle wireframe (W)">
@@ -116,7 +128,7 @@
   </header>
   <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
        load start / success / error text set here is read out to AT users. -->
-  <div id="hint" aria-live="polite">Loading 3D engine &amp; sample STEP model…</div>
+  <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · press W to toggle wireframe</div>
   <nav id="gallery" aria-label="Sample models"></nav>
   <!-- Loader is `active` in static markup so it paints immediately on first load,
        before the ES module (and the multi-MB three.js + occt/WASM download) run.
@@ -173,6 +185,12 @@
     const coarsePointer = matchMedia('(pointer: coarse)').matches;
     const zoomHint = coarsePointer ? 'drag to orbit · pinch to zoom'
                                    : 'drag to orbit · scroll to zoom';
+    // First-paint discoverability guidance, worded for the current pointer
+    // modality. Shown from load (the static markup carries a generic version) and
+    // kept on screen until the first model actually renders.
+    const dropHint = coarsePointer ? 'tap a model in the gallery below'
+                                    : 'pick a model from the gallery below, or drag & drop a .step / .stp file';
+    hint.textContent = `${dropHint} · ${zoomHint} · press W to toggle wireframe`;
     const spinner = document.getElementById('spinner');
     const toast = document.getElementById('toast');
     let spin = placeholder; // object the render loop rotates (null once static model loads)
@@ -332,7 +350,9 @@
     async function loadSample(sample) {
       const buttons = gallery.querySelectorAll('.sample');
       buttons.forEach((b) => { b.disabled = true; });
-      hint.textContent = `Loading ${sample.label}…`;
+      // Keep the first-paint guidance visible during the initial auto-load; only
+      // swap to a per-load "Loading…" message once the user is past first render.
+      if (firstRenderDone) hint.textContent = `Loading ${sample.label}…`;
       setLoading(true);
       try {
         const res = await fetch(`./samples/${sample.file}`);
