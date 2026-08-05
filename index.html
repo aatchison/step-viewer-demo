@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>STEP Viewer Demo</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #0e1116; color: #e6edf3;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    #app { position: fixed; inset: 0; }
+    header { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+      display: flex; align-items: center; gap: .75rem; padding: .6rem 1rem;
+      background: linear-gradient(#0e1116cc, #0e111600); pointer-events: none; }
+    header h1 { font-size: 1rem; font-weight: 600; margin: 0; letter-spacing: .2px; }
+    header .tag { font-size: .72rem; opacity: .6; }
+    canvas { display: block; }
+    #hint { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
+      z-index: 10; font-size: .8rem; opacity: .55; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <header>
+    <h1>STEP Viewer</h1>
+    <span class="tag">three.js · occt-import-js · demo</span>
+  </header>
+  <div id="hint">STEP loading arrives via the feature train — placeholder scene for now.</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const app = document.getElementById('app');
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    app.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0e1116);
+    const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 1000);
+    camera.position.set(3, 2.5, 4);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x20242c, 1.1));
+    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    key.position.set(5, 8, 6); scene.add(key);
+    scene.add(new THREE.GridHelper(10, 10, 0x2a2f3a, 0x1b1f27));
+
+    // Placeholder object — replaced by loaded STEP geometry in a later feature PR.
+    const mesh = new THREE.Mesh(
+      new THREE.TorusKnotGeometry(0.7, 0.24, 160, 24),
+      new THREE.MeshStandardMaterial({ color: 0x4f9dff, metalness: 0.35, roughness: 0.4 })
+    );
+    scene.add(mesh);
+
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    renderer.setAnimationLoop(() => {
+      mesh.rotation.y += 0.005;
+      controls.update();
+      renderer.render(scene, camera);
+    });
+  </script>
+</body>
+</html>
