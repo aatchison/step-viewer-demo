@@ -24,6 +24,15 @@
     canvas { display: block; }
     #hint { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
       z-index: 10; font-size: .8rem; opacity: .55; }
+    /* Sample gallery strip — one button per bundled model. */
+    #gallery { position: fixed; left: 0; right: 0; bottom: 2.4rem; z-index: 10;
+      display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem;
+      padding: 0 1rem; }
+    #gallery .sample { pointer-events: auto; cursor: pointer; font: inherit;
+      font-size: .78rem; color: #cfe0ff; background: #1b2029cc; border: 1px solid #2a2f3a;
+      border-radius: 999px; padding: .3rem .8rem; backdrop-filter: blur(4px); }
+    #gallery .sample:hover { background: #232a35; border-color: #3a4150; }
+    #gallery .sample:disabled { opacity: .5; cursor: progress; }
     /* Full-window drag-over affordance. */
     #drop-overlay { position: fixed; inset: 0; z-index: 20; display: none;
       align-items: center; justify-content: center; pointer-events: none;
@@ -43,6 +52,7 @@
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
   <div id="hint">Loading sample STEP model…</div>
+  <nav id="gallery" aria-label="Sample models"></nav>
   <div id="drop-overlay"><span>Drop a .step / .stp file to load</span></div>
 
   <script type="importmap">
@@ -151,19 +161,48 @@
       }
     }
 
-    // Fetch + parse + render the bundled sample STEP model on page load.
-    (async () => {
+    // --- Sample gallery ---
+    // Bundled models under ./samples/. Each parses via occt-import-js (verified
+    // in CI-style node checks) and loads through the same path as user files.
+    const SAMPLES = [
+      { file: 'sample.step',  label: 'Cube' },
+      { file: 'block.step',   label: 'Block' },
+      { file: 'tetra.step',   label: 'Tetrahedron' },
+      { file: 'pyramid.step', label: 'Pyramid' },
+    ];
+
+    const gallery = document.getElementById('gallery');
+
+    // Fetch + parse + render a bundled sample, reusing the model-swap path so the
+    // placeholder / previous model is disposed exactly as with user files.
+    async function loadSample(sample) {
+      const buttons = gallery.querySelectorAll('.sample');
+      buttons.forEach((b) => { b.disabled = true; });
+      hint.textContent = `Loading ${sample.label}…`;
       try {
-        const res = await fetch('./samples/sample.step');
-        if (!res.ok) throw new Error(`sample.step HTTP ${res.status}`);
+        const res = await fetch(`./samples/${sample.file}`);
+        if (!res.ok) throw new Error(`${sample.file} HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
-        await showStepFromArrayBuffer(buf, 'Sample STEP model');
+        await showStepFromArrayBuffer(buf, sample.label);
       } catch (err) {
-        // Keep the placeholder scene alive on failure.
         console.error('STEP load failed:', err);
-        hint.textContent = 'Could not load sample STEP — showing placeholder (see console)';
+        hint.textContent = `Could not load ${sample.label} — see console`;
+      } finally {
+        buttons.forEach((b) => { b.disabled = false; });
       }
-    })();
+    }
+
+    for (const sample of SAMPLES) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'sample';
+      btn.textContent = sample.label;
+      btn.addEventListener('click', () => loadSample(sample));
+      gallery.appendChild(btn);
+    }
+
+    // Show the first bundled sample on page load.
+    loadSample(SAMPLES[0]);
 
     // --- File picker ---
     const fileInput = document.getElementById('file-input');
