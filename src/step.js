@@ -10,6 +10,14 @@ import * as THREE from 'three';
 const OCCT_VERSION = '0.0.23';
 const OCCT_BASE = `https://cdn.jsdelivr.net/npm/occt-import-js@${OCCT_VERSION}/dist/`;
 
+// Run a low-priority task off the first-paint critical path. Prefer
+// requestIdleCallback so edge-line generation waits for an idle slot after the
+// mesh is on screen; fall back to a macrotask where it isn't available.
+const runWhenIdle =
+  typeof requestIdleCallback === 'function'
+    ? (fn) => requestIdleCallback(fn, { timeout: 1000 })
+    : (fn) => setTimeout(fn, 0);
+
 let occtPromise = null;
 
 function loadOcctFactory() {
@@ -106,15 +114,48 @@ export async function loadStepFromArrayBuffer(buf) {
     // fillets stay clean. Added as a child so it inherits the mesh transform and
     // is disposed with the group; the wireframe toggle leaves it untouched
     // (LineBasicMaterial ignores `wireframe`).
-    const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(geometry, 30),
-      new THREE.LineBasicMaterial({ color: 0x0a0d12, transparent: true, opacity: 0.35 })
-    );
-    edges.raycast = () => {}; // decorative overlay — never a pick/hit target
-    mesh.add(edges);
+    //
+    // EdgesGeometry walks every triangle of the full mesh — on a dense CAD part
+    // that's the single most expensive app-side step, and doing it inline blocks
+    // the group (and thus first render) until every edge is computed. Defer it to
+    // an idle slot so the shaded mesh appears as soon as it's parsed; the edges
+    // pop in a beat later as non-essential polish. Guard on the parent still
+    // being attached so a model swapped out before the idle callback fires
+    // doesn't attach edges to (or leak geometry for) a discarded group.
+    scheduleEdges(mesh, geometry);
 
     group.add(mesh);
   }
 
   return group;
+}
+
+// True while `obj` is still connected to a live Scene. After a model swap the
+// caller does `scene.remove(group)` (severing group.parent) but leaves the mesh
+// attached to the group, so `mesh.parent` alone stays truthy on a discarded
+// group — walk the ancestor chain to a Scene instead for a reliable liveness
+// check.
+function isInScene(obj) {
+  for (let o = obj; o; o = o.parent) {
+    if (o.isScene) return true;
+  }
+  return false;
+}
+
+// Build the decorative feature-edge overlay for a mesh during an idle slot,
+// after the shaded mesh is already on screen. Kept off the parse/first-render
+// path so first display isn't blocked on it (see call site).
+function scheduleEdges(mesh, geometry) {
+  runWhenIdle(() => {
+    // The group may have been swapped out before this idle slot ran; if it's no
+    // longer in the scene, skip so we don't build edges on a discarded model.
+    if (!isInScene(mesh)) return;
+    const edgeGeom = new THREE.EdgesGeometry(geometry, 30);
+    const edges = new THREE.LineSegments(
+      edgeGeom,
+      new THREE.LineBasicMaterial({ color: 0x0a0d12, transparent: true, opacity: 0.35 })
+    );
+    edges.raycast = () => {}; // decorative overlay — never a pick/hit target
+    mesh.add(edges);
+  });
 }
