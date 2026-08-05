@@ -23,6 +23,11 @@
       color: #e6edf3; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
       padding: .35rem .7rem; }
     #open-btn:hover { background: #232a35; border-color: #3a4150; }
+    /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
+       ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
+    #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
+    #gallery .sample:focus-visible {
+      outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
     #wire-toggle { pointer-events: auto; cursor: pointer; user-select: none;
       display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem;
@@ -46,6 +51,12 @@
       animation: spin 0.8s linear infinite; pointer-events: none; }
     #spinner.active { display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* Reduced-motion: stop the perpetual spinner rotation and show a static
+       loading indicator instead (the JS render loop also halts the placeholder
+       spin under the same query). */
+    @media (prefers-reduced-motion: reduce) {
+      #spinner { animation: none; border-top-color: #4f9dff; }
+    }
     /* Non-blocking error toast. */
     #toast { position: fixed; top: 3.4rem; left: 50%; transform: translateX(-50%);
       z-index: 30; max-width: min(90vw, 420px); font-size: .82rem; line-height: 1.35;
@@ -90,7 +101,8 @@
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app" role="img"
+       aria-label="Interactive 3D view of the loaded STEP model. Drag to orbit, scroll or pinch to zoom."></div>
   <header>
     <h1>STEP Viewer</h1>
     <span class="tag">three.js · occt-import-js · demo</span>
@@ -102,7 +114,9 @@
     <button id="open-btn" type="button">Open STEP file…</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
-  <div id="hint">Loading 3D engine &amp; sample STEP model…</div>
+  <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
+       load start / success / error text set here is read out to AT users. -->
+  <div id="hint" aria-live="polite">Loading 3D engine &amp; sample STEP model…</div>
   <nav id="gallery" aria-label="Sample models"></nav>
   <!-- Loader is `active` in static markup so it paints immediately on first load,
        before the ES module (and the multi-MB three.js + occt/WASM download) run.
@@ -432,8 +446,12 @@
       renderer.setSize(innerWidth, innerHeight);
     });
 
+    // Respect prefers-reduced-motion: skip the perpetual placeholder rotation so
+    // the loading state stays static for users who opt out of motion. Live so a
+    // mid-session OS setting change is honored.
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
     renderer.setAnimationLoop(() => {
-      if (spin) spin.rotation.y += 0.005;
+      if (spin && !reduceMotion.matches) spin.rotation.y += 0.005;
       controls.update();
       renderer.render(scene, camera);
     });
