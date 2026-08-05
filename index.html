@@ -7,7 +7,17 @@
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; background: #0e1116; color: #e6edf3;
+    /* Depth backdrop: a subtle radial vignette (slightly lifted center, darker
+       edges) sits behind the now-transparent WebGL canvas to give the scene
+       depth and make the model pop. A faint SVG fractal-noise tile is layered on
+       top of the gradient to dither it — cheap insurance against 8-bit banding
+       across the large dark gradient. #0e1116 stays the effective mid-tone so the
+       dark theme, grid, and header/toast tokens all still read as before.
+       `fixed` anchors the vignette to the viewport (not the document). */
+    html, body { margin: 0; height: 100%; color: #e6edf3;
+      background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.022'/%3E%3C/svg%3E") repeat fixed,
+        radial-gradient(ellipse 125% 105% at 50% 40%, #1a212b 0%, #12161d 40%, #0d1015 72%, #090b0d 100%) fixed;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     #app { position: fixed; inset: 0; }
     header { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
@@ -184,7 +194,10 @@
     import { loadStepFromArrayBuffer } from './src/step.js';
 
     const app = document.getElementById('app');
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // alpha:true so the canvas clears transparent — the page's radial-vignette
+    // backdrop (CSS on html/body) shows through behind the model instead of a
+    // flat opaque scene color, giving the scene depth.
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
     // Filmic tone mapping so the environment-lit metal highlights roll off
@@ -198,7 +211,8 @@
     app.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0e1116);
+    // No opaque scene.background: the canvas clears transparent (renderer alpha)
+    // so the CSS radial-vignette backdrop reads through behind the model.
     const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 1000);
     camera.position.set(3, 2.5, 4);
 
