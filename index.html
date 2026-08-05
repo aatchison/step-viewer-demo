@@ -11,26 +11,51 @@
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     #app { position: fixed; inset: 0; }
     header { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
-      display: flex; align-items: center; gap: .75rem; padding: .6rem 1rem;
+      display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .6rem 1rem;
       background: linear-gradient(#0e1116cc, #0e111600); pointer-events: none; }
-    header h1 { font-size: 1rem; font-weight: 600; margin: 0; letter-spacing: .2px; }
-    header .tag { font-size: .72rem; opacity: .6; }
+    /* Let flex children shrink instead of forcing the bar wider than a phone. */
+    header > * { min-width: 0; }
+    /* Product wordmark — the top of the visual hierarchy, outranking the controls. */
+    header h1 { font-size: 1.2rem; font-weight: 700; margin: 0; letter-spacing: .2px;
+      display: inline-flex; align-items: center; gap: .4rem; }
+    header h1 .glyph { font-size: 1.1rem; line-height: 1; }
+    /* Muted tech subtitle — solid token instead of an opacity fade so it stays
+       legible while still reading as secondary to the wordmark. */
+    header .tag { font-size: .72rem; font-weight: 400; color: #8b949e; }
     header .spacer { flex: 1; }
-    /* Re-enable pointer events on the button (header itself is click-through). */
+    /* Primary action — accent-filled so "Open STEP file…" reads as the main call
+       to action above the neutral wireframe/fit controls. Re-enable pointer events
+       (header itself is click-through). */
     #open-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
-      color: #e6edf3; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
-      padding: .35rem .7rem; }
-    #open-btn:hover { background: #232a35; border-color: #3a4150; }
+      font-weight: 600; color: #0b1220; background: #4f9dff; border: 1px solid #4f9dff;
+      border-radius: 6px; padding: .35rem .7rem; }
+    #open-btn:hover { background: #6fb0ff; border-color: #6fb0ff; }
+    /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
+       ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
+    #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
+    #gallery .sample:focus-visible {
+      outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
+    /* Secondary control — neutral text/fill so it sits below the accent primary
+       action in the visual hierarchy. */
     #wire-toggle { pointer-events: auto; cursor: pointer; user-select: none;
       display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem;
-      color: #cfe0ff; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
+      color: #e6edf3; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
       padding: .3rem .6rem; }
     #wire-toggle:hover { background: #232a35; border-color: #3a4150; }
     #wire-toggle input { accent-color: #4f9dff; margin: 0; cursor: pointer; }
+    /* Reset/Fit-view button — re-frames the model; header is click-through so
+       re-enable pointer events here too. */
+    #fit-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+      color: #cfe0ff; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
+      padding: .35rem .7rem; }
+    #fit-btn:hover { background: #232a35; border-color: #3a4150; }
     canvas { display: block; }
+    /* Solid muted token instead of an opacity fade so the first-paint guidance and
+       interaction hints stay readable against the dark canvas. */
     #hint { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
-      z-index: 10; font-size: .8rem; opacity: .55; }
+      z-index: 10; font-size: .8rem; color: #8b949e; max-width: min(92vw, 640px);
+      text-align: center; }
     /* Loading spinner — centered, shown while a STEP file parses. */
     #spinner { position: fixed; top: 50%; left: 50%; z-index: 15;
       width: 42px; height: 42px; margin: -21px 0 0 -21px; display: none;
@@ -38,6 +63,12 @@
       animation: spin 0.8s linear infinite; pointer-events: none; }
     #spinner.active { display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* Reduced-motion: stop the perpetual spinner rotation and show a static
+       loading indicator instead (the JS render loop also halts the placeholder
+       spin under the same query). */
+    @media (prefers-reduced-motion: reduce) {
+      #spinner { animation: none; border-top-color: #4f9dff; }
+    }
     /* Non-blocking error toast. */
     #toast { position: fixed; top: 3.4rem; left: 50%; transform: translateX(-50%);
       z-index: 30; max-width: min(90vw, 420px); font-size: .82rem; line-height: 1.35;
@@ -48,11 +79,13 @@
     /* Sample gallery strip — one button per bundled model. */
     #gallery { position: fixed; left: 0; right: 0; bottom: 2.4rem; z-index: 10;
       display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem;
-      padding: 0 1rem; }
+      padding: 0 1rem; pointer-events: none; }
     #gallery .sample { pointer-events: auto; cursor: pointer; font: inherit;
       font-size: .78rem; color: #cfe0ff; background: #1b2029cc; border: 1px solid #2a2f3a;
       border-radius: 999px; padding: .3rem .8rem; backdrop-filter: blur(4px); }
     #gallery .sample:hover { background: #232a35; border-color: #3a4150; }
+    #gallery .sample.is-active { color: #eaf2ff; background: #1f3350cc;
+      border-color: #4f9dff; }
     #gallery .sample:disabled { opacity: .5; cursor: progress; }
     /* Full-window drag-over affordance. */
     #drop-overlay { position: fixed; inset: 0; z-index: 20; display: none;
@@ -61,23 +94,46 @@
     #drop-overlay.active { display: flex; }
     #drop-overlay span { font-size: 1.1rem; font-weight: 600; color: #cfe0ff;
       padding: 1rem 1.5rem; border-radius: 10px; background: #1b2029cc; }
+    /* Narrow phones (~360px): drop the decorative subtitle so the header controls
+       fit on one wrapped bar instead of overflowing. */
+    @media (max-width: 640px) {
+      header .tag { display: none; }
+    }
+    /* Touch devices: enlarge the interactive targets to a 44px minimum and give a
+       bit more breathing room so they're comfortable to tap. */
+    @media (pointer: coarse) {
+      header { gap: 1rem; }
+      #open-btn, #fit-btn { min-height: 44px; padding: .5rem 1rem; }
+      #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
+      #wire-toggle input { width: 20px; height: 20px; }
+      #gallery { gap: .75rem; }
+      #gallery .sample { min-height: 44px; padding: .5rem 1.1rem;
+        display: inline-flex; align-items: center; }
+    }
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app" role="img"
+       aria-label="Interactive 3D view of the loaded STEP model. Drag to orbit, scroll or pinch to zoom."></div>
   <header>
-    <h1>STEP Viewer</h1>
+    <h1><span class="glyph" aria-hidden="true">◈</span>STEP Viewer</h1>
     <span class="tag">three.js · occt-import-js · demo</span>
     <span class="spacer"></span>
     <label id="wire-toggle" title="Toggle wireframe (W)">
       <input id="wire-check" type="checkbox" /> Wireframe
     </label>
+    <button id="fit-btn" type="button" title="Reset / fit view (F, or double-click canvas)">Fit view</button>
     <button id="open-btn" type="button">Open STEP file…</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
-  <div id="hint">Loading sample STEP model…</div>
+  <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
+       load start / success / error text set here is read out to AT users. -->
+  <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · press W to toggle wireframe</div>
   <nav id="gallery" aria-label="Sample models"></nav>
-  <div id="spinner" role="status" aria-label="Loading"></div>
+  <!-- Loader is `active` in static markup so it paints immediately on first load,
+       before the ES module (and the multi-MB three.js + occt/WASM download) run.
+       The module clears it once the first model actually renders. -->
+  <div id="spinner" class="active" role="status" aria-label="Loading"></div>
   <div id="toast" role="alert"></div>
   <div id="drop-overlay"><span>Drop a .step / .stp file to load</span></div>
 
@@ -112,6 +168,8 @@
     const key = new THREE.DirectionalLight(0xffffff, 1.4);
     key.position.set(5, 8, 6); scene.add(key);
     scene.add(new THREE.GridHelper(10, 10, 0x2a2f3a, 0x1b1f27));
+    // X/Y/Z orientation reference sitting at the origin next to the grid.
+    scene.add(new THREE.AxesHelper(2));
 
     // Placeholder object — shown while the sample loads and kept as a fallback
     // if STEP parsing fails, so the scene always stays alive.
@@ -122,6 +180,17 @@
     scene.add(placeholder);
 
     const hint = document.getElementById('hint');
+    // Touch devices orbit/zoom with gestures, not a scroll wheel — word the
+    // interaction hint to match the pointer modality.
+    const coarsePointer = matchMedia('(pointer: coarse)').matches;
+    const zoomHint = coarsePointer ? 'drag to orbit · pinch to zoom'
+                                   : 'drag to orbit · scroll to zoom';
+    // First-paint discoverability guidance, worded for the current pointer
+    // modality. Shown from load (the static markup carries a generic version) and
+    // kept on screen until the first model actually renders.
+    const dropHint = coarsePointer ? 'tap a model in the gallery below'
+                                    : 'pick a model from the gallery below, or drag & drop a .step / .stp file';
+    hint.textContent = `${dropHint} · ${zoomHint} · press W to toggle wireframe`;
     const spinner = document.getElementById('spinner');
     const toast = document.getElementById('toast');
     let spin = placeholder; // object the render loop rotates (null once static model loads)
@@ -138,6 +207,43 @@
       toast.classList.add('active');
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => toast.classList.remove('active'), 5000);
+    }
+
+    // Word a load failure by its cause so we never blame "parse" for an
+    // engine/CDN download failure or an HTTP fetch failure. Errors are tagged
+    // with `kind` at their source: 'init' (occt/WASM/CDN), 'http' (fetch/status),
+    // or 'parse' (invalid STEP bytes); anything else falls back to generic.
+    function describeError(err, label) {
+      const kind = err && err.kind;
+      if (kind === 'init')
+        return `Could not load ${label} — the 3D engine (occt/WASM) failed to download. Check your connection and reload.`;
+      if (kind === 'http')
+        return `Could not load ${label} — the file could not be fetched (${err.message}).`;
+      if (kind === 'parse')
+        return `Could not load ${label} — the file could not be parsed; it may be invalid or an unsupported STEP variant.`;
+      return `Could not load ${label} — the file may be invalid or unsupported.`;
+    }
+
+    // First-paint loader + stall watchdog. The static spinner is cleared once the
+    // first model renders (markFirstRender). If the initial engine+model load has
+    // not finished after STALL_MS, surface a real message instead of an eternal
+    // spinner so a slow/broken CDN download doesn't look like a hang.
+    const STALL_MS = 18000;
+    let firstRenderDone = false;
+    let stallTimer = null;
+    function startStallWatch() {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        if (firstRenderDone) return;
+        hint.textContent = 'Still loading… this is taking longer than usual — check your connection.';
+        showToast('Still loading… the 3D engine and model download is slow. Check your connection.');
+      }, STALL_MS);
+    }
+    function markFirstRender() {
+      if (firstRenderDone) return;
+      firstRenderDone = true;
+      clearTimeout(stallTimer);
+      setLoading(false); // clear the first-paint loader once real content is on screen
     }
 
     // Apply the current wireframe state to every mesh material in a group.
@@ -176,8 +282,17 @@
       camera.far = dist * 1000;
       camera.updateProjectionMatrix();
       controls.target.set(0, 0, 0);
+      // Constrain zoom relative to the framed model so users can neither clip
+      // through the surface nor fly off to nowhere, and keep panning bounded.
+      controls.minDistance = radius * 0.4;
+      controls.maxDistance = dist * 6;
+      controls.screenSpacePanning = false; // pan in the ground plane, keeps it sane
       controls.update();
     }
+
+    // Re-frame whatever object is currently on screen (loaded STEP model, or the
+    // placeholder before/if no model loads). Recoverable from any lost/zoom state.
+    function fitView() { frameObject(currentModel || placeholder); }
 
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
@@ -198,7 +313,8 @@
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
       frameObject(model);
-      hint.textContent = `${label} · drag to orbit · scroll to zoom`;
+      markFirstRender(); // first successful render clears the loader + stall watch
+      hint.textContent = `${label} · ${zoomHint}`;
     }
 
     // Read a user-supplied File and load it, reporting failures via the hint.
@@ -211,7 +327,7 @@
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = `Could not load ${file.name} — see console`;
-        showToast(`Could not load ${file.name} — the file may be invalid or unsupported.`);
+        showToast(describeError(err, file.name));
       } finally {
         setLoading(false);
       }
@@ -221,7 +337,7 @@
     // Bundled models under ./samples/. Each parses via occt-import-js (verified
     // in CI-style node checks) and loads through the same path as user files.
     const SAMPLES = [
-      { file: 'sample.step',  label: 'Cube' },
+      { file: 'sample.step',  label: 'Gear' },
       { file: 'block.step',   label: 'Block' },
       { file: 'tetra.step',   label: 'Tetrahedron' },
       { file: 'pyramid.step', label: 'Pyramid' },
@@ -234,17 +350,31 @@
     async function loadSample(sample) {
       const buttons = gallery.querySelectorAll('.sample');
       buttons.forEach((b) => { b.disabled = true; });
-      hint.textContent = `Loading ${sample.label}…`;
+      // Keep the first-paint guidance visible during the initial auto-load; only
+      // swap to a per-load "Loading…" message once the user is past first render.
+      if (firstRenderDone) hint.textContent = `Loading ${sample.label}…`;
       setLoading(true);
       try {
         const res = await fetch(`./samples/${sample.file}`);
-        if (!res.ok) throw new Error(`${sample.file} HTTP ${res.status}`);
+        if (!res.ok) {
+          // Non-2xx is a fetch/HTTP problem, not a parse failure — tag it so the
+          // toast doesn't wrongly blame parsing.
+          const e = new Error(`${sample.file} HTTP ${res.status}`);
+          e.kind = 'http';
+          throw e;
+        }
         const buf = await res.arrayBuffer();
         await showStepFromArrayBuffer(buf, sample.label);
+        // Highlight the pill for the model now on screen.
+        buttons.forEach((b) => {
+          const active = b.dataset.file === sample.file;
+          b.classList.toggle('is-active', active);
+          b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = `Could not load ${sample.label} — see console`;
-        showToast(`Could not load ${sample.label} — the sample failed to parse.`);
+        showToast(describeError(err, sample.label));
       } finally {
         buttons.forEach((b) => { b.disabled = false; });
         setLoading(false);
@@ -256,11 +386,15 @@
       btn.type = 'button';
       btn.className = 'sample';
       btn.textContent = sample.label;
+      btn.dataset.file = sample.file;
+      btn.setAttribute('aria-pressed', 'false');
       btn.addEventListener('click', () => loadSample(sample));
       gallery.appendChild(btn);
     }
 
-    // Show the first bundled sample on page load.
+    // Show the first bundled sample on page load. Arm the stall watchdog for this
+    // initial engine + model download so a slow/broken CDN doesn't hang forever.
+    startStallWatch();
     loadSample(SAMPLES[0]);
 
     // --- Wireframe toggle (checkbox + `W` key) ---
@@ -277,7 +411,12 @@
       const tag = e.target && e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
+      if (e.key === 'f' || e.key === 'F') fitView();
     });
+
+    // --- Reset / fit view (button, `F` key, double-click canvas) ---
+    document.getElementById('fit-btn').addEventListener('click', fitView);
+    renderer.domElement.addEventListener('dblclick', fitView);
 
     // --- File picker ---
     const fileInput = document.getElementById('file-input');
@@ -327,8 +466,12 @@
       renderer.setSize(innerWidth, innerHeight);
     });
 
+    // Respect prefers-reduced-motion: skip the perpetual placeholder rotation so
+    // the loading state stays static for users who opt out of motion. Live so a
+    // mid-session OS setting change is honored.
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
     renderer.setAnimationLoop(() => {
-      if (spin) spin.rotation.y += 0.005;
+      if (spin && !reduceMotion.matches) spin.rotation.y += 0.005;
       controls.update();
       renderer.render(scene, camera);
     });
