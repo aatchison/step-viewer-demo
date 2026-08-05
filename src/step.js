@@ -27,11 +27,19 @@ function loadOcctFactory() {
 }
 
 // Loads and initializes the occt-import-js WASM module (idempotent).
+// Any failure here is an engine/CDN/WASM problem (network or init), NOT a parse
+// failure — tag it with `kind: 'init'` so callers can word the message right,
+// and reset the cached promise so a later load can retry the download.
 export async function initOcct() {
   if (!occtPromise) {
-    occtPromise = loadOcctFactory().then((factory) =>
-      factory({ locateFile: (path) => OCCT_BASE + path })
-    );
+    occtPromise = loadOcctFactory()
+      .then((factory) => factory({ locateFile: (path) => OCCT_BASE + path }))
+      .catch((err) => {
+        occtPromise = null; // allow a retry on the next load attempt
+        const e = err instanceof Error ? err : new Error(String(err));
+        e.kind = 'init';
+        throw e;
+      });
   }
   return occtPromise;
 }
@@ -44,7 +52,11 @@ export async function loadStepFromArrayBuffer(buf) {
 
   const result = occt.ReadStepFile(fileBuffer, null);
   if (!result || !result.success) {
-    throw new Error('occt ReadStepFile failed to parse the STEP data');
+    // The engine loaded but the bytes were not valid/parseable STEP — tag it as
+    // a genuine parse failure so callers can distinguish it from a load failure.
+    const e = new Error('occt ReadStepFile failed to parse the STEP data');
+    e.kind = 'parse';
+    throw e;
   }
 
   const group = new THREE.Group();

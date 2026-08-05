@@ -84,9 +84,12 @@
     <button id="open-btn" type="button">Open STEP file…</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
-  <div id="hint">Loading sample STEP model…</div>
+  <div id="hint">Loading 3D engine &amp; sample STEP model…</div>
   <nav id="gallery" aria-label="Sample models"></nav>
-  <div id="spinner" role="status" aria-label="Loading"></div>
+  <!-- Loader is `active` in static markup so it paints immediately on first load,
+       before the ES module (and the multi-MB three.js + occt/WASM download) run.
+       The module clears it once the first model actually renders. -->
+  <div id="spinner" class="active" role="status" aria-label="Loading"></div>
   <div id="toast" role="alert"></div>
   <div id="drop-overlay"><span>Drop a .step / .stp file to load</span></div>
 
@@ -149,6 +152,43 @@
       toast.classList.add('active');
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => toast.classList.remove('active'), 5000);
+    }
+
+    // Word a load failure by its cause so we never blame "parse" for an
+    // engine/CDN download failure or an HTTP fetch failure. Errors are tagged
+    // with `kind` at their source: 'init' (occt/WASM/CDN), 'http' (fetch/status),
+    // or 'parse' (invalid STEP bytes); anything else falls back to generic.
+    function describeError(err, label) {
+      const kind = err && err.kind;
+      if (kind === 'init')
+        return `Could not load ${label} — the 3D engine (occt/WASM) failed to download. Check your connection and reload.`;
+      if (kind === 'http')
+        return `Could not load ${label} — the file could not be fetched (${err.message}).`;
+      if (kind === 'parse')
+        return `Could not load ${label} — the file could not be parsed; it may be invalid or an unsupported STEP variant.`;
+      return `Could not load ${label} — the file may be invalid or unsupported.`;
+    }
+
+    // First-paint loader + stall watchdog. The static spinner is cleared once the
+    // first model renders (markFirstRender). If the initial engine+model load has
+    // not finished after STALL_MS, surface a real message instead of an eternal
+    // spinner so a slow/broken CDN download doesn't look like a hang.
+    const STALL_MS = 18000;
+    let firstRenderDone = false;
+    let stallTimer = null;
+    function startStallWatch() {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        if (firstRenderDone) return;
+        hint.textContent = 'Still loading… this is taking longer than usual — check your connection.';
+        showToast('Still loading… the 3D engine and model download is slow. Check your connection.');
+      }, STALL_MS);
+    }
+    function markFirstRender() {
+      if (firstRenderDone) return;
+      firstRenderDone = true;
+      clearTimeout(stallTimer);
+      setLoading(false); // clear the first-paint loader once real content is on screen
     }
 
     // Apply the current wireframe state to every mesh material in a group.
@@ -218,6 +258,7 @@
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
       frameObject(model);
+      markFirstRender(); // first successful render clears the loader + stall watch
       hint.textContent = `${label} · drag to orbit · scroll to zoom`;
     }
 
@@ -231,7 +272,7 @@
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = `Could not load ${file.name} — see console`;
-        showToast(`Could not load ${file.name} — the file may be invalid or unsupported.`);
+        showToast(describeError(err, file.name));
       } finally {
         setLoading(false);
       }
@@ -258,7 +299,13 @@
       setLoading(true);
       try {
         const res = await fetch(`./samples/${sample.file}`);
-        if (!res.ok) throw new Error(`${sample.file} HTTP ${res.status}`);
+        if (!res.ok) {
+          // Non-2xx is a fetch/HTTP problem, not a parse failure — tag it so the
+          // toast doesn't wrongly blame parsing.
+          const e = new Error(`${sample.file} HTTP ${res.status}`);
+          e.kind = 'http';
+          throw e;
+        }
         const buf = await res.arrayBuffer();
         await showStepFromArrayBuffer(buf, sample.label);
         // Highlight the pill for the model now on screen.
@@ -270,7 +317,7 @@
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = `Could not load ${sample.label} — see console`;
-        showToast(`Could not load ${sample.label} — the sample failed to parse.`);
+        showToast(describeError(err, sample.label));
       } finally {
         buttons.forEach((b) => { b.disabled = false; });
         setLoading(false);
@@ -288,7 +335,9 @@
       gallery.appendChild(btn);
     }
 
-    // Show the first bundled sample on page load.
+    // Show the first bundled sample on page load. Arm the stall watchdog for this
+    // initial engine + model download so a slow/broken CDN doesn't hang forever.
+    startStallWatch();
     loadSample(SAMPLES[0]);
 
     // --- Wireframe toggle (checkbox + `W` key) ---
