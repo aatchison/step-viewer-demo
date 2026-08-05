@@ -22,10 +22,11 @@ you serve the folder and it runs.
 
 ## Screenshot
 
-> **Note:** a rendered screenshot (`docs/screenshot.png`) is not yet committed — capturing
-> one needs a browser/WebGL context, which this build environment lacks. See
-> [`docs/screenshot.md`](docs/screenshot.md) for what the loaded viewer shows and how to
-> capture the image locally. (No broken image link is embedded here on purpose.)
+![STEP Viewer showing the bundled "Gear" sample rendered on a dark grid, with the header controls (Wireframe toggle, Fit view, "Open STEP file…"), an orientation gizmo and model-info card top-right, and the sample gallery strip along the bottom](docs/screenshot.png)
+
+*The bundled `Gear` sample (2,696 tris, 52.0 × 52.0 × 20.0) loaded at a 1440×900 desktop
+viewport. Pick another model from the gallery strip, drag in your own `.step`/`.stp` file,
+and orbit / pan / zoom with the mouse.*
 
 ## Run locally
 
