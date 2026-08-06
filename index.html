@@ -131,6 +131,7 @@
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
     #contrast-btn:focus-visible, #save-btn:focus-visible, #export-btn:focus-visible,
     #share-btn:focus-visible, #embed-btn:focus-visible,
+    #measure-btn:focus-visible, #measure-clear:focus-visible,
     #help-btn:focus-visible, #help-close:focus-visible, #gallery .sample:focus-visible,
     #share-fallback-close:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
@@ -154,11 +155,35 @@
     #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
-    #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+    #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
       color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .35rem .7rem; }
-    #save-btn, #export-btn, #share-btn, #embed-btn { display: inline-flex; align-items: center; gap: .35rem; }
-    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover { background: #232a35; border-color: #3a4150; }
+    #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear { display: inline-flex; align-items: center; gap: .35rem; }
+    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover, #measure-btn:hover, #measure-clear:hover { background: #232a35; border-color: #3a4150; }
+    /* Measure toggle active state — reuses the same accent on-state language as the
+       wireframe toggle / gallery pills (lifted text over a translucent blue fill
+       with the accent border) so "measure mode is on" reads at a glance. Both the
+       .is-active class and aria-pressed are set in JS (per the wireframe toggle
+       pattern); styling keys on .is-active. Placed after :hover so the active fill
+       wins when not hovering. */
+    #measure-btn.is-active { color: #eaf2ff; background: #1f3350cc; border-color: #4f9dff; }
+    #measure-btn.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    /* Clear-measurement button is disabled until something is measured. */
+    #measure-clear:disabled { opacity: .5; cursor: not-allowed; }
+    #measure-clear:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
+    #measure-clear[hidden] { display: none; }
+    /* Floating distance read-out for the measurement tool. Positioned each frame
+       in the render loop from the segment midpoint projected to screen px, so it
+       tracks the 3D points as the camera orbits. Centered on its anchor point
+       (translate -50%,-50%), click-through, tabular figures. Tokens mirror the
+       gallery pills' accent on-state so it reads as one system. aria-hidden — the
+       numeric distance is announced through the #hint live region instead. */
+    #measure-label { position: fixed; z-index: 12; transform: translate(-50%, -50%);
+      pointer-events: none; font-size: .74rem; font-weight: 600;
+      font-variant-numeric: tabular-nums; color: #eaf2ff; background: #1f3350ee;
+      border: 1px solid #4f9dff; border-radius: 6px; padding: .12rem .4rem;
+      white-space: nowrap; box-shadow: 0 2px 8px #0008; }
+    #measure-label[hidden] { display: none; }
     /* Non-shareable state: a user-opened file has no restorable link, so the
        button is disabled (updateShareState) — dim it and drop the pointer. The
        Export GLB button is disabled the same way until a real model is loaded
@@ -396,7 +421,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -418,11 +443,13 @@
       header { gap: .5rem; padding: .5rem .75rem; }
       #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
       #contrast-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
-      #share-btn .btn-label, #embed-btn .btn-label { display: none; }
+      #share-btn .btn-label, #embed-btn .btn-label,
+      #measure-btn .btn-label, #measure-clear .btn-label { display: none; }
       #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
       #contrast-btn .btn-icon, #save-btn .btn-icon, #export-btn .btn-icon,
-      #share-btn .btn-icon, #embed-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn { min-width: 44px; padding: .4rem;
+      #share-btn .btn-icon, #embed-btn .btn-icon,
+      #measure-btn .btn-icon, #measure-clear .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
       /* Preset cluster collapses to axis-sign glyphs on the same narrow
@@ -451,6 +478,17 @@
       <input id="wire-check" type="checkbox" aria-label="Wireframe" data-i18n-attr="aria-label:wireframeLabel" /> <span class="btn-icon" aria-hidden="true">▦</span><span class="btn-label" data-i18n="wireframeLabel">Wireframe</span>
     </label>
     <button id="fit-btn" type="button" title="Fit / reset view (R or F, or double-click canvas)" aria-label="Fit view" data-i18n-attr="title:fitTitle;aria-label:fitAria"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label" data-i18n="fitLabel">Fit view</span></button>
+    <!-- Measure toggle. When active, a click raycasts against the loaded meshes to
+         place two markers and read out the distance between them. aria-pressed
+         reflects the live state; when on it borrows the accent on-state language of
+         the wireframe toggle / gallery pills (via .is-active) so "measure mode is
+         on" reads at a glance. Collapses to the 📏 glyph under the same 600px /
+         coarse-pointer rules as the other header buttons. -->
+    <button id="measure-btn" type="button" title="Measure distance between two points (M)" aria-label="Measure distance" aria-pressed="false" data-i18n-attr="title:measureTitle;aria-label:measureAria"><span class="btn-icon" aria-hidden="true">📏</span><span class="btn-label" data-i18n="measureLabel">Measure</span></button>
+    <!-- Clear the current measurement (markers + line + label). Shown only while
+         Measure mode is on (or a measurement lingers); disabled until there's
+         something to clear. Also reachable via the Esc key. -->
+    <button id="measure-clear" type="button" hidden disabled title="Clear measurement (Esc)" aria-label="Clear measurement" data-i18n-attr="title:measureClearTitle;aria-label:measureClearAria"><span class="btn-icon" aria-hidden="true">✕</span><span class="btn-label" data-i18n="measureClearLabel">Clear</span></button>
     <!-- High-contrast toggle. aria-pressed reflects the live state (corrected by
          the module script on load from the persisted / OS preference); the ◑ glyph
          shows on narrow screens where the label collapses (see max-width:600px). -->
@@ -533,6 +571,10 @@
       <li><span class="k">C</span><span class="d" data-i18n="descContrast">Toggle high contrast</span></li>
       <li><span class="k">S</span><span class="d" data-i18n="descSave">Save image (PNG)</span></li>
       <li><span class="k">E</span><span class="d" data-i18n="descExport">Export model as GLB</span></li>
+      <!-- Point-to-point measurement: M toggles the tool, Esc clears the current
+           measurement. -->
+      <li><span class="k">M</span><span class="d" data-i18n="descMeasure">Toggle distance measure</span></li>
+      <li><span class="k" data-i18n="kEsc">Esc</span><span class="d" data-i18n="descMeasureClear">Clear measurement</span></li>
       <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
       <li><span class="k">1</span><span class="k">4</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
       <!-- Standard-view presets — numpad keys (NumLock-independent via e.code)
@@ -564,6 +606,12 @@
     <span class="mi-stats" aria-hidden="true"></span>
     <span class="mi-a11y sr-only"></span>
   </div>
+  <!-- Floating distance read-out for the point-to-point measurement tool. Shown
+       once two points are placed; positioned each frame in the render loop from
+       the projected segment midpoint so it tracks the model as the camera orbits.
+       aria-hidden — the numeric distance is announced through the #hint live
+       region so it isn't read out twice. -->
+  <div id="measure-label" hidden aria-hidden="true"></div>
   <!-- The visual spinner is decorative (aria-hidden); the staged status line
        below it is the accessible status channel (role=status / aria-live=polite)
        so first-load progress is announced once, not doubled with the spinner. -->
@@ -1212,6 +1260,173 @@
       btn.addEventListener('click', () => applyView(btn.dataset.view));
     });
 
+    // --- Point-to-point distance measurement ----------------------------------
+    // A CAD inspection tool. With Measure mode on, a click raycasts (a
+    // THREE.Raycaster from the pointer through the camera) against currentModel's
+    // meshes only — the decorative feature-edge LineSegments already have raycast
+    // disabled (see step.js), so they're naturally excluded — to place two markers,
+    // draw a line between them, and read out the Euclidean distance in model units
+    // (same fmtDim formatting as the bbox HUD). OrbitControls stays live, so a
+    // measuring click is told apart from an orbit drag by pointer travel: a
+    // pointerup within MEASURE_CLICK_TOL px of its pointerdown counts as a click.
+    // Markers/line render with depthTest:false + a raised renderOrder so they stay
+    // visible against the metal surface instead of being occluded by it. The
+    // distance is an HTML overlay (#measure-label) projected each frame from the
+    // segment midpoint in the render loop, so it tracks as the user orbits. All
+    // measurement geometry lives directly in the scene (never inside currentModel),
+    // so a model swap can't attach it to a discarded group; it's still torn down
+    // explicitly on swap (clearMeasurement in showStepFromArrayBuffer) so a stale
+    // measurement never lingers onto the next model.
+    const measureBtn = document.getElementById('measure-btn');
+    const measureClearBtn = document.getElementById('measure-clear');
+    const measureLabel = document.getElementById('measure-label');
+    const measureRay = new THREE.Raycaster();
+    const _measNdc = new THREE.Vector2();
+    const _measMid = new THREE.Vector3();
+    const measurePoints = []; // world-space hit points (0, 1, or 2)
+    let measureMarkers = [];  // marker Meshes currently in the scene
+    let measureLine = null;   // the connecting Line, once two points exist
+    let measureMode = false;  // Measure toggle state
+    // pointerdown bookkeeping so pointerup can tell a click from an orbit drag.
+    let measureDownX = 0, measureDownY = 0, measureDownId = -1;
+    const MEASURE_CLICK_TOL = 6;    // px of travel still counted as a click
+    const MEASURE_COLOR = 0xffd24a; // amber — reads against the blue metal + dark bg
+
+    // Marker radius scaled to the current model so the spheres read at any part
+    // size (a 0.8mm gear vs a 250mm block). getSize is translation/rotation-safe.
+    function measureMarkerRadius() {
+      if (!currentModel) return 0.02;
+      const size = new THREE.Box3().setFromObject(currentModel).getSize(new THREE.Vector3());
+      return (Math.max(size.x, size.y, size.z) || 1) * 0.02;
+    }
+
+    // Enable + show the Clear button only when it's useful: visible while Measure
+    // mode is on OR a measurement lingers, and enabled only when there's something
+    // to clear.
+    function updateMeasureClearState() {
+      if (!measureClearBtn) return;
+      const has = measurePoints.length > 0;
+      measureClearBtn.hidden = !(measureMode || has);
+      measureClearBtn.disabled = !has;
+    }
+
+    // Remove markers + line + label and reset the point list, disposing every
+    // geometry/material so nothing leaks. Safe to call when nothing is measured.
+    function clearMeasurement() {
+      measureMarkers.forEach((m) => {
+        scene.remove(m);
+        m.geometry.dispose();
+        m.material.dispose();
+      });
+      measureMarkers = [];
+      if (measureLine) {
+        scene.remove(measureLine);
+        measureLine.geometry.dispose();
+        measureLine.material.dispose();
+        measureLine = null;
+      }
+      measurePoints.length = 0;
+      measureLabel.hidden = true;
+      updateMeasureClearState();
+    }
+
+    // Drop a marker sphere at a world-space hit point. depthTest:false + a high
+    // renderOrder keep it drawn over the shaded model.
+    function addMeasureMarker(point) {
+      const r = measureMarkerRadius();
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 16, 12),
+        new THREE.MeshBasicMaterial({ color: MEASURE_COLOR, depthTest: false })
+      );
+      marker.position.copy(point);
+      marker.renderOrder = 999;   // draw last so it's never occluded
+      marker.raycast = () => {};  // never a pick target itself
+      scene.add(marker);
+      measureMarkers.push(marker);
+    }
+
+    // Build the connecting line once both endpoints exist (same over-draw treatment
+    // as the markers so it stays visible against the surface).
+    function buildMeasureLine() {
+      const geom = new THREE.BufferGeometry().setFromPoints(measurePoints);
+      measureLine = new THREE.Line(
+        geom,
+        new THREE.LineBasicMaterial({ color: MEASURE_COLOR, depthTest: false })
+      );
+      measureLine.renderOrder = 999;
+      measureLine.raycast = () => {};
+      scene.add(measureLine);
+    }
+
+    // Handle a confirmed measuring click at NDC coords: raycast currentModel and,
+    // on a hit, advance the two-point measurement. A click after a completed
+    // measurement restarts a fresh one from that hit.
+    function measureAt(ndcX, ndcY) {
+      if (!currentModel) return;
+      _measNdc.set(ndcX, ndcY);
+      measureRay.setFromCamera(_measNdc, camera);
+      const hits = measureRay.intersectObject(currentModel, true);
+      if (!hits.length) return;
+      const p = hits[0].point.clone();
+      if (measurePoints.length >= 2) clearMeasurement(); // start a new measurement
+      measurePoints.push(p);
+      addMeasureMarker(p);
+      updateMeasureClearState();
+      if (measurePoints.length === 1) {
+        hint.textContent = t('measureFirst');
+      } else {
+        buildMeasureLine();
+        const dist = measurePoints[0].distanceTo(measurePoints[1]);
+        measureLabel.textContent = fmtDim(dist);
+        measureLabel.hidden = false;
+        hint.textContent = t('measureResult', { dist: fmtDim(dist) });
+      }
+    }
+
+    // Turn Measure mode on/off. Toggling off clears an in-progress (single-point)
+    // measurement; a completed one is left on screen until Clear / a model swap.
+    function setMeasureMode(on) {
+      measureMode = on;
+      measureBtn.classList.toggle('is-active', on);
+      measureBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      if (on) {
+        hint.textContent = t('measureOn');
+      } else {
+        if (measurePoints.length === 1) clearMeasurement();
+        hint.textContent = t('measureOff');
+      }
+      updateMeasureClearState();
+    }
+    function toggleMeasure() { setMeasureMode(!measureMode); }
+    measureBtn.addEventListener('click', toggleMeasure);
+    if (measureClearBtn) measureClearBtn.addEventListener('click', clearMeasurement);
+
+    // Distinguish a measuring click from an orbit drag by pointer travel: remember
+    // where the press started, then on release measure only if the pointer barely
+    // moved. OrbitControls still gets the same events, so orbit keeps working.
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      if (!measureMode || e.button !== 0) return;
+      measureDownX = e.clientX; measureDownY = e.clientY; measureDownId = e.pointerId;
+    });
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      if (!measureMode || e.button !== 0 || e.pointerId !== measureDownId) return;
+      measureDownId = -1;
+      // A press that traveled is an orbit drag, not a click — ignore it.
+      if (Math.hypot(e.clientX - measureDownX, e.clientY - measureDownY) > MEASURE_CLICK_TOL) return;
+      // Don't measure through the top-right gizmo box — its own handler owns it.
+      const el = renderer.domElement;
+      const inGizmoX = e.clientX >= el.clientWidth - GIZMO_DIM;
+      const inGizmoY = e.clientY >= GIZMO_TOP && e.clientY <= GIZMO_TOP + GIZMO_DIM;
+      if (inGizmoX && inGizmoY) return;
+      const rect = el.getBoundingClientRect();
+      measureAt(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+    });
+
+    updateMeasureClearState(); // reflect the initial (nothing measured) state
+
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
     async function showStepFromArrayBuffer(buf, label, onPhase, camState) {
@@ -1228,6 +1443,9 @@
         scene.remove(currentModel);
         disposeGroup(currentModel);
       }
+      // Tear down any measurement from the outgoing model so markers/line/label
+      // never linger onto — or measure against — the incoming one.
+      clearMeasurement();
       spin = null;
       currentModel = model;
       currentModelLabel = label; // remember for the Save-image PNG filename
@@ -1944,6 +2162,12 @@
       if (e.key === 's' || e.key === 'S') saveImageSafe();
       // E exports the loaded model as a binary GLB (mirrors the header 📦 button).
       if (e.key === 'e' || e.key === 'E') exportGLB();
+      // M toggles the point-to-point distance measurement tool.
+      if (e.key === 'm' || e.key === 'M') toggleMeasure();
+      // Esc clears any current measurement (markers + line + label). Only acts when
+      // there's something to clear, so it never swallows Escape otherwise; the help
+      // dialog's own Escape-to-close already returned above when it was open.
+      if (e.key === 'Escape' && measurePoints.length) { clearMeasurement(); return; }
       // R and F both re-fit/reset the view (same as the Fit button).
       if (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R') fitView();
       // Numpad keys snap to a standard camera view (Front/Back/Top/Bottom/Right/
@@ -1963,7 +2187,9 @@
 
     // --- Reset / fit view (button, `F` key, double-click canvas) ---
     document.getElementById('fit-btn').addEventListener('click', fitView);
-    renderer.domElement.addEventListener('dblclick', fitView);
+    // Double-click re-fits — but not while measuring, where two quick clicks are a
+    // pair of measurement picks, not a fit gesture.
+    renderer.domElement.addEventListener('dblclick', () => { if (!measureMode) fitView(); });
 
     // --- Keyboard-driven camera navigation -----------------------------------
     // OrbitControls only listens to pointer/wheel events, so a keyboard-only user
@@ -2160,6 +2386,21 @@
         if (p >= 1) presetAnim = null;
       }
       controls.update();
+      // Track the measurement label to the segment midpoint: project the world-
+      // space midpoint to normalized device coords, then to screen px. Runs after
+      // controls.update() so the camera matrices are current for this frame. A
+      // midpoint behind the camera / beyond the far plane (|z| > 1) is hidden so
+      // the label never jumps to a mirrored on-screen position.
+      if (measurePoints.length === 2) {
+        _measMid.copy(measurePoints[0]).add(measurePoints[1]).multiplyScalar(0.5).project(camera);
+        if (_measMid.z <= 1) {
+          measureLabel.style.left = (_measMid.x * 0.5 + 0.5) * innerWidth + 'px';
+          measureLabel.style.top = (-_measMid.y * 0.5 + 0.5) * innerHeight + 'px';
+          measureLabel.style.visibility = 'visible';
+        } else {
+          measureLabel.style.visibility = 'hidden';
+        }
+      }
       // autoClear is off: clear once, draw the scene, then overlay the gizmo.
       renderer.clear();
       renderer.render(scene, camera);
