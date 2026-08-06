@@ -84,37 +84,38 @@
        on-* = the accent "on/active" pill language, scrim* = header/overlay fade. */
     :root {
       color-scheme: dark;
-      --fg: var(--fg);              /* primary text */
-      --muted: var(--muted);          /* hints / subtitles / stats */
-      --panel: var(--panel);          /* solid control fill (buttons) */
-      --panel-tr: var(--panel-tr);     /* translucent pill / HUD / dialog-adjacent fill */
-      --panel-hover: var(--panel-hover);    /* control hover fill */
-      --border: var(--border);         /* control / pill / dialog borders */
-      --border-hover: var(--border-hover);   /* control hover border */
-      --accent: var(--accent);         /* brand blue — buttons, focus rings, active */
-      --accent-hover: var(--accent-hover);   /* accent hover */
-      --accent-ink: var(--accent-ink);     /* text/glyph sitting on an accent fill */
-      --ctrl-fg: var(--ctrl-fg);        /* neutral control text (lifts off dark panels) */
-      --ctrl-fg-2: var(--ctrl-fg-2);      /* secondary control text (help descriptions) */
-      --on-fg: var(--on-fg);          /* text on an active/pressed pill */
-      --on-fill: var(--on-fill);      /* active/pressed pill fill */
-      --on-fill-strong: var(--on-fill-strong); /* opaque-ish variant (measure label) */
-      --on-fill-hover: var(--on-fill-hover); /* active pill hover fill */
-      --dialog-bg: var(--dialog-bg);    /* modal dialog / floating-panel fill */
+      --fg: #e6edf3;              /* primary text */
+      --muted: #8b949e;          /* hints / subtitles / stats */
+      --panel: #1b2029;          /* solid control fill (buttons) */
+      --panel-tr: #1b2029cc;     /* translucent pill / HUD / dialog-adjacent fill */
+      --panel-hover: #232a35;    /* control hover fill */
+      --border: #2a2f3a;         /* control / pill / dialog borders */
+      --border-hover: #3a4150;   /* control hover border */
+      --accent: #4f9dff;         /* brand blue — buttons, focus rings, active */
+      --accent-hover: #6fb0ff;   /* accent hover */
+      --accent-ink: #0b1220;     /* text/glyph sitting on an accent fill */
+      --ctrl-fg: #cfe0ff;        /* neutral control text (lifts off dark panels) */
+      --ctrl-fg-2: #c2ccd6;      /* secondary control text (help descriptions) */
+      --on-fg: #eaf2ff;          /* text on an active/pressed pill */
+      --on-fill: #1f3350cc;      /* active/pressed pill fill */
+      --on-fill-strong: #1f3350ee; /* opaque-ish variant (measure label) */
+      --on-fill-hover: #244071cc; /* active pill hover fill */
+      --dialog-bg: #12161df2;    /* modal dialog / floating-panel fill */
       --field-bg: #0a0d12;       /* text input (share-fallback) fill */
-      --scrim: var(--scrim);          /* header gradient / capture / overlay base tone */
-      --scrim-90: var(--scrim-90);     /* header top / drop overlay (translucent) */
-      --scrim-0: var(--scrim-0);      /* header gradient tail (fully transparent) */
-      --bg-0: var(--bg-0);           /* radial backdrop: center (lifted) */
-      --bg-1: var(--bg-1);           /* radial backdrop: near-mid */
-      --bg-2: var(--bg-2);           /* radial backdrop: outer-mid */
-      --bg-3: var(--bg-3);           /* radial backdrop: edge (darkest) */
-      --toast-fg: var(--toast-fg);       /* error toast text */
-      --toast-bg: var(--toast-bg);     /* error toast fill */
-      --toast-border: var(--toast-border);   /* error toast border */
-      --toast-ok-fg: var(--toast-ok-fg);    /* success toast text */
-      --toast-ok-bg: var(--toast-ok-bg);  /* success toast fill */
-      --toast-ok-border: var(--toast-ok-border);/* success toast border */
+      --scrim: #0e1116;          /* header gradient / capture / overlay base tone */
+      --scrim-90: #0e1116cc;     /* header top / drop overlay (translucent) */
+      --scrim-0: #0e111600;      /* header gradient tail (fully transparent) */
+      --bg-0: #1a212b;           /* radial backdrop: center (lifted) */
+      --bg-1: #12161d;           /* radial backdrop: near-mid */
+      --bg-2: #0d1015;           /* radial backdrop: outer-mid */
+      --bg-3: #090b0d;           /* radial backdrop: edge (darkest) */
+      --dims: #4fe0b0;           /* model-info dimensions readout (teal) */
+      --toast-fg: #ffddd8;       /* error toast text */
+      --toast-bg: #3a1f1fee;     /* error toast fill */
+      --toast-border: #7a3b3b;   /* error toast border */
+      --toast-ok-fg: #d6ffe4;    /* success toast text */
+      --toast-ok-bg: #12321fee;  /* success toast fill */
+      --toast-ok-border: #2f6b45;/* success toast border */
     }
     /* Light theme — legible on bright monitors / in light embedding contexts. A
        near-white radial backdrop, dark text, light panels, and a slightly darker
@@ -131,7 +132,7 @@
       --panel-hover: #eef1f6;
       --border: #c7ced9;
       --border-hover: #aab3c2;
-      --accent: #2f7ae5;
+      --accent: #2569cf;
       --accent-hover: #1f66cf;
       --accent-ink: #ffffff;
       --ctrl-fg: #1d3a5f;
@@ -149,6 +150,7 @@
       --bg-1: #f4f6fa;
       --bg-2: #e9edf3;
       --bg-3: #dbe1ea;
+      --dims: #127a57;           /* darker teal so the dimensions readout stays legible on white */
       --toast-fg: #7a1f1f;
       --toast-bg: #fdecece6;
       --toast-border: #f0b4b4;
@@ -166,7 +168,7 @@
         --panel-hover: #eef1f6;
         --border: #c7ced9;
         --border-hover: #aab3c2;
-        --accent: #2f7ae5;
+        --accent: #2569cf;
         --accent-hover: #1f66cf;
         --accent-ink: #ffffff;
         --ctrl-fg: #1d3a5f;
@@ -184,6 +186,7 @@
         --bg-1: #f4f6fa;
         --bg-2: #e9edf3;
         --bg-3: #dbe1ea;
+        --dims: #127a57;           /* darker teal so the dimensions readout stays legible on white */
         --toast-fg: #7a1f1f;
         --toast-bg: #fdecece6;
         --toast-border: #f0b4b4;
@@ -751,7 +754,7 @@
        picked. Tinted the same teal as the WebGL highlight emissive so the on-screen
        glow and the label read as one selection. */
     #model-info .mi-sel { max-width: 100%; font-size: .7rem; font-weight: 600;
-      color: #4fe0b0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      color: var(--dims); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #model-info .mi-sel[hidden] { display: none; }
     /* "Details" trigger for the STEP header metadata (issue #96). The HUD is
        click-through (pointer-events:none), so this control re-enables pointer
