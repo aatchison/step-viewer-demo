@@ -167,6 +167,10 @@ const messages = {
     retry: 'Retry',
     dropOverlay: 'Drop a .step / .iges / .brep file to load',
 
+    // --- Mobile bottom-sheet control surface (issue #104) ---
+    sheetAria: 'Controls',
+    sheetExpandAria: 'Expand controls',
+    sheetCollapseAria: 'Collapse controls',
     // --- Gallery ---
     galleryAria: 'Sample models',
     sampleGear: 'Gear',
@@ -397,6 +401,9 @@ const messages = {
     captureNothing: 'Carga un modelo primero y luego guarda la vista como imagen.',
     retry: 'Reintentar',
     dropOverlay: 'Suelta un archivo .step / .iges / .brep para cargarlo',
+    sheetAria: 'Controles',
+    sheetExpandAria: 'Mostrar controles',
+    sheetCollapseAria: 'Ocultar controles',
     galleryAria: 'Modelos de ejemplo',
     sampleGear: 'Engranaje',
     sampleBlock: 'Bloque',

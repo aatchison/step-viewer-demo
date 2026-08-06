@@ -897,6 +897,98 @@
       #view-presets .preset .btn-icon { display: inline-block; }
       #view-presets .preset { min-width: 44px; padding: .4rem; }
     }
+    /* ---- Mobile bottom-sheet control surface (issue #104) ------------------
+       On narrow viewports the header collapses every control to a cryptic
+       icon-only row at the *top* of the screen — the hardest spot to reach
+       one-handed. This bottom-sheet relocates the primary actions (Open / Fit
+       / Wireframe) and the sample gallery into a labeled, thumb-reachable
+       panel anchored to the bottom edge (respecting env(safe-area-inset-bottom)
+       from the notch work). The sheet is populated by MOVING the existing
+       button + #gallery nodes into it (see the sheet controller in the module
+       script), so their handlers and live state (wireframe on/off, active
+       sample pill) are the SAME elements — no duplicate wiring that could
+       double-fire a load. On wide / fine-pointer screens the nodes stay in the
+       header and the sheet is display:none, so the desktop layout is unchanged.
+
+       Resting state is COLLAPSED: the grab handle + the single action row peek
+       above the home indicator while the gallery body is translated below the
+       fold by its own measured height (published as --sheet-shift by the
+       controller). Tapping the handle (or a vertical drag) toggles
+       .is-expanded, which slides the body up via transform: translateY —
+       disabled under prefers-reduced-motion. Height is capped at 60vh with the
+       body scrolling internally so the sheet never covers the whole canvas, and
+       because it lives at the bottom it never overlaps the top-right gizmo /
+       #model-info HUD. */
+    #control-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 22;
+      display: none; flex-direction: column; max-height: 60vh;
+      background: var(--hc-dialog-bg, var(--dialog-bg));
+      border-top: 1px solid var(--hc-border, var(--border));
+      border-radius: 14px 14px 0 0;
+      box-shadow: 0 -8px 28px #0007; backdrop-filter: blur(8px);
+      /* Collapsed by default: translate down by the body's measured height. The
+         100% fallback keeps it hidden before the first measurement / on the off
+         chance the controller hasn't run. */
+      transform: translateY(var(--sheet-shift, 100%));
+      transition: transform .28s cubic-bezier(.32,.72,0,1); }
+    /* Controller adds .is-active on the phone breakpoint. */
+    #control-sheet.is-active { display: flex; }
+    #control-sheet.is-expanded { transform: translateY(0); }
+    /* While the finger is down the controller drives the transform inline and
+       suppresses the snap transition for 1:1 tracking. */
+    #control-sheet.is-dragging { transition: none; }
+    /* Embed mode strips the chrome — mirror #bottom-cluster / header. */
+    :root.embed #control-sheet { display: none !important; }
+    @media (prefers-reduced-motion: reduce) {
+      #control-sheet { transition: none; }
+    }
+    /* Grab handle — the tap target that toggles the sheet; a wide hit area with
+       a centered grip pill. touch-action:none lets the vertical drag gesture
+       reach pointermove without the browser hijacking it to scroll (the body
+       below keeps its default touch scrolling). */
+    #sheet-handle { flex: none; align-self: stretch; display: flex;
+      align-items: center; justify-content: center; min-height: 34px;
+      padding: .55rem 0 .35rem; margin: 0; background: none; border: 0;
+      cursor: pointer; pointer-events: auto; touch-action: none; }
+    #sheet-handle:focus-visible { outline: 2px solid var(--accent);
+      outline-offset: -3px; border-radius: 12px; }
+    #sheet-handle .sheet-grip { display: block; width: 40px; height: 5px;
+      border-radius: 999px; background: var(--hc-border, var(--border)); }
+    #sheet-handle:hover .sheet-grip { background: var(--border-hover); }
+    /* Peek row — the always-visible primary actions. Its bottom padding is the
+       safe-area inset so the buttons clear the home indicator when collapsed. */
+    #sheet-peek { flex: none; display: flex; gap: .6rem;
+      padding: 0 max(1rem, env(safe-area-inset-right))
+               max(1rem, env(safe-area-inset-bottom))
+               max(1rem, env(safe-area-inset-left)); }
+    #sheet-peek > * { flex: 1; }
+    /* Body — the expandable region (the gallery). It's the bottom-most child,
+       so translating the sheet down by its height hides exactly this while the
+       handle + peek + safe-area gap stay on screen. Scrolls internally when the
+       sheet hits its 60vh cap. */
+    #sheet-body { display: flex; flex-direction: column; gap: .5rem;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+      padding: .2rem max(1rem, env(safe-area-inset-right))
+               max(1rem, env(safe-area-inset-bottom))
+               max(1rem, env(safe-area-inset-left)); }
+    /* Restore full-size, labeled controls inside the sheet even though the
+       global max-width:600px rule collapses labels->icons in the header. */
+    #control-sheet .btn-label { display: inline !important; }
+    #control-sheet .btn-icon { display: inline-block !important;
+      font-size: 1.05rem; }
+    #control-sheet #open-btn, #control-sheet #fit-btn, #control-sheet #wire-toggle {
+      min-height: 44px; width: 100%; padding: .6rem .9rem;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: .5rem; font-size: .86rem; border-radius: 10px; }
+    /* Gallery inside the sheet: a left-aligned wrapping strip filling the width
+       (the #bottom-cluster centering / click-through rules don't apply here). */
+    #control-sheet #gallery { width: 100%; justify-content: flex-start;
+      pointer-events: auto; }
+    /* On the phone breakpoint lift the #bottom-cluster hint above the collapsed
+       peek (height published as --sheet-peek-h) so it never hides behind the
+       sheet. Falls back to a sane default before the first measurement. */
+    @media (max-width: 600px) {
+      #bottom-cluster { bottom: calc(var(--sheet-peek-h, 4.5rem) + .5rem); }
+    }
   </style>
 </head>
 <body>
@@ -1107,6 +1199,21 @@
          load start / success / error text set here is read out to AT users. -->
     <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp / .iges / .brep file · drag to orbit, scroll or pinch to zoom · keys: 1–5 samples, R reset, W wireframe</div>
   </div>
+  <!-- Mobile bottom-sheet control surface (issue #104). Empty in the markup —
+       the sheet controller in the module script MOVES the existing Open / Fit /
+       Wireframe buttons and the #gallery node into #sheet-peek / #sheet-body on
+       phone-width viewports (and moves them back on wider screens), so the same
+       elements + handlers + live state are reused with no duplicate wiring.
+       Hidden (display:none) until the controller adds .is-active on the phone
+       breakpoint. #sheet-body starts `inert` so the (off-screen, collapsed)
+       gallery stays out of the tab order until the sheet is expanded. -->
+  <section id="control-sheet" role="region" aria-label="Controls" data-i18n-attr="aria-label:sheetAria">
+    <button id="sheet-handle" type="button" aria-expanded="false" aria-controls="sheet-body" aria-label="Expand controls" data-i18n-attr="aria-label:sheetExpandAria">
+      <span class="sheet-grip" aria-hidden="true"></span>
+    </button>
+    <div id="sheet-peek"></div>
+    <div id="sheet-body" inert></div>
+  </section>
   <!-- Loader is `active` in static markup so it paints immediately on first load,
        before the ES module (and the multi-MB three.js + occt/WASM download) run.
        The module clears it once the first model actually renders. -->
@@ -4326,6 +4433,146 @@
     // placeholder is parked (spin still points at it), so the idle spin comes back
     // to life; turning it ON simply lets the loop park on its next quiet frame.
     reduceMotion.addEventListener('change', invalidate);
+
+    // --- Mobile bottom-sheet control surface (issue #104) -------------------
+    // Relocates the primary actions (Open / Fit / Wireframe) and the sample
+    // #gallery into a bottom-anchored sheet on phone-width viewports, then moves
+    // them back to the header on wider screens. Nodes are MOVED, never cloned,
+    // so their existing handlers and live state (wireframe on/off, active sample
+    // pill) are preserved with zero duplicate wiring — a load can't double-fire.
+    // Collapsed/expanded is a class toggle driving a translateY; the collapse
+    // distance is the body's measured height, republished on resize and whenever
+    // the gallery/body reflows (async sample population, orientation change).
+    (function initControlSheet() {
+      const sheet = document.getElementById('control-sheet');
+      const handle = document.getElementById('sheet-handle');
+      const peek = document.getElementById('sheet-peek');
+      const body = document.getElementById('sheet-body');
+      if (!sheet || !handle || !peek || !body) return;
+
+      const openBtn = document.getElementById('open-btn');
+      const fitBtn = document.getElementById('fit-btn');
+      const wireEl = document.getElementById('wire-toggle');
+      const galleryEl = document.getElementById('gallery');
+      if (!openBtn || !fitBtn || !wireEl || !galleryEl) return;
+
+      // Record each relocatable node's original slot so it can be restored to
+      // the exact header / bottom-cluster position when leaving phone width.
+      const record = (el) => ({ parent: el.parentNode, next: el.nextElementSibling });
+      const homes = [
+        [openBtn, record(openBtn)],
+        [fitBtn, record(fitBtn)],
+        [wireEl, record(wireEl)],
+        [galleryEl, record(galleryEl)],
+      ];
+
+      let mounted = false;
+      let expanded = false;
+
+      function mount() {
+        if (mounted) return;
+        // Peek row order: Open → Fit → Wireframe (primary → secondary).
+        peek.append(openBtn, fitBtn, wireEl);
+        body.append(galleryEl);
+        sheet.classList.add('is-active');
+        mounted = true;
+        setExpanded(false); // start collapsed (peek only)
+        measure();
+      }
+      function unmount() {
+        if (!mounted) return;
+        for (const [el, h] of homes) {
+          if (h.next && h.next.parentNode === h.parent) h.parent.insertBefore(el, h.next);
+          else h.parent.appendChild(el);
+        }
+        sheet.classList.remove('is-active', 'is-expanded', 'is-dragging');
+        sheet.style.transform = '';
+        body.setAttribute('inert', '');
+        mounted = false;
+        expanded = false;
+      }
+
+      // Collapse distance = the body's laid-out height (it's the bottom-most
+      // child, so translating the sheet down by this hides the gallery exactly
+      // while the handle + peek + safe-area gap stay on screen).
+      function measure() {
+        if (!mounted) return;
+        sheet.style.setProperty('--sheet-shift', body.offsetHeight + 'px');
+        // Publish the collapsed peek height so #bottom-cluster (the hint) sits
+        // just above it rather than hiding behind the sheet.
+        document.documentElement.style.setProperty(
+          '--sheet-peek-h', (handle.offsetHeight + peek.offsetHeight) + 'px');
+      }
+
+      function setExpanded(next) {
+        expanded = next;
+        sheet.classList.toggle('is-expanded', next);
+        handle.setAttribute('aria-expanded', String(next));
+        handle.setAttribute('aria-label', next ? t('sheetCollapseAria') : t('sheetExpandAria'));
+        // Keep the off-screen gallery out of the tab order when collapsed.
+        if (next) body.removeAttribute('inert'); else body.setAttribute('inert', '');
+      }
+
+      // A drag already snapped in endDrag, so its trailing click must not toggle
+      // again — consume it and reset, which keeps later keyboard (Enter/Space)
+      // activations working since they arrive with dragMoved already cleared.
+      handle.addEventListener('click', () => {
+        if (dragMoved) { dragMoved = false; return; }
+        setExpanded(!expanded);
+      });
+
+      // Optional vertical drag: track the finger, move the sheet 1:1, then snap
+      // to the nearer state on release. Plain pointer events; no library. A drag
+      // sets dragMoved so the trailing click doesn't also toggle.
+      let dragging = false, dragStartY = 0, dragDy = 0, dragMoved = false, dragShift = 0;
+      const DRAG_SNAP = 40;
+      handle.addEventListener('pointerdown', (e) => {
+        if (!mounted) return;
+        dragging = true; dragMoved = false; dragStartY = e.clientY; dragDy = 0;
+        dragShift = parseFloat(getComputedStyle(sheet).getPropertyValue('--sheet-shift')) || body.offsetHeight;
+        sheet.classList.add('is-dragging');
+        if (handle.setPointerCapture) { try { handle.setPointerCapture(e.pointerId); } catch (_) {} }
+      });
+      handle.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        dragDy = e.clientY - dragStartY;
+        if (Math.abs(dragDy) > 4) dragMoved = true;
+        // Base offset is 0 when expanded, dragShift when collapsed; clamp to the
+        // travel range so the sheet can't overshoot either stop.
+        let y = (expanded ? 0 : dragShift) + dragDy;
+        y = Math.max(0, Math.min(dragShift, y));
+        sheet.style.transform = 'translateY(' + y + 'px)';
+      });
+      function endDrag() {
+        if (!dragging) return;
+        dragging = false;
+        sheet.classList.remove('is-dragging');
+        sheet.style.transform = ''; // hand the transform back to the CSS class
+        if (dragMoved) {
+          if (dragDy < -DRAG_SNAP) setExpanded(true);        // dragged up
+          else if (dragDy > DRAG_SNAP) setExpanded(false);   // dragged down
+          else setExpanded(expanded);                        // too small — stay
+        }
+      }
+      handle.addEventListener('pointerup', endDrag);
+      handle.addEventListener('pointercancel', endDrag);
+
+      // Same 600px cut as the header's label→icon collapse, so the sheet appears
+      // exactly when the header would otherwise go cryptic-icon-only.
+      const phone = matchMedia('(max-width: 600px)');
+      function sync() {
+        if (document.documentElement.classList.contains('embed')) { unmount(); return; }
+        if (phone.matches) mount(); else unmount();
+      }
+      phone.addEventListener('change', sync);
+      window.addEventListener('resize', () => { if (mounted) measure(); });
+      // Keep the collapse distance correct as the gallery populates async or the
+      // body reflows (orientation change, font load).
+      if (window.ResizeObserver) {
+        new ResizeObserver(() => { if (mounted) measure(); }).observe(body);
+      }
+      sync();
+    })();
   </script>
 </body>
 </html>
