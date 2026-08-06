@@ -1211,6 +1211,24 @@
     // whole UI renders in the chosen locale from first module execution.
     applyStaticI18n();
 
+    // --- Offline / CDN-blip resilience (service worker) -----------------------
+    // Every core dep loads from jsdelivr at runtime (three + addons, occt .js/
+    // .wasm) and samples from the origin, so a reload while offline — or during a
+    // transient CDN blip — would otherwise die on a blank engine-error panel. A
+    // static, same-origin sw.js precaches the pinned URLs and serves them cache-
+    // first (see sw.js), so a warm reload renders fully offline. Feature-detected
+    // and guarded so it's a hard no-op where unsupported (file://, old browsers,
+    // insecure contexts — navigator.serviceWorker only exists in a secure context)
+    // and never allowed to throw into app startup. Registered on 'load' so it
+    // doesn't contend with the initial multi-MB three.js + WASM download.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch((err) => {
+          console.warn('Service worker registration failed (offline cache disabled):', err);
+        });
+      });
+    }
+
     // Accepted CAD file extensions, shared by the drop guard and the file-picker
     // reject path so both stay in lockstep with what src/step.js can actually
     // dispatch (STEP + the IGES/BREP readers occt already bundles). readerForExtension
