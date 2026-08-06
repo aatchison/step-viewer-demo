@@ -9,6 +9,9 @@
 // arrays the worker transfers back.
 
 import * as THREE from 'three';
+// mergeGeometries is reachable through index.html's existing `three/addons/`
+// importmap entry (same jsdelivr three@0.160.0 path), so this stays zero-build.
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const OCCT_VERSION = '0.0.23';
 const OCCT_BASE = `https://cdn.jsdelivr.net/npm/occt-import-js@${OCCT_VERSION}/dist/`;
@@ -203,8 +206,9 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
   // bad-bytes failure rejects here with kind:'parse' (see postParse/protocol).
   const meshes = await postParse(arrayBuffer);
 
-  const group = new THREE.Group();
-  for (const resultMesh of meshes) {
+  // Turn each occt result mesh into a THREE.BufferGeometry (+ its resolved color
+  // and STEP sub-object name), computing normals where occt didn't supply them.
+  const entries = meshes.map((resultMesh) => {
     const geometry = new THREE.BufferGeometry();
 
     geometry.setAttribute(
@@ -229,53 +233,130 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
       color = new THREE.Color(resultMesh.color[0], resultMesh.color[1], resultMesh.color[2]);
     }
 
-    // Machined-metal PBR: near-full metalness with a tight satin roughness so the
-    // scene's RoomEnvironment IBL yields the crisp reflections of a milled aluminum
-    // part rather than flat toy blue. The blue accent identity is kept via `color`;
-    // envMapIntensity is lifted slightly so the reflections read strongly under the
-    // filmic tone map.
-    const material = new THREE.MeshStandardMaterial({
-      color,
-      metalness: 0.85,
-      roughness: 0.3,
-      envMapIntensity: 1.15,
-      side: THREE.DoubleSide,
-    });
+    return { geometry, color, name: resultMesh.name || '' };
+  });
 
-    const mesh = new THREE.Mesh(geometry, material);
+  const group = new THREE.Group();
 
-    // Stash the resolved occt base color on the mesh so the app's material
-    // presets (Studio/Technical/Clay/X-ray) can recolor and restore the part's
-    // real color without re-parsing the STEP. `color` above is the same value
-    // the default Studio material starts with; clone so a later preset mutating
-    // material.color can never mutate this reference.
-    mesh.userData.baseColor = color.clone();
+  // Draw-call reduction: a STEP assembly can decode into dozens-to-hundreds of
+  // small result meshes, each its own per-frame draw call. Group entries by their
+  // resolved color and merge each colour-group's geometries into ONE indexed
+  // BufferGeometry, so the scene renders one Mesh per distinct colour instead of
+  // one per solid. countTriangles / frameObject read the summed index counts and
+  // combined bbox, both invariant under merging; the wireframe toggle and the
+  // idle edge overlay operate on the merged mesh, so tri count and bounds are
+  // byte-for-byte the same as the unmerged path — only the draw-call count drops.
+  //
+  // Merging is skipped when there's a single result mesh (nothing to combine),
+  // and falls back to the per-mesh path for any geometry whose attribute
+  // signature can't be merged (mismatched attributes or mixed indexed/non-indexed
+  // within a colour), so a stray incompatible mesh never drops out of the scene.
+  if (entries.length <= 1) {
+    for (const e of entries) emitMesh(group, e.geometry, e.color, e.name, edgeStyle, onEdgesReady);
+  } else {
+    // colorKey → { color, entries: [] }, preserving first-seen colour order.
+    const byColor = new Map();
+    for (const e of entries) {
+      const key = e.color.getHexString();
+      let bucket = byColor.get(key);
+      if (!bucket) { bucket = { color: e.color, list: [] }; byColor.set(key, bucket); }
+      bucket.list.push(e);
+    }
 
-    // Carry the STEP sub-object name through to the Mesh so the click-to-select
-    // picker can label the face it hit. occt-import-js exposes a per-mesh `name`
-    // (the STEP product/solid label); it can be empty, so the picker falls back
-    // to a child index when this is blank.
-    if (resultMesh.name) mesh.name = resultMesh.name;
+    for (const bucket of byColor.values()) {
+      // Within a colour, partition by attribute signature so only geometries that
+      // mergeGeometries can actually combine are merged together; anything with a
+      // different signature (or a lone mesh) takes the per-mesh path.
+      const bySig = new Map();
+      for (const e of bucket.list) {
+        const key = signatureKey(e.geometry);
+        let part = bySig.get(key);
+        if (!part) { part = []; bySig.set(key, part); }
+        part.push(e);
+      }
 
-    // Faint edge lines for mechanical crispness. EdgesGeometry with a 30° crease
-    // threshold keeps only real feature edges (not every triangle), so smooth
-    // fillets stay clean. Added as a child so it inherits the mesh transform and
-    // is disposed with the group; the wireframe toggle leaves it untouched
-    // (LineBasicMaterial ignores `wireframe`).
-    //
-    // EdgesGeometry walks every triangle of the full mesh — on a dense CAD part
-    // that's the single most expensive app-side step, and doing it inline blocks
-    // the group (and thus first render) until every edge is computed. Defer it to
-    // an idle slot so the shaded mesh appears as soon as it's parsed; the edges
-    // pop in a beat later as non-essential polish. Guard on the parent still
-    // being attached so a model swapped out before the idle callback fires
-    // doesn't attach edges to (or leak geometry for) a discarded group.
-    scheduleEdges(mesh, geometry, edgeStyle, onEdgesReady);
-
-    group.add(mesh);
+      for (const part of bySig.values()) {
+        if (part.length === 1) {
+          emitMesh(group, part[0].geometry, bucket.color, part[0].name, edgeStyle, onEdgesReady);
+          continue;
+        }
+        // mergeGeometries returns null (and logs) if the geometries are somehow
+        // still incompatible — fall back to the per-mesh path so no solid is lost.
+        const merged = mergeGeometries(part.map((e) => e.geometry), false);
+        if (merged) {
+          const name = (part.find((e) => e.name) || part[0]).name;
+          emitMesh(group, merged, bucket.color, name, edgeStyle, onEdgesReady);
+        } else {
+          for (const e of part) {
+            emitMesh(group, e.geometry, bucket.color, e.name, edgeStyle, onEdgesReady);
+          }
+        }
+      }
+    }
   }
 
   return group;
+}
+
+// A stable key for a geometry's mergeability: sorted attribute names plus whether
+// it's indexed. mergeGeometries requires every input to share the same attributes
+// and be uniformly indexed or non-indexed, so geometries with matching keys are
+// safe to merge together and mismatched ones must stay separate.
+function signatureKey(geometry) {
+  const attrs = Object.keys(geometry.attributes).sort().join(',');
+  return `${attrs}|${geometry.index ? 'i' : 'n'}`;
+}
+
+// Build the shaded Mesh for one geometry+color, stash the base color + STEP name,
+// schedule its deferred edge overlay, and add it to the group. Shared by both the
+// merged (one mesh per colour) and per-mesh fallback paths so the material,
+// userData, and edge behaviour are identical regardless of how the mesh was formed.
+function emitMesh(group, geometry, color, name, edgeStyle, onEdgesReady) {
+  // Machined-metal PBR: near-full metalness with a tight satin roughness so the
+  // scene's RoomEnvironment IBL yields the crisp reflections of a milled aluminum
+  // part rather than flat toy blue. The blue accent identity is kept via `color`;
+  // envMapIntensity is lifted slightly so the reflections read strongly under the
+  // filmic tone map.
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    metalness: 0.85,
+    roughness: 0.3,
+    envMapIntensity: 1.15,
+    side: THREE.DoubleSide,
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+
+  // Stash the resolved occt base color on the mesh so the app's material
+  // presets (Studio/Technical/Clay/X-ray) can recolor and restore the part's
+  // real color without re-parsing the STEP. `color` above is the same value
+  // the default Studio material starts with; clone so a later preset mutating
+  // material.color can never mutate this reference.
+  mesh.userData.baseColor = color.clone();
+
+  // Carry the STEP sub-object name through to the Mesh so the click-to-select
+  // picker can label the face it hit. occt-import-js exposes a per-mesh `name`
+  // (the STEP product/solid label); it can be empty, so the picker falls back
+  // to a child index when this is blank.
+  if (name) mesh.name = name;
+
+  // Faint edge lines for mechanical crispness. EdgesGeometry with a 30° crease
+  // threshold keeps only real feature edges (not every triangle), so smooth
+  // fillets stay clean. Added as a child so it inherits the mesh transform and
+  // is disposed with the group; the wireframe toggle leaves it untouched
+  // (LineBasicMaterial ignores `wireframe`). Built from this mesh's (possibly
+  // merged) geometry, so the overlay also collapses to one LineSegments per colour.
+  //
+  // EdgesGeometry walks every triangle of the full mesh — on a dense CAD part
+  // that's the single most expensive app-side step, and doing it inline blocks
+  // the group (and thus first render) until every edge is computed. Defer it to
+  // an idle slot so the shaded mesh appears as soon as it's parsed; the edges
+  // pop in a beat later as non-essential polish. Guard on the parent still
+  // being attached so a model swapped out before the idle callback fires
+  // doesn't attach edges to (or leak geometry for) a discarded group.
+  scheduleEdges(mesh, geometry, edgeStyle, onEdgesReady);
+
+  group.add(mesh);
 }
 
 // True while `obj` is still connected to a live Scene. After a model swap the
