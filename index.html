@@ -10,15 +10,15 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%234f9dff'/%3E%3Cpath%20d='M16%206%20L25%2011%20L25%2021%20L16%2026%20L7%2021%20L7%2011%20Z%20M16%206%20L16%2016%20M16%2016%20L25%2011%20M16%2016%20L7%2011'%20fill='none'%20stroke='%230b1220'%20stroke-width='1.8'%20stroke-linejoin='round'%20stroke-linecap='round'/%3E%3C/svg%3E" />
   <!-- Social / SEO meta. og:url + og:image point at the published GitHub Pages
        site and the docs screenshot so shared links render a summary card. -->
-  <meta name="description" content="A zero-build, in-browser STEP (ISO 10303) CAD file viewer — drag in a .step/.stp file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
+  <meta name="description" content="A zero-build, in-browser CAD file viewer for STEP, IGES, and BREP — drag in a .step/.stp/.iges/.brep file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
   <meta property="og:title" content="STEP Viewer Demo" />
-  <meta property="og:description" content="A zero-build, in-browser STEP (ISO 10303) CAD file viewer — drag in a .step/.stp file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
+  <meta property="og:description" content="A zero-build, in-browser CAD file viewer for STEP, IGES, and BREP — drag in a .step/.stp/.iges/.brep file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://aatchison.github.io/step-viewer-demo/" />
   <meta property="og:image" content="https://aatchison.github.io/step-viewer-demo/docs/screenshot.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="STEP Viewer Demo" />
-  <meta name="twitter:description" content="A zero-build, in-browser STEP (ISO 10303) CAD file viewer — drag in a .step/.stp file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
+  <meta name="twitter:description" content="A zero-build, in-browser CAD file viewer for STEP, IGES, and BREP — drag in a .step/.stp/.iges/.brep file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
   <meta name="twitter:image" content="https://aatchison.github.io/step-viewer-demo/docs/screenshot.png" />
   <!-- Apply the persisted high-contrast choice BEFORE first paint so the page
        never flashes the default palette and then re-themes. A classic (non-
@@ -69,37 +69,37 @@
        on-* = the accent "on/active" pill language, scrim* = header/overlay fade. */
     :root {
       color-scheme: dark;
-      --fg: #e6edf3;              /* primary text */
-      --muted: #8b949e;          /* hints / subtitles / stats */
-      --panel: #1b2029;          /* solid control fill (buttons) */
-      --panel-tr: #1b2029cc;     /* translucent pill / HUD / dialog-adjacent fill */
-      --panel-hover: #232a35;    /* control hover fill */
-      --border: #2a2f3a;         /* control / pill / dialog borders */
-      --border-hover: #3a4150;   /* control hover border */
-      --accent: #4f9dff;         /* brand blue — buttons, focus rings, active */
-      --accent-hover: #6fb0ff;   /* accent hover */
-      --accent-ink: #0b1220;     /* text/glyph sitting on an accent fill */
-      --ctrl-fg: #cfe0ff;        /* neutral control text (lifts off dark panels) */
-      --ctrl-fg-2: #c2ccd6;      /* secondary control text (help descriptions) */
-      --on-fg: #eaf2ff;          /* text on an active/pressed pill */
-      --on-fill: #1f3350cc;      /* active/pressed pill fill */
-      --on-fill-strong: #1f3350ee; /* opaque-ish variant (measure label) */
-      --on-fill-hover: #244071cc; /* active pill hover fill */
-      --dialog-bg: #12161df2;    /* modal dialog / floating-panel fill */
+      --fg: var(--fg);              /* primary text */
+      --muted: var(--muted);          /* hints / subtitles / stats */
+      --panel: var(--panel);          /* solid control fill (buttons) */
+      --panel-tr: var(--panel-tr);     /* translucent pill / HUD / dialog-adjacent fill */
+      --panel-hover: var(--panel-hover);    /* control hover fill */
+      --border: var(--border);         /* control / pill / dialog borders */
+      --border-hover: var(--border-hover);   /* control hover border */
+      --accent: var(--accent);         /* brand blue — buttons, focus rings, active */
+      --accent-hover: var(--accent-hover);   /* accent hover */
+      --accent-ink: var(--accent-ink);     /* text/glyph sitting on an accent fill */
+      --ctrl-fg: var(--ctrl-fg);        /* neutral control text (lifts off dark panels) */
+      --ctrl-fg-2: var(--ctrl-fg-2);      /* secondary control text (help descriptions) */
+      --on-fg: var(--on-fg);          /* text on an active/pressed pill */
+      --on-fill: var(--on-fill);      /* active/pressed pill fill */
+      --on-fill-strong: var(--on-fill-strong); /* opaque-ish variant (measure label) */
+      --on-fill-hover: var(--on-fill-hover); /* active pill hover fill */
+      --dialog-bg: var(--dialog-bg);    /* modal dialog / floating-panel fill */
       --field-bg: #0a0d12;       /* text input (share-fallback) fill */
-      --scrim: #0e1116;          /* header gradient / capture / overlay base tone */
-      --scrim-90: #0e1116cc;     /* header top / drop overlay (translucent) */
-      --scrim-0: #0e111600;      /* header gradient tail (fully transparent) */
-      --bg-0: #1a212b;           /* radial backdrop: center (lifted) */
-      --bg-1: #12161d;           /* radial backdrop: near-mid */
-      --bg-2: #0d1015;           /* radial backdrop: outer-mid */
-      --bg-3: #090b0d;           /* radial backdrop: edge (darkest) */
-      --toast-fg: #ffddd8;       /* error toast text */
-      --toast-bg: #3a1f1fee;     /* error toast fill */
-      --toast-border: #7a3b3b;   /* error toast border */
-      --toast-ok-fg: #d6ffe4;    /* success toast text */
-      --toast-ok-bg: #12321fee;  /* success toast fill */
-      --toast-ok-border: #2f6b45;/* success toast border */
+      --scrim: var(--scrim);          /* header gradient / capture / overlay base tone */
+      --scrim-90: var(--scrim-90);     /* header top / drop overlay (translucent) */
+      --scrim-0: var(--scrim-0);      /* header gradient tail (fully transparent) */
+      --bg-0: var(--bg-0);           /* radial backdrop: center (lifted) */
+      --bg-1: var(--bg-1);           /* radial backdrop: near-mid */
+      --bg-2: var(--bg-2);           /* radial backdrop: outer-mid */
+      --bg-3: var(--bg-3);           /* radial backdrop: edge (darkest) */
+      --toast-fg: var(--toast-fg);       /* error toast text */
+      --toast-bg: var(--toast-bg);     /* error toast fill */
+      --toast-border: var(--toast-border);   /* error toast border */
+      --toast-ok-fg: var(--toast-ok-fg);    /* success toast text */
+      --toast-ok-bg: var(--toast-ok-bg);  /* success toast fill */
+      --toast-ok-border: var(--toast-ok-border);/* success toast border */
     }
     /* Light theme — legible on bright monitors / in light embedding contexts. A
        near-white radial backdrop, dark text, light panels, and a slightly darker
@@ -666,6 +666,95 @@
     #model-info .mi-sel { max-width: 100%; font-size: .7rem; font-weight: 600;
       color: #4fe0b0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #model-info .mi-sel[hidden] { display: none; }
+    /* "Details" trigger for the STEP header metadata (issue #96). The HUD is
+       click-through (pointer-events:none), so this control re-enables pointer
+       events for itself. A small bordered pill matching the gallery/pill tokens so
+       it reads as one system. Hidden until a model with parsed header metadata
+       loads. */
+    #model-info .mi-details { pointer-events: auto; cursor: pointer; font: inherit;
+      font-size: .68rem; font-weight: 600; color: var(--ctrl-fg-2);
+      background: var(--panel-hover); border: 1px solid var(--hc-border, var(--border));
+      border-radius: 5px; padding: .12rem .45rem; margin-top: .2rem; }
+    #model-info .mi-details:hover { color: var(--fg); border-color: var(--border-hover); }
+    #model-info .mi-details:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #model-info .mi-details[hidden] { display: none; }
+    /* STEP header metadata dialog (issue #96). Mirrors #help-dialog tokens
+       (translucent dialog fill, muted border, blur) so it reads as one system; the
+       shared .help-head handles the title bar. */
+    #meta-dialog { margin: auto; max-width: min(92vw, 380px); width: 100%;
+      color: var(--fg); background: var(--hc-dialog-bg, var(--dialog-bg)); border: 1px solid var(--hc-border, var(--border));
+      border-radius: 12px; padding: 0; box-shadow: 0 10px 30px #000a;
+      backdrop-filter: blur(6px); }
+    #meta-dialog::backdrop { background: #05070acc; }
+    #meta-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
+      color: var(--hc-muted, var(--muted)); background: transparent; border: 1px solid transparent;
+      border-radius: 6px; width: 1.9rem; height: 1.9rem; display: inline-flex;
+      align-items: center; justify-content: center; flex: none; }
+    #meta-close:hover { color: var(--fg); background: var(--panel-hover); border-color: var(--border-hover); }
+    #meta-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #meta-dialog .meta-list { margin: 0; padding: .6rem 1rem .9rem; display: grid; gap: .55rem; }
+    #meta-dialog .meta-row { display: grid; grid-template-columns: minmax(6rem, auto) 1fr;
+      gap: .1rem .9rem; align-items: baseline; }
+    #meta-dialog .meta-row dt { margin: 0; font-size: .68rem; font-weight: 700;
+      letter-spacing: .3px; text-transform: uppercase; color: var(--hc-muted, var(--muted)); }
+    #meta-dialog .meta-row dd { margin: 0; font-size: .82rem; color: var(--ctrl-fg);
+      overflow-wrap: anywhere; }
+    /* Parts panel — a collapsible list of the assembly's solids, one row each,
+       with a per-part visibility checkbox and show/hide-all actions (issue #94).
+       Shown only for multi-part models. Parked on the right edge just below the
+       model-info HUD (top:13rem + its ~3 lines) where the canvas is clear of the
+       header, gizmo, left presets, and bottom cluster. Interactive, so
+       pointer-events are re-enabled (the HUD above is click-through). Tokens
+       mirror #model-info / the gallery pills (translucent var(--panel) fill,
+       var(--border) border, blur) so it reads as one system. max-height caps the
+       list so a many-part assembly scrolls in place instead of overrunning the
+       bottom cluster. */
+    #parts-panel { position: fixed; top: 19rem; right: 1rem; z-index: 11;
+      display: flex; flex-direction: column; align-items: stretch;
+      width: min(60vw, 220px); pointer-events: auto;
+      background: var(--hc-panel-bg, var(--panel-tr)); border: 1px solid var(--hc-border, var(--border));
+      border-radius: 8px; backdrop-filter: blur(4px); overflow: hidden; }
+    #parts-panel[hidden] { display: none; }
+    /* Header row doubles as the collapse toggle. */
+    #parts-toggle { display: flex; align-items: center; gap: .4rem; width: 100%;
+      font: inherit; font-size: .78rem; font-weight: 600; color: var(--ctrl-fg);
+      background: none; border: 0; padding: .4rem .55rem; cursor: pointer; text-align: left; }
+    #parts-toggle:hover { background: var(--panel-hover); }
+    #parts-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    #parts-toggle .pp-caret { font-size: .7rem; transition: transform .15s ease; }
+    #parts-panel.is-collapsed #parts-toggle .pp-caret { transform: rotate(-90deg); }
+    #parts-toggle .pp-title { flex: 1; }
+    #parts-toggle .pp-count { font-size: .7rem; font-weight: 500;
+      color: var(--hc-muted, var(--muted)); font-variant-numeric: tabular-nums; }
+    /* Collapsed: keep only the header bar, drop the body. */
+    #parts-panel.is-collapsed #parts-body { display: none; }
+    #parts-body { display: flex; flex-direction: column;
+      border-top: 1px solid var(--hc-border, var(--border)); }
+    .pp-actions { display: flex; gap: .4rem; padding: .4rem .55rem; }
+    .pp-actions button { flex: 1; font: inherit; font-size: .7rem; color: var(--ctrl-fg);
+      background: var(--hc-panel-bg, var(--panel-tr)); border: 1px solid var(--hc-border, var(--border));
+      border-radius: 6px; padding: .25rem .4rem; cursor: pointer; }
+    .pp-actions button:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    .pp-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #parts-list { list-style: none; margin: 0; padding: .1rem .25rem .35rem;
+      overflow-y: auto; max-height: min(38vh, 320px); }
+    #parts-list .pp-row { margin: 0; }
+    #parts-list .pp-row label { display: flex; align-items: center; gap: .45rem;
+      padding: .28rem .3rem; border-radius: 6px; cursor: pointer; font-size: .74rem;
+      color: var(--ctrl-fg); }
+    #parts-list .pp-row label:hover { background: var(--panel-hover); }
+    #parts-list .pp-row input { width: 15px; height: 15px; flex: none; cursor: pointer; }
+    #parts-list .pp-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #parts-list .pp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* A hidden part's row reads dimmed so the on/off state is legible at a glance. */
+    #parts-list .pp-row.is-hidden .pp-name { opacity: .5; text-decoration: line-through; }
+    /* Narrow screens (<600px): the bottom cluster + header eat vertical room, so
+       start the panel collapsed (the header bar alone) and tighten the open list's
+       height so an expanded panel scrolls rather than overflowing the viewport. */
+    @media (max-width: 600px) {
+      #parts-panel { top: 18rem; width: min(70vw, 200px); }
+      #parts-list { max-height: min(28vh, 220px); }
+    }
     /* Screen-reader-only utility: visually removed but present in the a11y tree.
        Used for the natural-language model summary announced via #model-info's
        polite live region (the visible name/stats are aria-hidden so the summary
@@ -888,7 +977,7 @@
          preference by the module script). Bound to the `T` key. -->
     <button id="theme-btn" type="button" title="Toggle light / dark theme (T)" aria-label="Toggle light and dark theme" aria-pressed="false" data-i18n-attr="title:themeTitle;aria-label:themeAria"><span class="tb-glyph" aria-hidden="true">🌙</span></button>
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
-    <input id="file-input" type="file" accept=".step,.stp" hidden />
+    <input id="file-input" type="file" accept=".step,.stp,.igs,.iges,.brp,.brep" hidden />
   </header>
   <!-- Standard-view preset cluster: one-click canonical camera viewpoints
        (Front/Back/Top/Bottom/Right/Left/Iso) for CAD-style inspection. A fixed
@@ -944,8 +1033,11 @@
       <!-- Exploded view — a slider control (no shortcut); listed so it's discoverable
            alongside the other inspection tools. -->
       <li><span class="k" data-i18n="kDrag">Drag</span><span class="d" data-i18n="descExplode">Explode multi-part assemblies</span></li>
+      <!-- Parts panel — a click-driven visibility list (no shortcut); listed so
+           it's discoverable alongside the other inspection tools. -->
+      <li><span class="k" data-i18n="kClick">Click</span><span class="d" data-i18n="descParts">Show / hide individual assembly parts</span></li>
       <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
-      <li><span class="k">1</span><span class="k">4</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
+      <li><span class="k">1</span><span class="k">5</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
       <!-- Standard-view presets — numpad keys (NumLock-independent via e.code)
            snap to canonical viewpoints; distinct from the top-row 1–4 sample
            keys above. -->
@@ -959,7 +1051,7 @@
     <nav id="gallery" aria-label="Sample models" data-i18n-attr="aria-label:galleryAria"></nav>
     <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
          load start / success / error text set here is read out to AT users. -->
-    <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · keys: 1–4 samples, R reset, W wireframe</div>
+    <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp / .iges / .brep file · drag to orbit, scroll or pinch to zoom · keys: 1–5 samples, R reset, W wireframe</div>
   </div>
   <!-- Loader is `active` in static markup so it paints immediately on first load,
        before the ES module (and the multi-MB three.js + occt/WASM download) run.
@@ -977,8 +1069,52 @@
          through the #hint live region so it isn't read out twice. Shown only while a
          face is selected. -->
     <span class="mi-sel" aria-hidden="true" hidden></span>
+    <!-- STEP header provenance (issue #96): a compact "Details" trigger that opens
+         the #meta-dialog with the file's schema/AP, author, originating system, and
+         timestamp. Shown only when the loaded model carries parsed header metadata
+         (STEP files); the HUD itself is click-through (pointer-events:none), so this
+         control re-enables pointer events for itself. -->
+    <button class="mi-details" type="button" hidden aria-haspopup="dialog"
+            data-i18n="metaDetails" data-i18n-attr="aria-label:metaDetailsAria">Details</button>
     <span class="mi-a11y sr-only"></span>
   </div>
+  <!-- STEP header metadata disclosure (issue #96). Native <dialog> (opened via
+       showModal from the HUD's "Details" button) so Escape-to-close, focus
+       trapping, and backdrop dismissal come from the platform, mirroring
+       #help-dialog. The row list is rebuilt from group.userData.stepHeader on every
+       model swap (updateMetaDetails) with text-only values, so a hostile
+       filename/author can't inject markup; empty fields are omitted. -->
+  <dialog id="meta-dialog" aria-labelledby="meta-title">
+    <div class="help-head">
+      <h2 id="meta-title" data-i18n="metaHeading">STEP file details</h2>
+      <button id="meta-close" type="button" aria-label="Close details" data-i18n-attr="aria-label:metaCloseAria">×</button>
+    </div>
+    <dl class="meta-list" id="meta-list"></dl>
+  </dialog>
+  <!-- Parts panel: a collapsible per-solid list for multi-body assemblies (issue
+       #94). Hidden until a model with >1 part loads; rebuilt from scratch on every
+       swap (buildPartsPanel) so a previous model's rows never leak. Each row's
+       checkbox drives its mesh's `visible` live (no reparse); Show/Hide all flip
+       every part at once. The header bar is a collapse toggle. Rows and controls
+       are native checkboxes/buttons, so keyboard nav + focus-visible come for
+       free. -->
+  <section id="parts-panel" hidden aria-label="Assembly parts" data-i18n-attr="aria-label:partsPanelAria">
+    <button id="parts-toggle" type="button" aria-expanded="true" aria-controls="parts-body"
+            title="Collapse / expand the parts list" data-i18n-attr="title:partsToggleTitle">
+      <span class="pp-caret" aria-hidden="true">▾</span>
+      <span class="pp-title" data-i18n="partsTitle">Parts</span>
+      <span class="pp-count" aria-hidden="true"></span>
+    </button>
+    <div id="parts-body">
+      <div class="pp-actions">
+        <button type="button" id="parts-show-all" aria-label="Show all parts"
+                data-i18n="partsShowAll" data-i18n-attr="aria-label:partsShowAllAria">Show all</button>
+        <button type="button" id="parts-hide-all" aria-label="Hide all parts"
+                data-i18n="partsHideAll" data-i18n-attr="aria-label:partsHideAllAria">Hide all</button>
+      </div>
+      <ul id="parts-list"></ul>
+    </div>
+  </section>
   <!-- Floating distance read-out for the point-to-point measurement tool. Shown
        once two points are placed; positioned each frame in the render loop from
        the projected segment midpoint so it tracks the model as the camera orbits.
@@ -1060,7 +1196,7 @@
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
     import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
     import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-    import { loadStepFromArrayBuffer, resetOcct } from './src/step.js';
+    import { loadCadFromArrayBuffer, readerForExtension, resetOcct } from './src/step.js';
     import { t, applyStaticI18n } from './src/i18n.js';
 
     // Populate all static markup strings from the localized table (and write the
@@ -1068,6 +1204,17 @@
     // message builder below reads t(), and before the hint is composed, so the
     // whole UI renders in the chosen locale from first module execution.
     applyStaticI18n();
+
+    // Accepted CAD file extensions, shared by the drop guard and the file-picker
+    // reject path so both stay in lockstep with what src/step.js can actually
+    // dispatch (STEP + the IGES/BREP readers occt already bundles). readerForExtension
+    // is the authoritative dispatch check; this regex is the fast UI-side gate.
+    const CAD_EXT_RE = /\.(step|stp|iges|igs|brep|brp)$/i;
+    // Lower-case extension (no dot) of a file name, or '' when it has none.
+    const extOf = (name) => {
+      const m = /\.([^.]+)$/.exec(String(name || ''));
+      return m ? m[1].toLowerCase() : '';
+    };
 
     const app = document.getElementById('app');
     // Embed mode was resolved pre-paint by the head script (it added .embed to
@@ -1408,6 +1555,63 @@
     const miStats = modelInfo.querySelector('.mi-stats');
     const miA11y = modelInfo.querySelector('.mi-a11y');
 
+    // STEP header metadata "Details" disclosure (issue #96). The trigger lives in
+    // the HUD; the dialog is a native <dialog> opened via showModal (Escape /
+    // backdrop / × all dismiss, mirroring the help dialog).
+    const miDetails = modelInfo.querySelector('.mi-details');
+    const metaDialog = document.getElementById('meta-dialog');
+    const metaList = document.getElementById('meta-list');
+    const metaClose = document.getElementById('meta-close');
+    miDetails.addEventListener('click', () => {
+      if (!metaDialog.open && typeof metaDialog.showModal === 'function') metaDialog.showModal();
+    });
+    metaClose.addEventListener('click', () => metaDialog.close());
+    // Backdrop click: showModal centers the panel, so a click whose target is the
+    // <dialog> element itself (not its content) landed on the backdrop.
+    metaDialog.addEventListener('click', (e) => { if (e.target === metaDialog) metaDialog.close(); });
+
+    // Rebuild the "Details" disclosure from the freshly loaded model's parsed STEP
+    // header (group.userData.stepHeader), reusing the dialog styling. Called on the
+    // single load/swap path so it's cleared/replaced on every model swap. Values
+    // are set via textContent (never HTML) so a hostile filename/author string in a
+    // dropped file can't inject markup. Fields that are empty are omitted; when
+    // there's no metadata at all (non-STEP formats, or a header miss) the trigger
+    // is hidden and any open dialog is closed.
+    function updateMetaDetails(group) {
+      const h = group && group.userData && group.userData.stepHeader;
+      metaList.replaceChildren(); // drop the previous model's rows
+      const rows = [];
+      if (h) {
+        // Schema + AP read as one line: "AUTOMOTIVE_DESIGN (AP214)", or whichever
+        // half is present.
+        let schemaVal = '';
+        if (h.schema && h.ap) schemaVal = h.schema === h.ap ? h.schema : h.schema + ' (' + h.ap + ')';
+        else schemaVal = h.schema || h.ap || '';
+        if (schemaVal) rows.push([t('metaSchema'), schemaVal]);
+        if (h.author) rows.push([t('metaAuthor'), h.author]);
+        if (h.organization) rows.push([t('metaOrg'), h.organization]);
+        if (h.originatingSystem) rows.push([t('metaSystem'), h.originatingSystem]);
+        if (h.preprocessor) rows.push([t('metaPreprocessor'), h.preprocessor]);
+        if (h.timestamp) rows.push([t('metaTimestamp'), h.timestamp]);
+      }
+      if (!rows.length) {
+        miDetails.hidden = true;
+        if (metaDialog.open) metaDialog.close();
+        return;
+      }
+      for (const [label, value] of rows) {
+        const row = document.createElement('div');
+        row.className = 'meta-row';
+        const dt = document.createElement('dt');
+        dt.textContent = label;
+        const dd = document.createElement('dd');
+        dd.textContent = value; // text content only — never innerHTML (XSS-safe)
+        row.append(dt, dd);
+        metaList.append(row);
+      }
+      miDetails.hidden = false;
+    }
+
     // The canvas (#app, role=img) accessible name becomes a live per-model
     // summary after a load (updateModelInfo); on a failure with nothing on
     // screen it reverts to this non-model description rather than lying about a
@@ -1446,9 +1650,17 @@
       const tris = countTriangles(group);
       miName.textContent = label;
       miName.title = label; // full name on hover when the label is ellipsized
+      // Native length unit (issue #95): the loader stashes a short symbol on
+      // group.userData.unit when it could detect the STEP length unit (mm/m/in/…).
+      // Append it to the dimension line as " mm"; when unknown the suffix is '' so
+      // the display stays exactly the current bare numbers (no fabricated unit).
+      // Threaded via userData so every entry into this function — the load/swap
+      // path AND the color-by-part re-render — shows the unit identically.
+      const unitSym = group.userData && group.userData.unit ? group.userData.unit : '';
+      const unitSuffix = unitSym ? ' ' + unitSym : '';
       let stats = t('modelStats', {
         tris: tris.toLocaleString(),
-        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z),
+        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z), unit: unitSuffix,
       });
       // While color-by-part is active, note how many solids the assembly has
       // (group child count) so the mode's per-part coloring has a read-out.
@@ -1466,10 +1678,15 @@
       // per load. The visible .mi-name/.mi-stats are aria-hidden, so no duplicate.
       const summary = t('modelSummary', {
         label, tris: tris.toLocaleString(),
-        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z),
+        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z), unit: unitSuffix,
       });
       app.setAttribute('aria-label', summary);
       miA11y.textContent = summary;
+
+      // Refresh the STEP header "Details" disclosure for this model (issue #96):
+      // rebuilds/reveals it when the model carries parsed header metadata, hides it
+      // otherwise. Threaded through the same load/swap entry as the rest of the HUD.
+      updateMetaDetails(group);
     }
 
     // Revert the canvas accessible name + live summary to a non-model state.
@@ -1482,6 +1699,11 @@
       miStats.textContent = '';
       currentModelLabel = null; // no valid model on screen → no capture name
       modelInfo.hidden = true;
+      // No valid model → drop any STEP header details and close the disclosure.
+      miDetails.hidden = true;
+      metaList.replaceChildren();
+      if (metaDialog.open) metaDialog.close();
+      disposePartsPanel(); // no valid model → drop any stale parts list
     }
 
     // --- Model swap-in transition ---------------------------------------------
@@ -2265,15 +2487,132 @@
       applyExplode(parseFloat(explodeSlider.value) || 0);
     });
 
+    // --- Parts panel (assembly / multi-solid part list) -----------------------
+    // step.js builds one THREE.Mesh per occt solid and exposes them (index + name
+    // + mesh) on group.userData.parts. This panel lists them and drives each
+    // mesh's `visible` live so a user can hide one body to inspect another — the
+    // core assembly-inspection need (issue #94). Rebuilt from scratch on every
+    // model swap (buildPartsPanel) so a previous model's rows/mesh references
+    // never leak; shown only when the model has more than one part.
+    //
+    // model-info tris count is deliberately TOTAL-MODEL and is NOT recomputed when
+    // parts are toggled here (updateModelInfo runs only on load). The panel's own
+    // "visible/total" badge is the live per-visibility read-out, so the two
+    // read-outs stay consistent and unambiguous.
+    const partsPanel = document.getElementById('parts-panel');
+    const partsToggle = document.getElementById('parts-toggle');
+    const partsCountEl = partsPanel.querySelector('.pp-count');
+    const partsList = document.getElementById('parts-list');
+    const partsShowAll = document.getElementById('parts-show-all');
+    const partsHideAll = document.getElementById('parts-hide-all');
+    const PARTS_COLLAPSED_KEY = 'stepviewer.partscollapsed';
+    let partsCollapsed = false;
+    (function readStoredPartsCollapsed() {
+      try {
+        const v = localStorage.getItem(PARTS_COLLAPSED_KEY);
+        // Default: collapsed on a narrow (<600px) viewport so the panel never
+        // overruns the cramped layout; expanded otherwise. An explicit stored
+        // choice wins over the width default.
+        partsCollapsed = v === null ? window.matchMedia('(max-width: 600px)').matches : v === '1';
+      } catch (e) {}
+    })();
+    let partRows = []; // [{ mesh, input, row }] for the live model — cleared on swap
+
+    // Reflect the current collapse state onto the panel + toggle button.
+    function applyPartsCollapsed() {
+      partsPanel.classList.toggle('is-collapsed', partsCollapsed);
+      partsToggle.setAttribute('aria-expanded', partsCollapsed ? 'false' : 'true');
+    }
+
+    // Update the header badge to visible/total (e.g. "3 / 5") so the live count
+    // reflects toggles without touching the model-info tris semantics.
+    function refreshPartsCount() {
+      const total = partRows.length;
+      const shown = partRows.reduce((n, r) => n + (r.mesh.visible ? 1 : 0), 0);
+      partsCountEl.textContent = t('partsCount', { count: shown === total ? String(total) : `${shown} / ${total}` });
+    }
+
+    // Set one part's visibility and reflect it in its row. The deferred edge-lines
+    // overlay is a child of the mesh, so toggling mesh.visible hides/shows the
+    // edges with it — no separate handling needed.
+    function setPartVisible(entry, visible) {
+      entry.mesh.visible = visible;
+      entry.input.checked = visible;
+      entry.row.classList.toggle('is-hidden', !visible);
+    }
+
+    // Tear down the panel: drop all rows (and their mesh references, so a swapped-
+    // out model can be GC'd) and hide it. Called on reset and at the top of every
+    // rebuild.
+    function disposePartsPanel() {
+      partRows = [];
+      partsList.replaceChildren();
+      partsPanel.hidden = true;
+    }
+
+    // Rebuild the panel for the freshly loaded model. No-op-hides for a single-part
+    // model (nothing to differentiate). One row per part, checkbox reflecting the
+    // mesh's current visibility (always visible on a fresh load).
+    function buildPartsPanel(model) {
+      disposePartsPanel();
+      const parts = (model && model.userData && model.userData.parts) || [];
+      if (parts.length <= 1) return; // single body → nothing to list
+      const frag = document.createDocumentFragment();
+      parts.forEach((part) => {
+        const label = part.name || t('partsFallback', { n: part.index + 1 });
+        const li = document.createElement('li');
+        li.className = 'pp-row';
+        const lab = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = part.mesh.visible !== false;
+        input.setAttribute('aria-label', t('partsRowAria', { name: label }));
+        const name = document.createElement('span');
+        name.className = 'pp-name';
+        name.textContent = label;
+        name.title = label; // full name on hover when ellipsized
+        lab.append(input, name);
+        li.append(lab);
+        frag.append(li);
+        const entry = { mesh: part.mesh, input, row: li };
+        input.addEventListener('change', () => {
+          setPartVisible(entry, input.checked);
+          refreshPartsCount();
+          invalidate(); // render-on-demand: reflect the visibility change live
+        });
+        partRows.push(entry);
+      });
+      partsList.append(frag);
+      refreshPartsCount();
+      applyPartsCollapsed();
+      partsPanel.hidden = false;
+    }
+
+    function setAllParts(visible) {
+      for (const entry of partRows) setPartVisible(entry, visible);
+      refreshPartsCount();
+      invalidate();
+    }
+
+    partsShowAll.addEventListener('click', () => setAllParts(true));
+    partsHideAll.addEventListener('click', () => setAllParts(false));
+    partsToggle.addEventListener('click', () => {
+      partsCollapsed = !partsCollapsed;
+      applyPartsCollapsed();
+      try { localStorage.setItem(PARTS_COLLAPSED_KEY, partsCollapsed ? '1' : '0'); } catch (e) {}
+    });
+
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
-    async function showStepFromArrayBuffer(buf, label, onPhase, camState) {
+    async function showStepFromArrayBuffer(buf, label, ext, onPhase, camState) {
       // Pass the active feature-edge style so a fresh load in high contrast builds
       // its (idle-deferred) edge overlay crisp from the start, not faint-then-fixed.
       // Pass invalidate as onEdgesReady so the idle-deferred edge overlay triggers
       // a redraw when it attaches — the render-on-demand loop may have parked after
       // first render, so the edges would otherwise wait for the next camera move.
-      const model = await loadStepFromArrayBuffer(buf, onPhase, currentEdgeStyle(), invalidate);
+      // `ext` selects the occt reader (STEP / IGES / BREP) inside the loader; the
+      // rest of the swap path is format-agnostic (all three yield the same meshes).
+      const model = await loadCadFromArrayBuffer(buf, ext, onPhase, currentEdgeStyle(), invalidate);
       // Only tear down the old scene contents once the new parse succeeds.
       if (placeholder.parent) {
         scene.remove(placeholder);
@@ -2324,6 +2663,7 @@
       // link with only a sample key (no camera) leaves the auto-fit framing.
       if (camState) applyCameraState(camState);
       updateModelInfo(model, label); // refresh the name/tris/dims HUD for the swap
+      buildPartsPanel(model); // rebuild the per-part visibility list for the swap
       updateExportState(); // a real model is now loaded — enable the Export GLB button
       startSwapIn(model); // ease the new model in (scale + fade) instead of popping
       markFirstRender(); // first successful render clears the loader + stall watch
@@ -2360,6 +2700,15 @@
     // Read a user-supplied File and load it, reporting failures via the hint.
     async function loadFile(file) {
       retryAction = () => loadFile(file); // Retry re-reads + re-loads this file
+      // Reject a file whose extension isn't a CAD format occt can read BEFORE
+      // reading bytes or touching the engine — the file picker's `accept` filter
+      // isn't enforced (a user can still choose "All files"), so surface the same
+      // not-a-CAD-file hint the drag-drop guard uses instead of a doomed parse.
+      const ext = extOf(file.name);
+      if (!readerForExtension(ext)) {
+        hint.textContent = t('notStepFile', { name: file.name });
+        return;
+      }
       // Guard on File.size before reading the blob into memory or parsing. A
       // hard-limit cancel returns immediately — the current model, hint, and
       // loader are all left untouched (the loader was never armed for this load).
@@ -2369,7 +2718,7 @@
       setLoading(true);
       try {
         const buf = await file.arrayBuffer();
-        await showStepFromArrayBuffer(buf, file.name);
+        await showStepFromArrayBuffer(buf, file.name, ext);
         // A user file is a local blob with no restorable URL — clear the sample
         // part of the hash so a stale sample link can't be shared for this view.
         currentSampleFile = null;
@@ -2402,6 +2751,9 @@
       { file: 'block.step',   label: t('sampleBlock') },
       { file: 'tetra.step',   label: t('sampleTetra') },
       { file: 'pyramid.step', label: t('samplePyramid') },
+      // IGES sample — exercises the ReadIgesFile path (occt reads it for free) from
+      // the gallery, so the new multi-format loader is covered end-to-end from the UI.
+      { file: 'cube.iges',    label: t('sampleCube') },
     ];
 
     const gallery = document.getElementById('gallery');
@@ -2541,7 +2893,9 @@
           if (currentModel) hint.textContent = t('loadedHint', { label: currentModelLabel, zoom: zoomHint });
           return;
         }
-        await showStepFromArrayBuffer(buf, sample.label, onPhase, camState);
+        // Derive the reader from the bundled file name (the label is localized and
+        // has no extension) so an .iges/.brep sample routes to the right occt reader.
+        await showStepFromArrayBuffer(buf, sample.label, extOf(sample.file), onPhase, camState);
         // This bundled sample is now on screen and restorable — record its key and
         // update the shareable hash (auto-fit camera, or the restored one if this
         // load came from a deep link).
@@ -3071,11 +3425,12 @@
     // taken in light theme isn't a model floating on near-black.
     const captureBg = () => sceneTheme().captureBg;
 
-    // Turn a model label into a safe PNG basename: drop a trailing .step/.stp so
-    // an opened "MyPart.step" becomes "MyPart" (matching the sample's bare
-    // "Gear"), then replace filename-hostile characters. Falls back to "model".
+    // Turn a model label into a safe PNG basename: drop a trailing CAD extension
+    // (.step/.stp/.iges/.igs/.brep/.brp) so an opened "MyPart.iges" becomes
+    // "MyPart" (matching the sample's bare "Gear"), then replace filename-hostile
+    // characters. Falls back to "model".
     function captureBasename(label) {
-      const base = String(label || 'model').replace(/\.(step|stp)$/i, '').trim();
+      const base = String(label || 'model').replace(CAD_EXT_RE, '').trim();
       const safe = base.replace(/[^\w.-]+/g, '_').replace(/^[_.]+|_+$/g, '');
       return safe || 'model';
     }
@@ -3434,6 +3789,8 @@
       // While the modal help is open, let the platform own the keys (Escape
       // closes it, Tab cycles its focus) instead of firing viewer shortcuts.
       if (helpDialog.open) return;
+      // Same for the STEP-details modal — let the platform own its keys.
+      if (metaDialog.open) return;
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
       // C toggles the high-contrast theme (mirrors the header toggle).
       if (e.key === 'c' || e.key === 'C') toggleContrast();
@@ -3465,11 +3822,11 @@
       // Left/Iso). Keyed on e.code so NumLock state is irrelevant and this never
       // collides with the top-row 1–4 sample keys below (which match e.key).
       if (NUMPAD_VIEWS[e.code]) { applyView(NUMPAD_VIEWS[e.code]); return; }
-      // Number keys 1–4 load the matching gallery sample (Gear/Block/Tetra/
-      // Pyramid) and update the active pill via loadSample. Skip while a load is
+      // Number keys 1–5 load the matching gallery sample (Gear/Block/Tetra/
+      // Pyramid/Cube) and update the active pill via loadSample. Skip while a load is
       // already in flight (pills are disabled during a fetch) so rapid key
       // presses don't stack concurrent loads — mirrors the disabled-click guard.
-      if (e.key >= '1' && e.key <= '4') {
+      if (e.key >= '1' && e.key <= '5') {
         const sample = SAMPLES[Number(e.key) - 1];
         const loading = gallery.querySelector('.sample:disabled');
         if (sample && !loading) loadSample(sample);
@@ -3562,6 +3919,7 @@
       // pan) and the modal help state.
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (helpDialog.open) return;
+      if (metaDialog.open) return;
       // Numpad view-preset keys are owned by the global handler (applyView). With
       // NumLock OFF they also carry Arrow/Home e.key values, so defer them here to
       // avoid a double-fire (orbit + snap) when the 3D view is focused.
@@ -3641,7 +3999,7 @@
       overlay.classList.remove('active');
       const file = e.dataTransfer && e.dataTransfer.files[0];
       if (!file) return;
-      if (!/\.(step|stp)$/i.test(file.name)) {
+      if (!CAD_EXT_RE.test(file.name)) {
         hint.textContent = t('notStepFile', { name: file.name });
         return;
       }

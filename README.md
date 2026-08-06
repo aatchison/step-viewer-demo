@@ -8,9 +8,10 @@ you serve the folder and it runs.
 
 ## What it does
 
-- Loads a bundled **sample gallery** of STEP models with one click.
-- **Open your own** `.step` / `.stp` file via the picker or by dragging it anywhere onto
-  the window.
+- Loads a bundled **sample gallery** of STEP (and an IGES) model with one click.
+- **Open your own** `.step` / `.stp` / `.iges` / `.igs` / `.brep` / `.brp` file via the
+  picker or by dragging it anywhere onto the window — the loader routes each format to the
+  matching occt-import-js reader (STEP / IGES / BREP).
 - Parses the B-rep with occt-import-js (WASM) and renders the resulting meshes with
   three.js — orbit / pan / zoom via `OrbitControls`.
 - Viewer polish: camera auto-fits to the model, a **wireframe** toggle (button or `W`
@@ -30,7 +31,7 @@ view — `Tab` to it first (it shows a focus ring), then:
 | `Shift` + arrows | Pan the view target |
 | `Home` | Re-fit / reset the view |
 
-Global shortcuts (work regardless of focus): `1`–`4` load the gallery samples,
+Global shortcuts (work regardless of focus): `1`–`5` load the gallery samples,
 `W` toggles wireframe, `F` / `R` fit the view, `?` opens the shortcuts help.
 
 ## Live demo
@@ -42,8 +43,8 @@ Global shortcuts (work regardless of focus): `1`–`4` load the gallery samples,
 ![STEP Viewer showing the bundled "Gear" sample rendered on a dark grid, with the header controls (Wireframe toggle, Fit view, "Open STEP file…"), an orientation gizmo and model-info card top-right, and the sample gallery strip along the bottom](docs/screenshot.png)
 
 *The bundled `Gear` sample (2,696 tris, 52.0 × 52.0 × 20.0) loaded at a 1440×900 desktop
-viewport. Pick another model from the gallery strip, drag in your own `.step`/`.stp` file,
-and orbit / pan / zoom with the mouse.*
+viewport. Pick another model from the gallery strip, drag in your own STEP / IGES / BREP
+file, and orbit / pan / zoom with the mouse.*
 
 ## Run locally
 
@@ -59,10 +60,16 @@ use a server.)
 
 ## Supported formats
 
-- **STEP** — `.step` and `.stp` (ISO 10303, AP203 / AP214 / AP242), the formats
-  occt-import-js reads. Both extensions are accepted by the picker and drag-and-drop.
+occt-import-js bundles readers for three CAD formats, and the viewer dispatches on the
+file extension to the matching one:
 
-Other CAD formats (IGES, BREP, STL, OBJ) are out of scope for this demo.
+- **STEP** — `.step` / `.stp` (ISO 10303, AP203 / AP214 / AP242).
+- **IGES** — `.iges` / `.igs`.
+- **BREP** — `.brep` / `.brp` (OpenCascade native).
+
+All six extensions are accepted by the picker and drag-and-drop; an unrecognized
+extension is rejected up front with a hint rather than a failed parse. Other CAD formats
+(STL, OBJ, …) are out of scope for this demo.
 
 ## Feature train
 

@@ -12,12 +12,319 @@
 // geometry from the per-mesh typed arrays either engine produces.
 
 import * as THREE from 'three';
-// mergeGeometries is reachable through index.html's existing `three/addons/`
-// importmap entry (same jsdelivr three@0.160.0 path), so this stays zero-build.
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const OCCT_VERSION = '0.0.23';
 const OCCT_BASE = `https://cdn.jsdelivr.net/npm/occt-import-js@${OCCT_VERSION}/dist/`;
+
+// occt-import-js already bundles readers for three CAD formats — the engine reads
+// IGES and BREP "for free" alongside STEP. Map a normalized file extension to the
+// occt reader method so one shared parse/mesh-build path serves all three; only
+// the read call differs. All three return the same `{ success, meshes }` shape, so
+// everything downstream (worker repack, buildGroup) is format-agnostic.
+const READER_BY_EXT = {
+  stp: 'ReadStepFile',
+  step: 'ReadStepFile',
+  igs: 'ReadIgesFile',
+  iges: 'ReadIgesFile',
+  brp: 'ReadBrepFile',
+  brep: 'ReadBrepFile',
+};
+
+// The set of extensions the loader accepts, in canonical lower-case. Exported so
+// the UI can build its <input accept>, drop-guard, and mismatch copy from the same
+// source of truth this module dispatches on (no drift between guard and dispatch).
+export const SUPPORTED_CAD_EXTENSIONS = Object.keys(READER_BY_EXT);
+
+// Normalize a file name or bare extension to the occt reader method, or null when
+// the extension isn't one occt reads. Accepts 'foo.IGES', '.iges', or 'iges'.
+export function readerForExtension(nameOrExt) {
+  const s = String(nameOrExt || '').toLowerCase();
+  const dot = s.lastIndexOf('.');
+  const ext = dot >= 0 ? s.slice(dot + 1) : s;
+  return READER_BY_EXT[ext] || null;
+}
+
+// Cap for the text scan in detectStepLengthUnit: STEP is plain ISO-10303-21 text
+// and the unit context is small, but a dense assembly's DATA section can be many
+// MB of geometry we never need to look at. Decode at most this many bytes — the
+// whole file when it's under the cap, otherwise a head+tail window (the unit
+// context lives near the top with the other definitions, but the
+// GEOMETRIC_REPRESENTATION_CONTEXT that references it can trail at the end), so
+// the scan stays bounded and cheap regardless of file size.
+const UNIT_SCAN_CAP = 4 * 1024 * 1024;
+
+// Decode a STEP ArrayBuffer as text and extract its declared length unit, mapping
+// to a short display symbol ('mm', 'm', 'cm', 'in', 'ft', 'mil') or null when it
+// can't be determined. Pure, bounded, and NEVER throws — any decode/parse failure
+// degrades to null so a detection miss can never block a render.
+//
+// STEP declares length as either an SI_UNIT — `SI_UNIT(.MILLI.,.METRE.)`,
+// `SI_UNIT($,.METRE.)` (no prefix ⇒ metre), `SI_UNIT(.CENTI.,.METRE.)` — or a
+// CONVERSION_BASED_UNIT naming a customary unit (`CONVERSION_BASED_UNIT('INCH',…)`).
+// A customary file still declares metre as the SI base the conversion is defined
+// against, so CONVERSION_BASED_UNIT names are checked FIRST — otherwise an inch
+// part would be mislabelled 'm'. Non-length conversion units (DEGREE for angle,
+// etc.) simply don't match the length-name map and are ignored.
+export function detectStepLengthUnit(buffer) {
+  try {
+    let bytes;
+    if (buffer instanceof ArrayBuffer) {
+      bytes = new Uint8Array(buffer);
+    } else if (ArrayBuffer.isView(buffer)) {
+      bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    } else {
+      return null;
+    }
+
+    // Bound the decode: whole file when small, else a head+tail window.
+    let text;
+    const dec = new TextDecoder('utf-8', { fatal: false });
+    if (bytes.length <= UNIT_SCAN_CAP) {
+      text = dec.decode(bytes);
+    } else {
+      const half = UNIT_SCAN_CAP >> 1;
+      const head = dec.decode(bytes.subarray(0, half));
+      const tail = dec.decode(bytes.subarray(bytes.length - half));
+      text = head + '\n' + tail;
+    }
+
+    // Customary (CONVERSION_BASED_UNIT) first — a customary STEP file also carries
+    // an SI metre base unit, so SI matching alone would report metre for an inch
+    // part. Scan every conversion-based unit's name and take the first that maps
+    // to a length symbol; angle/other conversion units fall through unmatched.
+    const CONV = {
+      INCH: 'in', INCHES: 'in',
+      FOOT: 'ft', FEET: 'ft',
+      MIL: 'mil', THOU: 'mil',
+    };
+    const convRe = /CONVERSION_BASED_UNIT\s*\(\s*'([^']*)'/gi;
+    let m;
+    while ((m = convRe.exec(text)) !== null) {
+      const sym = CONV[m[1].trim().toUpperCase()];
+      if (sym) return sym;
+    }
+
+    // SI length unit: the prefix slot is either $ (no prefix ⇒ metre) or a
+    // .PREFIX. token; the unit token must be .METRE. (mass is .GRAM., plane angle
+    // .RADIAN., etc. — matching METRE specifically isolates the length unit).
+    const si = /SI_UNIT\s*\(\s*(\$|\.[A-Z]+\.)\s*,\s*\.METRE\.\s*\)/i.exec(text);
+    if (si) {
+      const prefix = si[1].toUpperCase();
+      if (prefix === '$') return 'm';
+      if (prefix === '.MILLI.') return 'mm';
+      if (prefix === '.CENTI.') return 'cm';
+      if (prefix === '.METRE.') return 'm'; // defensive; not a real prefix
+      return null; // an unsupported SI prefix (MICRO/KILO/…) — don't fabricate
+    }
+
+    return null;
+  } catch (e) {
+    return null; // never let a detection failure block the render
+  }
+}
+
+// Cap for the STEP HEADER scan (issue #96). The ISO-10303-21 HEADER section
+// (FILE_DESCRIPTION / FILE_NAME / FILE_SCHEMA) is the very first block of the
+// file and is tiny — a few hundred bytes to a couple KB — so decode only this
+// leading window and never touch the (potentially many-MB) DATA section. If the
+// header somehow doesn't appear inside the window, we simply report no metadata.
+const HEADER_SCAN_CAP = 64 * 1024;
+
+// Return the argument text inside the FIRST `NAME(...)` call in `text`, matched
+// with balanced parentheses and string-literal awareness (so a `)` or `(` inside
+// a quoted value doesn't end the call early). Returns null when the call isn't
+// found. Case-insensitive on the keyword — STEP keywords are conventionally
+// upper-case, but we don't rely on it.
+function stepCallArgs(text, name) {
+  const re = new RegExp(name + '\\s*\\(', 'gi');
+  const m = re.exec(text);
+  if (!m) return null;
+  const start = m.index + m[0].length; // just past the opening '('
+  let depth = 1;
+  let inStr = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      // '' is an escaped single quote inside a STEP string, not a terminator.
+      if (c === "'") {
+        if (text[i + 1] === "'") { i++; continue; }
+        inStr = false;
+      }
+      continue;
+    }
+    if (c === "'") { inStr = true; continue; }
+    else if (c === '(') depth++;
+    else if (c === ')') { depth--; if (depth === 0) return text.slice(start, i); }
+  }
+  return text.slice(start); // unterminated call — best-effort tail
+}
+
+// Split a call's argument text into top-level comma-separated arguments,
+// respecting nested parens and string literals (so `('a,b'),'c'` → two args, not
+// three). Returns trimmed argument strings.
+function stepTopLevelArgs(inner) {
+  const args = [];
+  let depth = 0;
+  let inStr = false;
+  let cur = '';
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if (inStr) {
+      cur += c;
+      if (c === "'") {
+        if (inner[i + 1] === "'") { cur += "'"; i++; continue; }
+        inStr = false;
+      }
+      continue;
+    }
+    if (c === "'") { inStr = true; cur += c; continue; }
+    if (c === '(') { depth++; cur += c; continue; }
+    if (c === ')') { depth--; cur += c; continue; }
+    if (c === ',' && depth === 0) { args.push(cur.trim()); cur = ''; continue; }
+    cur += c;
+  }
+  args.push(cur.trim());
+  return args;
+}
+
+// Decode the ISO-10303-21 string escapes that show up in header fields:
+// `\X2\HHHH…\X0\` (UTF-16BE code units) and `\X\HH` (a single ISO-8859 byte).
+// Anything else is left as-is — this is best-effort display cleanup, never a
+// correctness dependency.
+function decodeStepEscapes(s) {
+  return s
+    .replace(/\\X2\\([0-9A-Fa-f]+)\\X0\\/g, (_, hex) => {
+      let out = '';
+      for (let i = 0; i + 4 <= hex.length; i += 4) {
+        out += String.fromCharCode(parseInt(hex.slice(i, i + 4), 16));
+      }
+      return out;
+    })
+    .replace(/\\X\\([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+// Pull every quoted string literal out of one argument (handling the '' escape),
+// decoded for display. `$` (STEP's "unset") and unquoted tokens yield []. Used for
+// both scalar fields (take [0]) and STEP's parenthesized author/organization lists.
+function stepStrings(arg) {
+  if (arg == null) return [];
+  const out = [];
+  let inStr = false;
+  let cur = '';
+  for (let i = 0; i < arg.length; i++) {
+    const c = arg[i];
+    if (inStr) {
+      if (c === "'") {
+        if (arg[i + 1] === "'") { cur += "'"; i++; continue; }
+        inStr = false;
+        out.push(decodeStepEscapes(cur));
+        cur = '';
+        continue;
+      }
+      cur += c;
+    } else if (c === "'") {
+      inStr = true;
+      cur = '';
+    }
+  }
+  return out;
+}
+
+// First quoted string of an argument, or '' when there is none (e.g. `$`).
+function stepFirstString(arg) {
+  const all = stepStrings(arg);
+  return all.length ? all[0].trim() : '';
+}
+
+// The bare schema name from a FILE_SCHEMA entry like
+// `AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }` — everything before the `{`/`(`.
+function stepSchemaName(s) {
+  const t = String(s).trim();
+  const cut = t.search(/[{(]/);
+  return (cut >= 0 ? t.slice(0, cut) : t).trim();
+}
+
+// Map a FILE_SCHEMA identifier to its familiar Application Protocol short name.
+// Recognized by schema keyword first (AUTOMOTIVE_DESIGN⇒AP214,
+// CONFIG_CONTROL_DESIGN⇒AP203, the AP242 managed-model schema⇒AP242), then by the
+// `10303 <n>` protocol number embedded in the schema identifier braces. Returns ''
+// when nothing recognizable is present rather than guessing.
+function stepApName(schemaText) {
+  const u = String(schemaText).toUpperCase();
+  if (u.includes('AP242') || u.includes('MANAGED_MODEL_BASED_3D_ENGINEERING')) return 'AP242';
+  if (u.includes('AUTOMOTIVE_DESIGN')) return 'AP214';
+  if (u.includes('CONFIG_CONTROL_DESIGN')) return 'AP203';
+  const m = u.match(/10303\s+(\d+)/);
+  if (m && (m[1] === '203' || m[1] === '214' || m[1] === '242')) return 'AP' + m[1];
+  return '';
+}
+
+// Decode ONLY the leading HEADER;…ENDSEC; block of a STEP file as text and extract,
+// best-effort, its provenance metadata (issue #96): the FILE_SCHEMA schema name +
+// Application Protocol (AP203/AP214/AP242), and from FILE_NAME the timestamp, author
+// list, organization list, preprocessor version, and originating system.
+//
+// Bounded (only HEADER_SCAN_CAP leading bytes are decoded, and only the text
+// between the first `HEADER;` and the following `ENDSEC;` is scanned) and it NEVER
+// throws: any decode/parse miss degrades to empty fields. Returns null when the
+// header isn't found in the window (non-STEP formats, or a header past the cap) or
+// when nothing usable was extracted, so callers can treat "no metadata" uniformly.
+export function parseStepHeader(buffer) {
+  try {
+    let bytes;
+    if (buffer instanceof ArrayBuffer) {
+      bytes = new Uint8Array(buffer);
+    } else if (ArrayBuffer.isView(buffer)) {
+      bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    } else {
+      return null;
+    }
+
+    const dec = new TextDecoder('utf-8', { fatal: false });
+    const head = dec.decode(bytes.subarray(0, Math.min(bytes.length, HEADER_SCAN_CAP)));
+
+    // Bound the scan to the HEADER;…ENDSEC; block. No `HEADER;` in the window ⇒
+    // not a STEP header we can read — report nothing rather than scanning DATA.
+    const hIdx = head.indexOf('HEADER;');
+    if (hIdx < 0) return null;
+    const eIdx = head.indexOf('ENDSEC;', hIdx);
+    const header = eIdx >= 0 ? head.slice(hIdx + 'HEADER;'.length, eIdx) : head.slice(hIdx + 'HEADER;'.length);
+
+    const out = {
+      schema: '', ap: '', author: '', organization: '',
+      originatingSystem: '', preprocessor: '', timestamp: '',
+    };
+
+    // FILE_NAME(name, time_stamp, (author…), (organization…), preprocessor_version,
+    // originating_system, authorization) — index the positional args after a
+    // paren/string-aware split so a comma inside a quoted value never shifts them.
+    const fnRaw = stepCallArgs(header, 'FILE_NAME');
+    if (fnRaw != null) {
+      const a = stepTopLevelArgs(fnRaw);
+      out.timestamp = stepFirstString(a[1]);
+      out.author = stepStrings(a[2]).map((s) => s.trim()).filter(Boolean).join(', ');
+      out.organization = stepStrings(a[3]).map((s) => s.trim()).filter(Boolean).join(', ');
+      out.preprocessor = stepFirstString(a[4]);
+      out.originatingSystem = stepFirstString(a[5]);
+    }
+
+    // FILE_SCHEMA((‘AUTOMOTIVE_DESIGN { … }’)) — one or more schema identifier
+    // strings; the first names the flavor and its AP.
+    const fsRaw = stepCallArgs(header, 'FILE_SCHEMA');
+    if (fsRaw != null) {
+      const schemas = stepStrings(fsRaw);
+      if (schemas.length) {
+        out.schema = stepSchemaName(schemas[0]);
+        out.ap = stepApName(schemas.join(' '));
+      }
+    }
+
+    // Only surface a header when we actually recovered something.
+    return Object.keys(out).some((k) => out[k]) ? out : null;
+  } catch (e) {
+    return null; // never let a header-parse failure affect the render
+  }
+}
 
 // Run a low-priority task off the first-paint critical path. Prefer
 // requestIdleCallback so edge-line generation waits for an idle slot after the
@@ -75,7 +382,9 @@ function handleWorkerMessage(ev) {
       const p = pending.get(msg.id);
       if (p) {
         pending.delete(msg.id);
-        p.resolve(msg.meshes);
+        // Resolve with BOTH the per-mesh typed arrays and the (sanitized)
+        // assembly hierarchy so buildGroup can recover per-part identity/names.
+        p.resolve({ meshes: msg.meshes, root: msg.root || null });
       }
       break;
     }
@@ -83,7 +392,7 @@ function handleWorkerMessage(ev) {
       const p = pending.get(msg.id);
       if (p) {
         pending.delete(msg.id);
-        const e = new Error(msg.message || 'occt ReadStepFile failed to parse the STEP data');
+        const e = new Error(msg.message || 'occt failed to parse the CAD data');
         e.kind = 'parse';
         p.reject(e);
       }
@@ -156,9 +465,10 @@ function getWorkerReady() {
   return workerReadyPromise;
 }
 
-// Send the STEP bytes to the worker and await the parsed per-mesh typed arrays.
-// Rejects with `kind: 'parse'` on bad bytes.
-function postParse(arrayBuffer) {
+// Send the STEP bytes to the worker and await the parsed result:
+// `{ meshes, root }` — the per-mesh typed arrays plus the sanitized assembly
+// hierarchy. Rejects with `kind: 'parse'` on bad bytes.
+function postParse(arrayBuffer, reader) {
   return new Promise((resolve, reject) => {
     const id = ++msgSeq;
     pending.set(id, { resolve, reject });
@@ -167,7 +477,7 @@ function postParse(arrayBuffer) {
     // crashes mid-parse. STEP input is text — small next to the decoded geometry —
     // so the structured-clone copy into the worker is cheap; the wins that matter
     // (off-thread ReadStepFile and the zero-copy RESULT transfer back) both stay.
-    worker.postMessage({ type: 'parse', id, buffer: arrayBuffer });
+    worker.postMessage({ type: 'parse', id, reader, buffer: arrayBuffer });
   });
 }
 
@@ -222,8 +532,19 @@ export function resetOcct() {
 // render-on-demand loop, which would otherwise be parked when the deferred edges
 // finally attach a beat after first render (so the edges would only appear on the
 // next camera move). No-op when omitted.
-export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
+export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
   if (onPhase) onPhase('engine');
+
+  // Resolve the reader up front from the extension so an unknown format fails fast
+  // (kind:'parse' — it's a bad-input problem, not an engine one) before the engine
+  // is even touched. The UI guards on extension before calling in, so this is a
+  // belt-and-suspenders check for a stray unsupported call.
+  const reader = readerForExtension(ext);
+  if (!reader) {
+    const e = new Error(`Unsupported CAD file extension: ${ext}`);
+    e.kind = 'parse';
+    throw e;
+  }
 
   // Normalize to a standalone ArrayBuffer once, up front — both the worker and the
   // main-thread fallback consume it, and it must be handed off without detaching a
@@ -238,11 +559,41 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
     arrayBuffer = new Uint8Array(buf).buffer;
   }
 
-  // Parse to per-mesh typed arrays — off-thread via the worker when it's healthy,
-  // otherwise on the main-thread engine. Both sources yield the same mesh shape.
-  const meshes = await getMeshes(arrayBuffer, onPhase);
+  // Parse to per-mesh typed arrays + assembly hierarchy — off-thread via the
+  // worker when it's healthy, otherwise on the main-thread engine. Both sources
+  // yield the same `{ meshes, root }` shape.
+  const { meshes, root } = await getMeshes(arrayBuffer, reader, onPhase);
 
-  return buildGroup(meshes, edgeStyle, onEdgesReady);
+  const group = buildGroup(meshes, root, edgeStyle, onEdgesReady);
+
+  // Native length unit (issue #95): STEP declares its length unit as plain
+  // ISO-10303-21 text, so decode + detect it here and stash the short symbol on
+  // the group. Guarded by the reader so it runs ONLY for STEP — IGES/BREP carry
+  // no reliable text length-unit field, so they report no unit rather than a
+  // wrong one. Detection is bounded and never throws; a miss leaves `unit` unset,
+  // which the UI reads as "unknown" and shows the current unitless dimensions.
+  if (reader === 'ReadStepFile') {
+    const unit = detectStepLengthUnit(arrayBuffer);
+    if (unit) group.userData.unit = unit;
+
+    // Header provenance (issue #96): the ISO-10303-21 HEADER carries schema/AP,
+    // author, originating system, and a timestamp that the geometry parse throws
+    // away. Decode the leading header block here (STEP-only — IGES/BREP have no
+    // equivalent) and stash the best-effort fields on the group for the UI's
+    // "Details" disclosure. Bounded and never throws; a miss leaves stepHeader
+    // unset, which the UI reads as "no details to show".
+    const stepHeader = parseStepHeader(arrayBuffer);
+    if (stepHeader) group.userData.stepHeader = stepHeader;
+  }
+
+  return group;
+}
+
+// Back-compat thin wrapper: the original STEP-only entry point, preserved so any
+// caller (or bookmark) still works. Routes through the format-aware loader with the
+// STEP reader.
+export function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
+  return loadCadFromArrayBuffer(buf, 'step', onPhase, edgeStyle, onEdgesReady);
 }
 
 // Resolve the parsed per-mesh typed arrays, preferring the off-thread worker and
@@ -254,29 +605,50 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
 // so a model ALWAYS loads even where the worker can't. A genuine bad-bytes parse
 // failure (kind:'parse') is re-thrown untouched: the main thread would fail on the
 // same bytes identically, so retrying there would only double the work.
-async function getMeshes(arrayBuffer, onPhase) {
+// Returns `{ meshes, root }`: the per-mesh typed arrays plus the sanitized occt
+// assembly hierarchy (or null when the engine supplied none).
+async function getMeshes(arrayBuffer, reader, onPhase) {
   if (!workerDisabled) {
     try {
       await getWorkerReady();
       if (onPhase) onPhase('parse');
-      return await postParse(arrayBuffer);
+      return await postParse(arrayBuffer, reader);
     } catch (err) {
-      if (err && err.kind === 'parse') throw err; // bad STEP bytes — no fallback helps
+      if (err && err.kind === 'parse') throw err; // bad CAD bytes — no fallback helps
       disableWorker(); // engine/init failure or worker crash — degrade to main thread
     }
   }
   if (onPhase) onPhase('parse');
-  return parseOnMainThread(arrayBuffer);
+  return parseOnMainThread(arrayBuffer, reader);
 }
 
 // Build the THREE.Group from the (worker- or main-thread-produced) per-mesh typed
-// arrays. Shared verbatim by both engines so the returned Group — geometry,
-// merged-by-colour draw calls, materials, userData, and deferred edge overlays —
-// is byte-for-byte identical no matter which engine parsed the STEP.
-function buildGroup(meshes, edgeStyle, onEdgesReady) {
-  // Turn each occt result mesh into a THREE.BufferGeometry (+ its resolved color
-  // and STEP sub-object name), computing normals where occt didn't supply them.
-  const entries = meshes.map((resultMesh) => {
+// arrays + the occt assembly hierarchy. Shared verbatim by both engines so the
+// returned Group — geometry, materials, per-part userData, structural registry,
+// and deferred edge overlays — is byte-for-byte identical no matter which engine
+// parsed the STEP.
+//
+// PER-PART FIDELITY (issue #94): earlier this merged every result mesh into a few
+// draw calls grouped by colour, which flattened a multi-body assembly into an
+// anonymous blob — you couldn't tell how many parts it had, name them, or hide
+// one to see another. Per-part visibility is fundamentally incompatible with
+// cross-body merging (a merged geometry is ONE object; you can't hide a slice of
+// it), so we now build exactly one THREE.Mesh per occt result mesh (== one
+// solid/body) and tag it with a stable index + name on userData. This also makes
+// the explode + color-by-part tools literally correct — both already assumed
+// "one mesh per solid". The cost is draw calls (a same-colour assembly no longer
+// collapses to one mesh); this is the deliberate, criteria-required trade for
+// assembly data fidelity, and each mesh's own colour/name is now preserved too.
+function buildGroup(meshes, root, edgeStyle, onEdgesReady) {
+  const group = new THREE.Group();
+
+  // Recover a display name per result-mesh index from the assembly hierarchy
+  // (occt's result.root): every node that references mesh indices lends those
+  // meshes its STEP product/component label. Used only as a fallback when the
+  // flat per-mesh name is blank, so the more specific per-body name still wins.
+  const nameByIndex = namesFromRoot(meshes.length, root);
+
+  meshes.forEach((resultMesh, i) => {
     const geometry = new THREE.BufferGeometry();
 
     geometry.setAttribute(
@@ -301,69 +673,73 @@ function buildGroup(meshes, edgeStyle, onEdgesReady) {
       color = new THREE.Color(resultMesh.color[0], resultMesh.color[1], resultMesh.color[2]);
     }
 
-    return { geometry, color, name: resultMesh.name || '' };
+    const name = resultMesh.name || nameByIndex[i] || '';
+    emitMesh(group, geometry, color, name, i, edgeStyle, onEdgesReady);
   });
 
-  const group = new THREE.Group();
-
-  // Draw-call reduction: a STEP assembly can decode into dozens-to-hundreds of
-  // small result meshes, each its own per-frame draw call. Group entries by their
-  // resolved color and merge each colour-group's geometries into ONE indexed
-  // BufferGeometry, so the scene renders one Mesh per distinct colour instead of
-  // one per solid. countTriangles / frameObject read the summed index counts and
-  // combined bbox, both invariant under merging; the wireframe toggle and the
-  // idle edge overlay operate on the merged mesh, so tri count and bounds are
-  // byte-for-byte the same as the unmerged path — only the draw-call count drops.
+  // Ordered parts registry the UI reads to render the "Parts" panel: one entry
+  // per built mesh (== one occt solid). `index` is stable for the model's life so
+  // a row always addresses the same mesh; `name` may be '' (the UI supplies a
+  // localized "Part N" fallback).
   //
-  // Merging is skipped when there's a single result mesh (nothing to combine),
-  // and falls back to the per-mesh path for any geometry whose attribute
-  // signature can't be merged (mismatched attributes or mixed indexed/non-indexed
-  // within a colour), so a stray incompatible mesh never drops out of the scene.
-  if (entries.length <= 1) {
-    for (const e of entries) emitMesh(group, e.geometry, e.color, e.name, edgeStyle, onEdgesReady);
-  } else {
-    // colorKey → { color, entries: [] }, preserving first-seen colour order.
-    const byColor = new Map();
-    for (const e of entries) {
-      const key = e.color.getHexString();
-      let bucket = byColor.get(key);
-      if (!bucket) { bucket = { color: e.color, list: [] }; byColor.set(key, bucket); }
-      bucket.list.push(e);
-    }
+  // Attached NON-ENUMERABLY on userData: it holds live THREE.Mesh references
+  // (mesh → parent → group → userData → parts → mesh is circular), and GLTFExporter
+  // serializes each object's userData via JSON.stringify over Object.keys(userData).
+  // A non-enumerable prop is invisible to Object.keys, so export never trips on the
+  // cycle — while `group.userData.parts` / `.tree` stay directly readable by the UI.
+  Object.defineProperty(group.userData, 'parts', {
+    value: group.children
+      .filter((c) => c.isMesh)
+      .map((mesh) => ({ index: mesh.userData.partIndex, name: mesh.userData.partName, mesh })),
+    enumerable: false, writable: true, configurable: true,
+  });
 
-    for (const bucket of byColor.values()) {
-      // Within a colour, partition by attribute signature so only geometries that
-      // mergeGeometries can actually combine are merged together; anything with a
-      // different signature (or a lone mesh) takes the per-mesh path.
-      const bySig = new Map();
-      for (const e of bucket.list) {
-        const key = signatureKey(e.geometry);
-        let part = bySig.get(key);
-        if (!part) { part = []; bySig.set(key, part); }
-        part.push(e);
-      }
-
-      for (const part of bySig.values()) {
-        if (part.length === 1) {
-          emitMesh(group, part[0].geometry, bucket.color, part[0].name, edgeStyle, onEdgesReady);
-          continue;
-        }
-        // mergeGeometries returns null (and logs) if the geometries are somehow
-        // still incompatible — fall back to the per-mesh path so no solid is lost.
-        const merged = mergeGeometries(part.map((e) => e.geometry), false);
-        if (merged) {
-          const name = (part.find((e) => e.name) || part[0]).name;
-          emitMesh(group, merged, bucket.color, name, edgeStyle, onEdgesReady);
-        } else {
-          for (const e of part) {
-            emitMesh(group, e.geometry, bucket.color, e.name, edgeStyle, onEdgesReady);
-          }
-        }
-      }
-    }
-  }
+  // Lightweight structural tree derived from occt's root (names + mesh indices),
+  // handed to the UI alongside the group so it can render hierarchy. Null when the
+  // engine supplied no hierarchy. Non-enumerable for the same export-safety reason.
+  Object.defineProperty(group.userData, 'tree', {
+    value: liteTree(root),
+    enumerable: false, writable: true, configurable: true,
+  });
 
   return group;
+}
+
+// Build a per-result-mesh-index name array from the occt assembly hierarchy. Walks
+// every node; a node with `meshes` (indices into the flat result array) lends its
+// `name` to those meshes. First (shallowest) name wins so a leaf keeps its own
+// component label rather than an ancestor assembly's. Returns an all-'' array when
+// there's no hierarchy, so callers can treat it uniformly.
+function namesFromRoot(count, root) {
+  const names = new Array(count).fill('');
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return;
+    const list = Array.isArray(node.meshes) ? node.meshes : [];
+    for (const mi of list) {
+      if (typeof mi === 'number' && mi >= 0 && mi < count && !names[mi] && node.name) {
+        names[mi] = node.name;
+      }
+    }
+    const kids = Array.isArray(node.children) ? node.children : [];
+    for (const c of kids) walk(c);
+  };
+  walk(root);
+  return names;
+}
+
+// Reduce the occt assembly hierarchy to a minimal, structured-clone-safe tree
+// ({ name, meshes?, children? }) for the UI to render structure from, dropping any
+// engine-specific extras. Returns null for a missing/invalid node.
+function liteTree(node) {
+  if (!node || typeof node !== 'object') return null;
+  const out = { name: node.name || '' };
+  if (Array.isArray(node.meshes)) {
+    const idx = node.meshes.filter((m) => typeof m === 'number');
+    if (idx.length) out.meshes = idx;
+  }
+  const kids = Array.isArray(node.children) ? node.children.map(liteTree).filter(Boolean) : [];
+  if (kids.length) out.children = kids;
+  return out;
 }
 
 // --- Main-thread fallback engine -------------------------------------------
@@ -414,19 +790,19 @@ function initOcctMainThread() {
   return mainThreadOcctPromise;
 }
 
-// Parse STEP bytes on the main thread and return the SAME per-mesh typed-array
+// Parse STEP bytes on the main thread and return the SAME `{ meshes, root }`
 // shape the worker posts back, so buildGroup consumes either engine identically.
 // Bad bytes reject with kind:'parse'; engine/CDN/WASM failures surface (via
 // initOcctMainThread) with kind:'init'.
-async function parseOnMainThread(arrayBuffer) {
+async function parseOnMainThread(arrayBuffer, reader) {
   const occt = await initOcctMainThread();
-  const result = occt.ReadStepFile(new Uint8Array(arrayBuffer), null);
+  const result = occt[reader](new Uint8Array(arrayBuffer), null);
   if (!result || !result.success) {
-    const e = new Error('occt ReadStepFile failed to parse the STEP data');
+    const e = new Error(`occt ${reader} failed to parse the CAD data`);
     e.kind = 'parse';
     throw e;
   }
-  return result.meshes.map(repackResultMesh);
+  return { meshes: result.meshes.map(repackResultMesh), root: result.root || null };
 }
 
 // Repack one occt result mesh into the { position, normal, index, color, name }
@@ -460,20 +836,11 @@ function disableWorker() {
   teardownWorker();
 }
 
-// A stable key for a geometry's mergeability: sorted attribute names plus whether
-// it's indexed. mergeGeometries requires every input to share the same attributes
-// and be uniformly indexed or non-indexed, so geometries with matching keys are
-// safe to merge together and mismatched ones must stay separate.
-function signatureKey(geometry) {
-  const attrs = Object.keys(geometry.attributes).sort().join(',');
-  return `${attrs}|${geometry.index ? 'i' : 'n'}`;
-}
-
-// Build the shaded Mesh for one geometry+color, stash the base color + STEP name,
-// schedule its deferred edge overlay, and add it to the group. Shared by both the
-// merged (one mesh per colour) and per-mesh fallback paths so the material,
-// userData, and edge behaviour are identical regardless of how the mesh was formed.
-function emitMesh(group, geometry, color, name, edgeStyle, onEdgesReady) {
+// Build the shaded Mesh for one geometry+color, stash the base color + STEP name
+// + stable part index, schedule its deferred edge overlay, and add it to the
+// group. One call per occt result mesh, so material, userData, and edge behaviour
+// are identical for every part.
+function emitMesh(group, geometry, color, name, partIndex, edgeStyle, onEdgesReady) {
   // Machined-metal PBR: near-full metalness with a tight satin roughness so the
   // scene's RoomEnvironment IBL yields the crisp reflections of a milled aluminum
   // part rather than flat toy blue. The blue accent identity is kept via `color`;
@@ -501,6 +868,14 @@ function emitMesh(group, geometry, color, name, edgeStyle, onEdgesReady) {
   // (the STEP product/solid label); it can be empty, so the picker falls back
   // to a child index when this is blank.
   if (name) mesh.name = name;
+
+  // Per-part identity for the "Parts" panel (issue #94): a stable index (the occt
+  // result-mesh position, so a panel row always addresses the same mesh across
+  // re-renders) and the resolved name (may be '' — the UI supplies a localized
+  // "Part N" fallback). The panel toggles this mesh's `visible`; its deferred
+  // edge-lines child is a descendant, so hiding the mesh hides the edges too.
+  mesh.userData.partIndex = partIndex;
+  mesh.userData.partName = name || '';
 
   // Faint edge lines for mechanical crispness. EdgesGeometry with a 30° crease
   // threshold keeps only real feature edges (not every triangle), so smooth
