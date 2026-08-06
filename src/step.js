@@ -12,9 +12,6 @@
 // geometry from the per-mesh typed arrays either engine produces.
 
 import * as THREE from 'three';
-// mergeGeometries is reachable through index.html's existing `three/addons/`
-// importmap entry (same jsdelivr three@0.160.0 path), so this stays zero-build.
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const OCCT_VERSION = '0.0.23';
 const OCCT_BASE = `https://cdn.jsdelivr.net/npm/occt-import-js@${OCCT_VERSION}/dist/`;
@@ -103,7 +100,9 @@ function handleWorkerMessage(ev) {
       const p = pending.get(msg.id);
       if (p) {
         pending.delete(msg.id);
-        p.resolve(msg.meshes);
+        // Resolve with BOTH the per-mesh typed arrays and the (sanitized)
+        // assembly hierarchy so buildGroup can recover per-part identity/names.
+        p.resolve({ meshes: msg.meshes, root: msg.root || null });
       }
       break;
     }
@@ -184,8 +183,9 @@ function getWorkerReady() {
   return workerReadyPromise;
 }
 
-// Send the STEP bytes to the worker and await the parsed per-mesh typed arrays.
-// Rejects with `kind: 'parse'` on bad bytes.
+// Send the STEP bytes to the worker and await the parsed result:
+// `{ meshes, root }` — the per-mesh typed arrays plus the sanitized assembly
+// hierarchy. Rejects with `kind: 'parse'` on bad bytes.
 function postParse(arrayBuffer, reader) {
   return new Promise((resolve, reject) => {
     const id = ++msgSeq;
@@ -277,11 +277,12 @@ export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { co
     arrayBuffer = new Uint8Array(buf).buffer;
   }
 
-  // Parse to per-mesh typed arrays — off-thread via the worker when it's healthy,
-  // otherwise on the main-thread engine. Both sources yield the same mesh shape.
-  const meshes = await getMeshes(arrayBuffer, reader, onPhase);
+  // Parse to per-mesh typed arrays + assembly hierarchy — off-thread via the
+  // worker when it's healthy, otherwise on the main-thread engine. Both sources
+  // yield the same `{ meshes, root }` shape.
+  const { meshes, root } = await getMeshes(arrayBuffer, reader, onPhase);
 
-  return buildGroup(meshes, edgeStyle, onEdgesReady);
+  return buildGroup(meshes, root, edgeStyle, onEdgesReady);
 }
 
 // Back-compat thin wrapper: the original STEP-only entry point, preserved so any
@@ -300,6 +301,8 @@ export function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0
 // so a model ALWAYS loads even where the worker can't. A genuine bad-bytes parse
 // failure (kind:'parse') is re-thrown untouched: the main thread would fail on the
 // same bytes identically, so retrying there would only double the work.
+// Returns `{ meshes, root }`: the per-mesh typed arrays plus the sanitized occt
+// assembly hierarchy (or null when the engine supplied none).
 async function getMeshes(arrayBuffer, reader, onPhase) {
   if (!workerDisabled) {
     try {
@@ -316,13 +319,32 @@ async function getMeshes(arrayBuffer, reader, onPhase) {
 }
 
 // Build the THREE.Group from the (worker- or main-thread-produced) per-mesh typed
-// arrays. Shared verbatim by both engines so the returned Group — geometry,
-// merged-by-colour draw calls, materials, userData, and deferred edge overlays —
-// is byte-for-byte identical no matter which engine parsed the STEP.
-function buildGroup(meshes, edgeStyle, onEdgesReady) {
-  // Turn each occt result mesh into a THREE.BufferGeometry (+ its resolved color
-  // and STEP sub-object name), computing normals where occt didn't supply them.
-  const entries = meshes.map((resultMesh) => {
+// arrays + the occt assembly hierarchy. Shared verbatim by both engines so the
+// returned Group — geometry, materials, per-part userData, structural registry,
+// and deferred edge overlays — is byte-for-byte identical no matter which engine
+// parsed the STEP.
+//
+// PER-PART FIDELITY (issue #94): earlier this merged every result mesh into a few
+// draw calls grouped by colour, which flattened a multi-body assembly into an
+// anonymous blob — you couldn't tell how many parts it had, name them, or hide
+// one to see another. Per-part visibility is fundamentally incompatible with
+// cross-body merging (a merged geometry is ONE object; you can't hide a slice of
+// it), so we now build exactly one THREE.Mesh per occt result mesh (== one
+// solid/body) and tag it with a stable index + name on userData. This also makes
+// the explode + color-by-part tools literally correct — both already assumed
+// "one mesh per solid". The cost is draw calls (a same-colour assembly no longer
+// collapses to one mesh); this is the deliberate, criteria-required trade for
+// assembly data fidelity, and each mesh's own colour/name is now preserved too.
+function buildGroup(meshes, root, edgeStyle, onEdgesReady) {
+  const group = new THREE.Group();
+
+  // Recover a display name per result-mesh index from the assembly hierarchy
+  // (occt's result.root): every node that references mesh indices lends those
+  // meshes its STEP product/component label. Used only as a fallback when the
+  // flat per-mesh name is blank, so the more specific per-body name still wins.
+  const nameByIndex = namesFromRoot(meshes.length, root);
+
+  meshes.forEach((resultMesh, i) => {
     const geometry = new THREE.BufferGeometry();
 
     geometry.setAttribute(
@@ -347,69 +369,73 @@ function buildGroup(meshes, edgeStyle, onEdgesReady) {
       color = new THREE.Color(resultMesh.color[0], resultMesh.color[1], resultMesh.color[2]);
     }
 
-    return { geometry, color, name: resultMesh.name || '' };
+    const name = resultMesh.name || nameByIndex[i] || '';
+    emitMesh(group, geometry, color, name, i, edgeStyle, onEdgesReady);
   });
 
-  const group = new THREE.Group();
-
-  // Draw-call reduction: a STEP assembly can decode into dozens-to-hundreds of
-  // small result meshes, each its own per-frame draw call. Group entries by their
-  // resolved color and merge each colour-group's geometries into ONE indexed
-  // BufferGeometry, so the scene renders one Mesh per distinct colour instead of
-  // one per solid. countTriangles / frameObject read the summed index counts and
-  // combined bbox, both invariant under merging; the wireframe toggle and the
-  // idle edge overlay operate on the merged mesh, so tri count and bounds are
-  // byte-for-byte the same as the unmerged path — only the draw-call count drops.
+  // Ordered parts registry the UI reads to render the "Parts" panel: one entry
+  // per built mesh (== one occt solid). `index` is stable for the model's life so
+  // a row always addresses the same mesh; `name` may be '' (the UI supplies a
+  // localized "Part N" fallback).
   //
-  // Merging is skipped when there's a single result mesh (nothing to combine),
-  // and falls back to the per-mesh path for any geometry whose attribute
-  // signature can't be merged (mismatched attributes or mixed indexed/non-indexed
-  // within a colour), so a stray incompatible mesh never drops out of the scene.
-  if (entries.length <= 1) {
-    for (const e of entries) emitMesh(group, e.geometry, e.color, e.name, edgeStyle, onEdgesReady);
-  } else {
-    // colorKey → { color, entries: [] }, preserving first-seen colour order.
-    const byColor = new Map();
-    for (const e of entries) {
-      const key = e.color.getHexString();
-      let bucket = byColor.get(key);
-      if (!bucket) { bucket = { color: e.color, list: [] }; byColor.set(key, bucket); }
-      bucket.list.push(e);
-    }
+  // Attached NON-ENUMERABLY on userData: it holds live THREE.Mesh references
+  // (mesh → parent → group → userData → parts → mesh is circular), and GLTFExporter
+  // serializes each object's userData via JSON.stringify over Object.keys(userData).
+  // A non-enumerable prop is invisible to Object.keys, so export never trips on the
+  // cycle — while `group.userData.parts` / `.tree` stay directly readable by the UI.
+  Object.defineProperty(group.userData, 'parts', {
+    value: group.children
+      .filter((c) => c.isMesh)
+      .map((mesh) => ({ index: mesh.userData.partIndex, name: mesh.userData.partName, mesh })),
+    enumerable: false, writable: true, configurable: true,
+  });
 
-    for (const bucket of byColor.values()) {
-      // Within a colour, partition by attribute signature so only geometries that
-      // mergeGeometries can actually combine are merged together; anything with a
-      // different signature (or a lone mesh) takes the per-mesh path.
-      const bySig = new Map();
-      for (const e of bucket.list) {
-        const key = signatureKey(e.geometry);
-        let part = bySig.get(key);
-        if (!part) { part = []; bySig.set(key, part); }
-        part.push(e);
-      }
-
-      for (const part of bySig.values()) {
-        if (part.length === 1) {
-          emitMesh(group, part[0].geometry, bucket.color, part[0].name, edgeStyle, onEdgesReady);
-          continue;
-        }
-        // mergeGeometries returns null (and logs) if the geometries are somehow
-        // still incompatible — fall back to the per-mesh path so no solid is lost.
-        const merged = mergeGeometries(part.map((e) => e.geometry), false);
-        if (merged) {
-          const name = (part.find((e) => e.name) || part[0]).name;
-          emitMesh(group, merged, bucket.color, name, edgeStyle, onEdgesReady);
-        } else {
-          for (const e of part) {
-            emitMesh(group, e.geometry, bucket.color, e.name, edgeStyle, onEdgesReady);
-          }
-        }
-      }
-    }
-  }
+  // Lightweight structural tree derived from occt's root (names + mesh indices),
+  // handed to the UI alongside the group so it can render hierarchy. Null when the
+  // engine supplied no hierarchy. Non-enumerable for the same export-safety reason.
+  Object.defineProperty(group.userData, 'tree', {
+    value: liteTree(root),
+    enumerable: false, writable: true, configurable: true,
+  });
 
   return group;
+}
+
+// Build a per-result-mesh-index name array from the occt assembly hierarchy. Walks
+// every node; a node with `meshes` (indices into the flat result array) lends its
+// `name` to those meshes. First (shallowest) name wins so a leaf keeps its own
+// component label rather than an ancestor assembly's. Returns an all-'' array when
+// there's no hierarchy, so callers can treat it uniformly.
+function namesFromRoot(count, root) {
+  const names = new Array(count).fill('');
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return;
+    const list = Array.isArray(node.meshes) ? node.meshes : [];
+    for (const mi of list) {
+      if (typeof mi === 'number' && mi >= 0 && mi < count && !names[mi] && node.name) {
+        names[mi] = node.name;
+      }
+    }
+    const kids = Array.isArray(node.children) ? node.children : [];
+    for (const c of kids) walk(c);
+  };
+  walk(root);
+  return names;
+}
+
+// Reduce the occt assembly hierarchy to a minimal, structured-clone-safe tree
+// ({ name, meshes?, children? }) for the UI to render structure from, dropping any
+// engine-specific extras. Returns null for a missing/invalid node.
+function liteTree(node) {
+  if (!node || typeof node !== 'object') return null;
+  const out = { name: node.name || '' };
+  if (Array.isArray(node.meshes)) {
+    const idx = node.meshes.filter((m) => typeof m === 'number');
+    if (idx.length) out.meshes = idx;
+  }
+  const kids = Array.isArray(node.children) ? node.children.map(liteTree).filter(Boolean) : [];
+  if (kids.length) out.children = kids;
+  return out;
 }
 
 // --- Main-thread fallback engine -------------------------------------------
@@ -460,7 +486,7 @@ function initOcctMainThread() {
   return mainThreadOcctPromise;
 }
 
-// Parse STEP bytes on the main thread and return the SAME per-mesh typed-array
+// Parse STEP bytes on the main thread and return the SAME `{ meshes, root }`
 // shape the worker posts back, so buildGroup consumes either engine identically.
 // Bad bytes reject with kind:'parse'; engine/CDN/WASM failures surface (via
 // initOcctMainThread) with kind:'init'.
@@ -472,7 +498,7 @@ async function parseOnMainThread(arrayBuffer, reader) {
     e.kind = 'parse';
     throw e;
   }
-  return result.meshes.map(repackResultMesh);
+  return { meshes: result.meshes.map(repackResultMesh), root: result.root || null };
 }
 
 // Repack one occt result mesh into the { position, normal, index, color, name }
@@ -506,20 +532,11 @@ function disableWorker() {
   teardownWorker();
 }
 
-// A stable key for a geometry's mergeability: sorted attribute names plus whether
-// it's indexed. mergeGeometries requires every input to share the same attributes
-// and be uniformly indexed or non-indexed, so geometries with matching keys are
-// safe to merge together and mismatched ones must stay separate.
-function signatureKey(geometry) {
-  const attrs = Object.keys(geometry.attributes).sort().join(',');
-  return `${attrs}|${geometry.index ? 'i' : 'n'}`;
-}
-
-// Build the shaded Mesh for one geometry+color, stash the base color + STEP name,
-// schedule its deferred edge overlay, and add it to the group. Shared by both the
-// merged (one mesh per colour) and per-mesh fallback paths so the material,
-// userData, and edge behaviour are identical regardless of how the mesh was formed.
-function emitMesh(group, geometry, color, name, edgeStyle, onEdgesReady) {
+// Build the shaded Mesh for one geometry+color, stash the base color + STEP name
+// + stable part index, schedule its deferred edge overlay, and add it to the
+// group. One call per occt result mesh, so material, userData, and edge behaviour
+// are identical for every part.
+function emitMesh(group, geometry, color, name, partIndex, edgeStyle, onEdgesReady) {
   // Machined-metal PBR: near-full metalness with a tight satin roughness so the
   // scene's RoomEnvironment IBL yields the crisp reflections of a milled aluminum
   // part rather than flat toy blue. The blue accent identity is kept via `color`;
@@ -547,6 +564,14 @@ function emitMesh(group, geometry, color, name, edgeStyle, onEdgesReady) {
   // (the STEP product/solid label); it can be empty, so the picker falls back
   // to a child index when this is blank.
   if (name) mesh.name = name;
+
+  // Per-part identity for the "Parts" panel (issue #94): a stable index (the occt
+  // result-mesh position, so a panel row always addresses the same mesh across
+  // re-renders) and the resolved name (may be '' — the UI supplies a localized
+  // "Part N" fallback). The panel toggles this mesh's `visible`; its deferred
+  // edge-lines child is a descendant, so hiding the mesh hides the edges too.
+  mesh.userData.partIndex = partIndex;
+  mesh.userData.partName = name || '';
 
   // Faint edge lines for mechanical crispness. EdgesGeometry with a 30° crease
   // threshold keeps only real feature edges (not every triangle), so smooth

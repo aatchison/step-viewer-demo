@@ -219,6 +219,19 @@ const messages = {
     modelPartsOne: '1 part',
     modelSummary:
       '3D view of {label}: {tris} triangles, bounding box {x} by {y} by {z}. Use arrow keys to orbit.',
+
+    // --- Parts panel (assembly / multi-solid part list) ---
+    partsPanelAria: 'Assembly parts',
+    partsTitle: 'Parts',
+    partsToggleTitle: 'Collapse / expand the parts list',
+    partsCount: '{count}',
+    partsShowAll: 'Show all',
+    partsHideAll: 'Hide all',
+    partsShowAllAria: 'Show all parts',
+    partsHideAllAria: 'Hide all parts',
+    partsFallback: 'Part {n}',
+    partsRowAria: 'Toggle visibility of {name}',
+    descParts: 'Show / hide individual assembly parts',
   },
 
   // Second locale — a deliberately PARTIAL Spanish stub. Only some keys are

@@ -666,6 +666,62 @@
     #model-info .mi-sel { max-width: 100%; font-size: .7rem; font-weight: 600;
       color: #4fe0b0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #model-info .mi-sel[hidden] { display: none; }
+    /* Parts panel — a collapsible list of the assembly's solids, one row each,
+       with a per-part visibility checkbox and show/hide-all actions (issue #94).
+       Shown only for multi-part models. Parked on the right edge just below the
+       model-info HUD (top:13rem + its ~3 lines) where the canvas is clear of the
+       header, gizmo, left presets, and bottom cluster. Interactive, so
+       pointer-events are re-enabled (the HUD above is click-through). Tokens
+       mirror #model-info / the gallery pills (translucent var(--panel) fill,
+       var(--border) border, blur) so it reads as one system. max-height caps the
+       list so a many-part assembly scrolls in place instead of overrunning the
+       bottom cluster. */
+    #parts-panel { position: fixed; top: 19rem; right: 1rem; z-index: 11;
+      display: flex; flex-direction: column; align-items: stretch;
+      width: min(60vw, 220px); pointer-events: auto;
+      background: var(--hc-panel-bg, var(--panel-tr)); border: 1px solid var(--hc-border, var(--border));
+      border-radius: 8px; backdrop-filter: blur(4px); overflow: hidden; }
+    #parts-panel[hidden] { display: none; }
+    /* Header row doubles as the collapse toggle. */
+    #parts-toggle { display: flex; align-items: center; gap: .4rem; width: 100%;
+      font: inherit; font-size: .78rem; font-weight: 600; color: var(--ctrl-fg);
+      background: none; border: 0; padding: .4rem .55rem; cursor: pointer; text-align: left; }
+    #parts-toggle:hover { background: var(--panel-hover); }
+    #parts-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    #parts-toggle .pp-caret { font-size: .7rem; transition: transform .15s ease; }
+    #parts-panel.is-collapsed #parts-toggle .pp-caret { transform: rotate(-90deg); }
+    #parts-toggle .pp-title { flex: 1; }
+    #parts-toggle .pp-count { font-size: .7rem; font-weight: 500;
+      color: var(--hc-muted, var(--muted)); font-variant-numeric: tabular-nums; }
+    /* Collapsed: keep only the header bar, drop the body. */
+    #parts-panel.is-collapsed #parts-body { display: none; }
+    #parts-body { display: flex; flex-direction: column;
+      border-top: 1px solid var(--hc-border, var(--border)); }
+    .pp-actions { display: flex; gap: .4rem; padding: .4rem .55rem; }
+    .pp-actions button { flex: 1; font: inherit; font-size: .7rem; color: var(--ctrl-fg);
+      background: var(--hc-panel-bg, var(--panel-tr)); border: 1px solid var(--hc-border, var(--border));
+      border-radius: 6px; padding: .25rem .4rem; cursor: pointer; }
+    .pp-actions button:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    .pp-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #parts-list { list-style: none; margin: 0; padding: .1rem .25rem .35rem;
+      overflow-y: auto; max-height: min(38vh, 320px); }
+    #parts-list .pp-row { margin: 0; }
+    #parts-list .pp-row label { display: flex; align-items: center; gap: .45rem;
+      padding: .28rem .3rem; border-radius: 6px; cursor: pointer; font-size: .74rem;
+      color: var(--ctrl-fg); }
+    #parts-list .pp-row label:hover { background: var(--panel-hover); }
+    #parts-list .pp-row input { width: 15px; height: 15px; flex: none; cursor: pointer; }
+    #parts-list .pp-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #parts-list .pp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* A hidden part's row reads dimmed so the on/off state is legible at a glance. */
+    #parts-list .pp-row.is-hidden .pp-name { opacity: .5; text-decoration: line-through; }
+    /* Narrow screens (<600px): the bottom cluster + header eat vertical room, so
+       start the panel collapsed (the header bar alone) and tighten the open list's
+       height so an expanded panel scrolls rather than overflowing the viewport. */
+    @media (max-width: 600px) {
+      #parts-panel { top: 18rem; width: min(70vw, 200px); }
+      #parts-list { max-height: min(28vh, 220px); }
+    }
     /* Screen-reader-only utility: visually removed but present in the a11y tree.
        Used for the natural-language model summary announced via #model-info's
        polite live region (the visible name/stats are aria-hidden so the summary
@@ -944,6 +1000,9 @@
       <!-- Exploded view — a slider control (no shortcut); listed so it's discoverable
            alongside the other inspection tools. -->
       <li><span class="k" data-i18n="kDrag">Drag</span><span class="d" data-i18n="descExplode">Explode multi-part assemblies</span></li>
+      <!-- Parts panel — a click-driven visibility list (no shortcut); listed so
+           it's discoverable alongside the other inspection tools. -->
+      <li><span class="k" data-i18n="kClick">Click</span><span class="d" data-i18n="descParts">Show / hide individual assembly parts</span></li>
       <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
       <li><span class="k">1</span><span class="k">5</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
       <!-- Standard-view presets — numpad keys (NumLock-independent via e.code)
@@ -979,6 +1038,30 @@
     <span class="mi-sel" aria-hidden="true" hidden></span>
     <span class="mi-a11y sr-only"></span>
   </div>
+  <!-- Parts panel: a collapsible per-solid list for multi-body assemblies (issue
+       #94). Hidden until a model with >1 part loads; rebuilt from scratch on every
+       swap (buildPartsPanel) so a previous model's rows never leak. Each row's
+       checkbox drives its mesh's `visible` live (no reparse); Show/Hide all flip
+       every part at once. The header bar is a collapse toggle. Rows and controls
+       are native checkboxes/buttons, so keyboard nav + focus-visible come for
+       free. -->
+  <section id="parts-panel" hidden aria-label="Assembly parts" data-i18n-attr="aria-label:partsPanelAria">
+    <button id="parts-toggle" type="button" aria-expanded="true" aria-controls="parts-body"
+            title="Collapse / expand the parts list" data-i18n-attr="title:partsToggleTitle">
+      <span class="pp-caret" aria-hidden="true">▾</span>
+      <span class="pp-title" data-i18n="partsTitle">Parts</span>
+      <span class="pp-count" aria-hidden="true"></span>
+    </button>
+    <div id="parts-body">
+      <div class="pp-actions">
+        <button type="button" id="parts-show-all" aria-label="Show all parts"
+                data-i18n="partsShowAll" data-i18n-attr="aria-label:partsShowAllAria">Show all</button>
+        <button type="button" id="parts-hide-all" aria-label="Hide all parts"
+                data-i18n="partsHideAll" data-i18n-attr="aria-label:partsHideAllAria">Hide all</button>
+      </div>
+      <ul id="parts-list"></ul>
+    </div>
+  </section>
   <!-- Floating distance read-out for the point-to-point measurement tool. Shown
        once two points are placed; positioned each frame in the render loop from
        the projected segment midpoint so it tracks the model as the camera orbits.
@@ -1493,6 +1576,7 @@
       miStats.textContent = '';
       currentModelLabel = null; // no valid model on screen → no capture name
       modelInfo.hidden = true;
+      disposePartsPanel(); // no valid model → drop any stale parts list
     }
 
     // --- Model swap-in transition ---------------------------------------------
@@ -2276,6 +2360,121 @@
       applyExplode(parseFloat(explodeSlider.value) || 0);
     });
 
+    // --- Parts panel (assembly / multi-solid part list) -----------------------
+    // step.js builds one THREE.Mesh per occt solid and exposes them (index + name
+    // + mesh) on group.userData.parts. This panel lists them and drives each
+    // mesh's `visible` live so a user can hide one body to inspect another — the
+    // core assembly-inspection need (issue #94). Rebuilt from scratch on every
+    // model swap (buildPartsPanel) so a previous model's rows/mesh references
+    // never leak; shown only when the model has more than one part.
+    //
+    // model-info tris count is deliberately TOTAL-MODEL and is NOT recomputed when
+    // parts are toggled here (updateModelInfo runs only on load). The panel's own
+    // "visible/total" badge is the live per-visibility read-out, so the two
+    // read-outs stay consistent and unambiguous.
+    const partsPanel = document.getElementById('parts-panel');
+    const partsToggle = document.getElementById('parts-toggle');
+    const partsCountEl = partsPanel.querySelector('.pp-count');
+    const partsList = document.getElementById('parts-list');
+    const partsShowAll = document.getElementById('parts-show-all');
+    const partsHideAll = document.getElementById('parts-hide-all');
+    const PARTS_COLLAPSED_KEY = 'stepviewer.partscollapsed';
+    let partsCollapsed = false;
+    (function readStoredPartsCollapsed() {
+      try {
+        const v = localStorage.getItem(PARTS_COLLAPSED_KEY);
+        // Default: collapsed on a narrow (<600px) viewport so the panel never
+        // overruns the cramped layout; expanded otherwise. An explicit stored
+        // choice wins over the width default.
+        partsCollapsed = v === null ? window.matchMedia('(max-width: 600px)').matches : v === '1';
+      } catch (e) {}
+    })();
+    let partRows = []; // [{ mesh, input, row }] for the live model — cleared on swap
+
+    // Reflect the current collapse state onto the panel + toggle button.
+    function applyPartsCollapsed() {
+      partsPanel.classList.toggle('is-collapsed', partsCollapsed);
+      partsToggle.setAttribute('aria-expanded', partsCollapsed ? 'false' : 'true');
+    }
+
+    // Update the header badge to visible/total (e.g. "3 / 5") so the live count
+    // reflects toggles without touching the model-info tris semantics.
+    function refreshPartsCount() {
+      const total = partRows.length;
+      const shown = partRows.reduce((n, r) => n + (r.mesh.visible ? 1 : 0), 0);
+      partsCountEl.textContent = t('partsCount', { count: shown === total ? String(total) : `${shown} / ${total}` });
+    }
+
+    // Set one part's visibility and reflect it in its row. The deferred edge-lines
+    // overlay is a child of the mesh, so toggling mesh.visible hides/shows the
+    // edges with it — no separate handling needed.
+    function setPartVisible(entry, visible) {
+      entry.mesh.visible = visible;
+      entry.input.checked = visible;
+      entry.row.classList.toggle('is-hidden', !visible);
+    }
+
+    // Tear down the panel: drop all rows (and their mesh references, so a swapped-
+    // out model can be GC'd) and hide it. Called on reset and at the top of every
+    // rebuild.
+    function disposePartsPanel() {
+      partRows = [];
+      partsList.replaceChildren();
+      partsPanel.hidden = true;
+    }
+
+    // Rebuild the panel for the freshly loaded model. No-op-hides for a single-part
+    // model (nothing to differentiate). One row per part, checkbox reflecting the
+    // mesh's current visibility (always visible on a fresh load).
+    function buildPartsPanel(model) {
+      disposePartsPanel();
+      const parts = (model && model.userData && model.userData.parts) || [];
+      if (parts.length <= 1) return; // single body → nothing to list
+      const frag = document.createDocumentFragment();
+      parts.forEach((part) => {
+        const label = part.name || t('partsFallback', { n: part.index + 1 });
+        const li = document.createElement('li');
+        li.className = 'pp-row';
+        const lab = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = part.mesh.visible !== false;
+        input.setAttribute('aria-label', t('partsRowAria', { name: label }));
+        const name = document.createElement('span');
+        name.className = 'pp-name';
+        name.textContent = label;
+        name.title = label; // full name on hover when ellipsized
+        lab.append(input, name);
+        li.append(lab);
+        frag.append(li);
+        const entry = { mesh: part.mesh, input, row: li };
+        input.addEventListener('change', () => {
+          setPartVisible(entry, input.checked);
+          refreshPartsCount();
+          invalidate(); // render-on-demand: reflect the visibility change live
+        });
+        partRows.push(entry);
+      });
+      partsList.append(frag);
+      refreshPartsCount();
+      applyPartsCollapsed();
+      partsPanel.hidden = false;
+    }
+
+    function setAllParts(visible) {
+      for (const entry of partRows) setPartVisible(entry, visible);
+      refreshPartsCount();
+      invalidate();
+    }
+
+    partsShowAll.addEventListener('click', () => setAllParts(true));
+    partsHideAll.addEventListener('click', () => setAllParts(false));
+    partsToggle.addEventListener('click', () => {
+      partsCollapsed = !partsCollapsed;
+      applyPartsCollapsed();
+      try { localStorage.setItem(PARTS_COLLAPSED_KEY, partsCollapsed ? '1' : '0'); } catch (e) {}
+    });
+
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
     async function showStepFromArrayBuffer(buf, label, ext, onPhase, camState) {
@@ -2337,6 +2536,7 @@
       // link with only a sample key (no camera) leaves the auto-fit framing.
       if (camState) applyCameraState(camState);
       updateModelInfo(model, label); // refresh the name/tris/dims HUD for the swap
+      buildPartsPanel(model); // rebuild the per-part visibility list for the swap
       updateExportState(); // a real model is now loaded — enable the Export GLB button
       startSwapIn(model); // ease the new model in (scale + fade) instead of popping
       markFirstRender(); // first successful render clears the loader + stall watch

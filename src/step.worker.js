@@ -114,13 +114,34 @@ self.onmessage = async (ev) => {
         meshes.push({ position, normal, index, color, name: rm.name || '' });
       }
 
-      self.postMessage({ type: 'result', id, meshes }, transfer);
+      // Also hand back the assembly hierarchy so the main thread can recover
+      // per-part identity/names (issue #94). Sanitize to a minimal, structured-
+      // clone-safe tree — occt's root carries engine-specific extras we don't
+      // need, and this keeps the (non-transferred) clone small.
+      self.postMessage({ type: 'result', id, meshes, root: sanitizeRoot(result.root) }, transfer);
     } catch (err) {
       // A throw from ReadStepFile is still a bad-bytes / parse-side failure.
       self.postMessage({ type: 'parse-error', id, message: errMessage(err) });
     }
   }
 };
+
+// Reduce occt's assembly hierarchy node to a minimal { name, meshes?, children? }
+// tree of plain primitives/arrays so it survives structured clone and stays small.
+// Returns null for a missing/invalid node.
+function sanitizeRoot(node) {
+  if (!node || typeof node !== 'object') return null;
+  const out = { name: typeof node.name === 'string' ? node.name : '' };
+  if (Array.isArray(node.meshes)) {
+    const idx = node.meshes.filter((m) => typeof m === 'number');
+    if (idx.length) out.meshes = idx;
+  }
+  if (Array.isArray(node.children)) {
+    const kids = node.children.map(sanitizeRoot).filter(Boolean);
+    if (kids.length) out.children = kids;
+  }
+  return out;
+}
 
 function errMessage(err) {
   if (err instanceof Error) return err.message;
