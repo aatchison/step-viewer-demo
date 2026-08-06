@@ -145,6 +145,13 @@ const messages = {
     descMeasureClear: 'Clear measurement',
     kEsc: 'Esc',
     kClick: 'Click',
+    // Touch gestures (issue #105)
+    kDoubleTap: 'Double-tap',
+    descDoubleTap: 'Fit / reset view',
+    kTwoFinger: 'Two-finger drag',
+    descTwoFinger: 'Pan the view',
+    kPinch: 'Pinch',
+    descPinch: 'Zoom in / out',
     descSelect: 'Select a face (Esc / empty click clears)',
     descSelectFit: 'Fit to selected face',
     descFit: 'Fit / reset view',
@@ -167,6 +174,10 @@ const messages = {
     retry: 'Retry',
     dropOverlay: 'Drop a .step / .iges / .brep file to load',
 
+    // --- Mobile bottom-sheet control surface (issue #104) ---
+    sheetAria: 'Controls',
+    sheetExpandAria: 'Expand controls',
+    sheetCollapseAria: 'Collapse controls',
     // --- Gallery ---
     galleryAria: 'Sample models',
     sampleGear: 'Gear',
@@ -350,6 +361,13 @@ const messages = {
     descMeasureClear: 'Borrar medición',
     kEsc: 'Esc',
     kClick: 'Clic',
+    // Gestos táctiles (issue #105)
+    kDoubleTap: 'Doble toque',
+    descDoubleTap: 'Encuadrar / restablecer vista',
+    kTwoFinger: 'Arrastrar con dos dedos',
+    descTwoFinger: 'Desplazar la vista',
+    kPinch: 'Pellizcar',
+    descPinch: 'Acercar / alejar',
     descSelect: 'Seleccionar una cara (Esc / clic en vacío borra)',
     descSelectFit: 'Encuadrar en la cara seleccionada',
     helpAria: 'Atajos de teclado y controles',
@@ -397,6 +415,9 @@ const messages = {
     captureNothing: 'Carga un modelo primero y luego guarda la vista como imagen.',
     retry: 'Reintentar',
     dropOverlay: 'Suelta un archivo .step / .iges / .brep para cargarlo',
+    sheetAria: 'Controles',
+    sheetExpandAria: 'Mostrar controles',
+    sheetCollapseAria: 'Ocultar controles',
     galleryAria: 'Modelos de ejemplo',
     sampleGear: 'Engranaje',
     sampleBlock: 'Bloque',

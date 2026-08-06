@@ -2,12 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>STEP Viewer Demo</title>
   <!-- Inline SVG favicon: a wireframe cube glyph (echoing the header wordmark)
        in brand-blue #0b1220 stroke on a rounded #4f9dff tile. Data-URI so the
        zero-build page needs no extra asset request. -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%234f9dff'/%3E%3Cpath%20d='M16%206%20L25%2011%20L25%2021%20L16%2026%20L7%2021%20L7%2011%20Z%20M16%206%20L16%2016%20M16%2016%20L25%2011%20M16%2016%20L7%2011'%20fill='none'%20stroke='%230b1220'%20stroke-width='1.8'%20stroke-linejoin='round'%20stroke-linecap='round'/%3E%3C/svg%3E" />
+  <!-- Installable-PWA wiring. The web manifest makes the page add-to-home-screen
+       installable (name / standalone display / maskable icons); the SW below
+       (registered from the module) precaches the shell + engine for offline use.
+       All paths are relative ("./…") so scope stays under the GitHub Pages
+       subpath whether served from / or /step-viewer-demo/. theme-color matches
+       the #0e1116 shell so the standalone titlebar / iOS status bar blend in.
+       apple-touch-icon points at a real PNG because iOS Safari ignores the SVG
+       favicon for the home-screen icon. -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#0e1116" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="STEP Viewer" />
   <!-- Social / SEO meta. og:url + og:image point at the published GitHub Pages
        site and the docs screenshot so shared links render a summary card. -->
   <meta name="description" content="A zero-build, in-browser CAD file viewer for STEP, IGES, and BREP — drag in a .step/.stp/.iges/.brep file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
@@ -215,6 +230,15 @@
         radial-gradient(ellipse 125% 105% at 50% 40%, var(--bg-0) 0%, var(--bg-1) 40%, var(--bg-2) 72%, var(--bg-3) 100%) fixed;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     #app { position: fixed; inset: 0; }
+    /* Safe-area probe. env() values are readable from CSS but NOT from script (a
+       custom property set to env() returns its raw token string, not a resolved
+       px). So we bind the top inset to a real, laid-out property here and let the
+       gizmo JS read the resolved height off getBoundingClientRect(). Zero-size and
+       hidden, so it never paints or catches input; height resolves to the inset
+       (0 on desktop). */
+    #safe-probe { position: fixed; top: 0; left: 0; width: 0;
+      height: env(safe-area-inset-top, 0px); visibility: hidden;
+      pointer-events: none; }
     /* The 3D view is keyboard-focusable (tabindex=0) so it can be driven by the
        Arrow/zoom/pan keys. Show the same accent ring the header controls use on
        keyboard focus, but inset (outline-offset negative) because #app spans the
@@ -236,7 +260,14 @@
     :root.embed #view-presets,
     :root.embed #model-info { display: none !important; }
     header { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
-      display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .6rem 1rem;
+      display: flex; align-items: center; flex-wrap: wrap; gap: .75rem;
+      /* Insets keep the controls clear of the notch (top), curved corners, and — in
+         landscape — the side notches. max() means the env value only ever grows the
+         base padding; on desktop the insets are 0 so this stays .6rem 1rem. */
+      padding: max(.6rem, env(safe-area-inset-top))
+               max(1rem, env(safe-area-inset-right))
+               .6rem
+               max(1rem, env(safe-area-inset-left));
       background: linear-gradient(var(--scrim-90), var(--scrim-0)); pointer-events: none; }
     /* Let flex children shrink instead of forcing the bar wider than a phone. */
     header > * { min-width: 0; }
@@ -534,6 +565,12 @@
       color: var(--on-fg); background: var(--on-fill); border: 1px solid var(--accent);
       border-radius: 5px; padding: .12rem .35rem; }
     .help-list .d { color: var(--ctrl-fg-2); }
+    /* Touch-gesture rows (issue #105) are only meaningful on touch-capable
+       devices, so hide them by default and reveal them when any pointer is
+       coarse (covers phones, tablets, and hybrid touch laptops). display:flex
+       matches the base `.help-list li` layout when shown. */
+    .help-list .touch-only { display: none; }
+    @media (any-pointer: coarse) { .help-list .touch-only { display: flex; } }
     /* Header buttons carry both a text label and an icon glyph. The label shows on
        wide screens; the icon is swapped in on compact/narrow screens (see the
        max-width:600px block) so each collapsed control keeps a recognizable glyph
@@ -542,13 +579,24 @@
        text collapses to the icon. */
     .btn-icon { display: none; font-size: 1rem; line-height: 1; }
     canvas { display: block; }
+    /* The WebGL canvas owns every touch gesture (issue #105): touch-action:none
+       stops the browser from claiming taps/drags for its own scroll and
+       double-tap-to-zoom, so orbit / pinch / two-finger pan and the custom
+       double-tap-to-fit detector all get clean events. OrbitControls sets this
+       on renderer.domElement too; asserting it in CSS keeps it true even before
+       controls attach and independent of the library. */
+    #app canvas { touch-action: none; }
     /* Bottom cluster — gallery and hint share ONE stacked container so they can
        never overlap, no matter how far the pills wrap on narrow screens. Column
        flow (gallery above hint) with a fixed gap guarantees separation; the
        container is click-through and only the pills re-enable pointer events. */
-    #bottom-cluster { position: fixed; left: 0; right: 0; bottom: 1rem; z-index: 10;
+    #bottom-cluster { position: fixed; left: 0; right: 0;
+      /* Clear the home-indicator bar (and, in landscape, the side notches). max()
+         keeps the base 1rem on desktop where the insets are 0. */
+      bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 10;
       display: flex; flex-direction: column; align-items: center; gap: .6rem;
-      padding: 0 1rem; pointer-events: none; }
+      padding: 0 max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+      pointer-events: none; }
     /* Solid muted token instead of an opacity fade so the first-paint guidance and
        interaction hints stay readable against the dark canvas. */
     #hint { font-size: .8rem; color: var(--hc-muted, var(--muted)); max-width: min(92vw, 640px);
@@ -648,7 +696,8 @@
        to hug the same edge as the gizmo. Informational only, so pointer-events:
        none lets orbit drags pass straight through. Tokens mirror the gallery pills
        (translucent var(--panel) fill, var(--border) border, blur) so it reads as one system. */
-    #model-info { position: fixed; top: 13rem; right: 1rem; z-index: 10;
+    #model-info { position: fixed; top: calc(13rem + env(safe-area-inset-top));
+      right: max(1rem, env(safe-area-inset-right)); z-index: 10;
       display: flex; flex-direction: column; align-items: flex-end; gap: .1rem;
       max-width: min(60vw, 220px); text-align: right; pointer-events: none;
       background: var(--hc-panel-bg, var(--panel-tr)); border: 1px solid var(--hc-border, var(--border)); border-radius: 8px;
@@ -709,7 +758,8 @@
        var(--border) border, blur) so it reads as one system. max-height caps the
        list so a many-part assembly scrolls in place instead of overrunning the
        bottom cluster. */
-    #parts-panel { position: fixed; top: 19rem; right: 1rem; z-index: 11;
+    #parts-panel { position: fixed; top: calc(19rem + env(safe-area-inset-top));
+      right: max(1rem, env(safe-area-inset-right)); z-index: 11;
       display: flex; flex-direction: column; align-items: stretch;
       width: min(60vw, 220px); pointer-events: auto;
       background: var(--hc-panel-bg, var(--panel-tr)); border: 1px solid var(--hc-border, var(--border));
@@ -832,7 +882,14 @@
        keeps the now-square icon buttons comfortably tappable. Placed after the
        coarse block so these paddings win on equal specificity. */
     @media (max-width: 600px) {
-      header { gap: .5rem; padding: .5rem .75rem; }
+      header { gap: .5rem;
+        /* Keep the safe-area insets additive here — this padding shorthand would
+           otherwise clobber the base rule's insets on the exact (small) screens
+           where notches live. */
+        padding: max(.5rem, env(safe-area-inset-top))
+                 max(.75rem, env(safe-area-inset-right))
+                 .5rem
+                 max(.75rem, env(safe-area-inset-left)); }
       #wire-toggle .btn-label, #material-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
       #contrast-btn .btn-label, #blueprint-btn .btn-label, #colorpart-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
       #share-btn .btn-label, #embed-btn .btn-label,
@@ -853,6 +910,98 @@
       #view-presets .preset .btn-icon { display: inline-block; }
       #view-presets .preset { min-width: 44px; padding: .4rem; }
     }
+    /* ---- Mobile bottom-sheet control surface (issue #104) ------------------
+       On narrow viewports the header collapses every control to a cryptic
+       icon-only row at the *top* of the screen — the hardest spot to reach
+       one-handed. This bottom-sheet relocates the primary actions (Open / Fit
+       / Wireframe) and the sample gallery into a labeled, thumb-reachable
+       panel anchored to the bottom edge (respecting env(safe-area-inset-bottom)
+       from the notch work). The sheet is populated by MOVING the existing
+       button + #gallery nodes into it (see the sheet controller in the module
+       script), so their handlers and live state (wireframe on/off, active
+       sample pill) are the SAME elements — no duplicate wiring that could
+       double-fire a load. On wide / fine-pointer screens the nodes stay in the
+       header and the sheet is display:none, so the desktop layout is unchanged.
+
+       Resting state is COLLAPSED: the grab handle + the single action row peek
+       above the home indicator while the gallery body is translated below the
+       fold by its own measured height (published as --sheet-shift by the
+       controller). Tapping the handle (or a vertical drag) toggles
+       .is-expanded, which slides the body up via transform: translateY —
+       disabled under prefers-reduced-motion. Height is capped at 60vh with the
+       body scrolling internally so the sheet never covers the whole canvas, and
+       because it lives at the bottom it never overlaps the top-right gizmo /
+       #model-info HUD. */
+    #control-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 22;
+      display: none; flex-direction: column; max-height: 60vh;
+      background: var(--hc-dialog-bg, var(--dialog-bg));
+      border-top: 1px solid var(--hc-border, var(--border));
+      border-radius: 14px 14px 0 0;
+      box-shadow: 0 -8px 28px #0007; backdrop-filter: blur(8px);
+      /* Collapsed by default: translate down by the body's measured height. The
+         100% fallback keeps it hidden before the first measurement / on the off
+         chance the controller hasn't run. */
+      transform: translateY(var(--sheet-shift, 100%));
+      transition: transform .28s cubic-bezier(.32,.72,0,1); }
+    /* Controller adds .is-active on the phone breakpoint. */
+    #control-sheet.is-active { display: flex; }
+    #control-sheet.is-expanded { transform: translateY(0); }
+    /* While the finger is down the controller drives the transform inline and
+       suppresses the snap transition for 1:1 tracking. */
+    #control-sheet.is-dragging { transition: none; }
+    /* Embed mode strips the chrome — mirror #bottom-cluster / header. */
+    :root.embed #control-sheet { display: none !important; }
+    @media (prefers-reduced-motion: reduce) {
+      #control-sheet { transition: none; }
+    }
+    /* Grab handle — the tap target that toggles the sheet; a wide hit area with
+       a centered grip pill. touch-action:none lets the vertical drag gesture
+       reach pointermove without the browser hijacking it to scroll (the body
+       below keeps its default touch scrolling). */
+    #sheet-handle { flex: none; align-self: stretch; display: flex;
+      align-items: center; justify-content: center; min-height: 34px;
+      padding: .55rem 0 .35rem; margin: 0; background: none; border: 0;
+      cursor: pointer; pointer-events: auto; touch-action: none; }
+    #sheet-handle:focus-visible { outline: 2px solid var(--accent);
+      outline-offset: -3px; border-radius: 12px; }
+    #sheet-handle .sheet-grip { display: block; width: 40px; height: 5px;
+      border-radius: 999px; background: var(--hc-border, var(--border)); }
+    #sheet-handle:hover .sheet-grip { background: var(--border-hover); }
+    /* Peek row — the always-visible primary actions. Its bottom padding is the
+       safe-area inset so the buttons clear the home indicator when collapsed. */
+    #sheet-peek { flex: none; display: flex; gap: .6rem;
+      padding: 0 max(1rem, env(safe-area-inset-right))
+               max(1rem, env(safe-area-inset-bottom))
+               max(1rem, env(safe-area-inset-left)); }
+    #sheet-peek > * { flex: 1; }
+    /* Body — the expandable region (the gallery). It's the bottom-most child,
+       so translating the sheet down by its height hides exactly this while the
+       handle + peek + safe-area gap stay on screen. Scrolls internally when the
+       sheet hits its 60vh cap. */
+    #sheet-body { display: flex; flex-direction: column; gap: .5rem;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+      padding: .2rem max(1rem, env(safe-area-inset-right))
+               max(1rem, env(safe-area-inset-bottom))
+               max(1rem, env(safe-area-inset-left)); }
+    /* Restore full-size, labeled controls inside the sheet even though the
+       global max-width:600px rule collapses labels->icons in the header. */
+    #control-sheet .btn-label { display: inline !important; }
+    #control-sheet .btn-icon { display: inline-block !important;
+      font-size: 1.05rem; }
+    #control-sheet #open-btn, #control-sheet #fit-btn, #control-sheet #wire-toggle {
+      min-height: 44px; width: 100%; padding: .6rem .9rem;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: .5rem; font-size: .86rem; border-radius: 10px; }
+    /* Gallery inside the sheet: a left-aligned wrapping strip filling the width
+       (the #bottom-cluster centering / click-through rules don't apply here). */
+    #control-sheet #gallery { width: 100%; justify-content: flex-start;
+      pointer-events: auto; }
+    /* On the phone breakpoint lift the #bottom-cluster hint above the collapsed
+       peek (height published as --sheet-peek-h) so it never hides behind the
+       sheet. Falls back to a sane default before the first measurement. */
+    @media (max-width: 600px) {
+      #bottom-cluster { bottom: calc(var(--sheet-peek-h, 4.5rem) + .5rem); }
+    }
   </style>
 </head>
 <body>
@@ -861,6 +1010,10 @@
        element's focus (see the app keydown listener) so it never hijacks Tab or
        the global 1–4 / W / ? shortcuts. aria-keyshortcuts advertises the camera
        keys to assistive tech; the aria-label spells them out in prose. -->
+  <!-- Safe-area top-inset probe (see #safe-probe CSS): the gizmo JS reads its
+       laid-out height to learn env(safe-area-inset-top) in px, which env() alone
+       won't expose to script. -->
+  <div id="safe-probe" aria-hidden="true"></div>
   <div id="app" role="img" tabindex="0"
        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight Plus Minus Home"
        data-i18n-attr="aria-label:appAriaDefault"
@@ -1017,6 +1170,12 @@
     <ul class="help-list">
       <li><span class="k" data-i18n="kDrag">Drag</span><span class="d" data-i18n="descOrbitModel">Orbit the model</span></li>
       <li><span class="k" data-i18n="kScroll">Scroll</span><span class="d" data-i18n="descZoom">Zoom in / out</span></li>
+      <!-- Touch gestures (issue #105) — shown only on coarse-pointer / touch
+           devices via the .touch-only rule so they're discoverable where they
+           apply without cluttering the desktop shortcut list. -->
+      <li class="touch-only"><span class="k" data-i18n="kDoubleTap">Double-tap</span><span class="d" data-i18n="descDoubleTap">Fit / reset view</span></li>
+      <li class="touch-only"><span class="k" data-i18n="kTwoFinger">Two-finger drag</span><span class="d" data-i18n="descTwoFinger">Pan the view</span></li>
+      <li class="touch-only"><span class="k" data-i18n="kPinch">Pinch</span><span class="d" data-i18n="descPinch">Zoom in / out</span></li>
       <!-- Keyboard camera controls — active while the 3D view (Tab to it) is
            focused; the arrows orbit, +/- dolly, Shift+arrows pan, Home re-fits. -->
       <li><span class="k">←</span><span class="k">→</span><span class="k">↑</span><span class="k">↓</span><span class="d" data-i18n="descOrbitCamera">Orbit camera (view focused)</span></li>
@@ -1059,6 +1218,21 @@
          load start / success / error text set here is read out to AT users. -->
     <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp / .iges / .brep file · drag to orbit, scroll or pinch to zoom · keys: 1–5 samples, R reset, W wireframe</div>
   </div>
+  <!-- Mobile bottom-sheet control surface (issue #104). Empty in the markup —
+       the sheet controller in the module script MOVES the existing Open / Fit /
+       Wireframe buttons and the #gallery node into #sheet-peek / #sheet-body on
+       phone-width viewports (and moves them back on wider screens), so the same
+       elements + handlers + live state are reused with no duplicate wiring.
+       Hidden (display:none) until the controller adds .is-active on the phone
+       breakpoint. #sheet-body starts `inert` so the (off-screen, collapsed)
+       gallery stays out of the tab order until the sheet is expanded. -->
+  <section id="control-sheet" role="region" aria-label="Controls" data-i18n-attr="aria-label:sheetAria">
+    <button id="sheet-handle" type="button" aria-expanded="false" aria-controls="sheet-body" aria-label="Expand controls" data-i18n-attr="aria-label:sheetExpandAria">
+      <span class="sheet-grip" aria-hidden="true"></span>
+    </button>
+    <div id="sheet-peek"></div>
+    <div id="sheet-body" inert></div>
+  </section>
   <!-- Loader is `active` in static markup so it paints immediately on first load,
        before the ES module (and the multi-MB three.js + occt/WASM download) run.
        The module clears it once the first model actually renders. -->
@@ -1270,6 +1444,14 @@
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    // Make the touch gesture map explicit rather than relying on OrbitControls'
+    // defaults (issue #105): one finger orbits, two fingers dolly + pan together
+    // (DOLLY_PAN) so pinch-zoom and two-finger drag both work from the same
+    // gesture. Documented in the help dialog's touch-gesture rows. OrbitControls
+    // also sets touch-action:none on renderer.domElement so these gestures are
+    // captured cleanly instead of triggering the browser's scroll / double-tap
+    // zoom (the canvas CSS asserts the same, belt-and-braces).
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
     // Image-based lighting: a prefiltered RoomEnvironment gives every surface a
     // soft studio reflection so curvature reads instead of a flat monochrome
@@ -1333,9 +1515,18 @@
     // edge (must exceed the header height, ~60px on a compact touch header).
     const GIZMO_DIM = 128;
     const GIZMO_TOP = 68;
+    // On a notched phone the header grows downward by env(safe-area-inset-top), so
+    // the gizmo's inset must grow with it or the two collide. env() can't be read
+    // from JS, so we read the laid-out height of the #safe-probe element (its CSS
+    // height is bound to that inset). Recomputed on each call so an orientation
+    // change (portrait↔landscape flips which edge carries the inset) is picked up
+    // live. Resolves to 0 on desktop, so gizmoTop() == GIZMO_TOP there.
+    const safeProbe = document.getElementById('safe-probe');
+    const safeTop = () => (safeProbe ? safeProbe.getBoundingClientRect().height : 0);
+    const gizmoTop = () => GIZMO_TOP + safeTop();
     // The framebuffer uses a bottom-left origin, so a box whose top edge sits
-    // GIZMO_TOP px below the canvas top has its lower edge at this y.
-    const gizmoViewportY = () => innerHeight - GIZMO_DIM - GIZMO_TOP;
+    // gizmoTop() px below the canvas top has its lower edge at this y.
+    const gizmoViewportY = () => innerHeight - GIZMO_DIM - gizmoTop();
     // ViewHelper.render issues exactly one setViewport(x, 0, dim, dim) for the
     // gizmo pass (then restores the full viewport). Intercept that single call
     // and raise its y; everything else (the full-frame restore, width != dim)
@@ -1421,18 +1612,72 @@
     scene.add(placeholder);
 
     const hint = document.getElementById('hint');
-    // Touch devices orbit/zoom with gestures, not a scroll wheel — word the
-    // interaction hint to match the pointer modality.
-    const coarsePointer = matchMedia('(pointer: coarse)').matches;
-    const zoomHint = coarsePointer ? t('zoomPinch') : t('zoomScroll');
-    // First-paint discoverability guidance, worded for the current pointer
-    // modality. Shown from load (the static markup carries a generic version) and
-    // kept on screen until the first model actually renders.
-    const dropHint = coarsePointer ? t('hintTapModel') : t('hintPickModel');
-    // On touch devices there's no keyboard, so only surface the key shortcuts on
-    // fine-pointer (mouse/keyboard) devices; touch users get the gesture hint only.
-    const keyHint = coarsePointer ? '' : t('keyHint');
+    // Interaction-hint modality (issue #106). Touch devices orbit/zoom with
+    // gestures, not a scroll wheel, and have no keyboard — so the wording differs
+    // ('pinch to zoom' + no key hints vs 'scroll to zoom' + key hints). The
+    // `(pointer: coarse)` media query only reports the device's *primary* pointer,
+    // which lies on hybrids (touch laptop, tablet + trackpad, phone + paired
+    // mouse). So we render the media-query guess immediately (no blank flash), then
+    // correct it in place from the first real interaction that contradicts it.
+    let coarsePointer = matchMedia('(pointer: coarse)').matches;
+    let modalitySettled = false; // true once a real interaction has confirmed/corrected the guess
+    // Modality-worded fragments, recomputed by computeModalityStrings() whenever
+    // coarsePointer flips. `zoomHint` is also read by the loaded-model hint below.
+    let zoomHint, dropHint, keyHint;
+    function computeModalityStrings() {
+      // drag to orbit · pinch|scroll to zoom
+      zoomHint = coarsePointer ? t('zoomPinch') : t('zoomScroll');
+      // First-paint discoverability guidance, worded for the current modality.
+      dropHint = coarsePointer ? t('hintTapModel') : t('hintPickModel');
+      // Key shortcuts only make sense with a keyboard — hidden for pure-touch.
+      keyHint = coarsePointer ? '' : t('keyHint');
+    }
+    computeModalityStrings();
     hint.textContent = `${dropHint} · ${zoomHint}${keyHint}`;
+    // Re-word the standing hint when the observed modality contradicts the guess.
+    // We only rewrite when the current #hint text is exactly the standing hint we
+    // last composed (intro, loaded-model, or reduced-data). If a transient message
+    // (measure result, section toggle, selection, error…) is showing, none match,
+    // so we leave it untouched rather than clobbering it. The #app aria-label is
+    // deliberately kept modality-neutral (it names *both* "scroll or pinch"), so it
+    // never contradicts the visible hint and needs no update here.
+    function setModality(coarse) {
+      // Idempotent: once settled to this modality, do nothing — this makes the
+      // input listeners cheap no-ops after the modality is decided, and prevents
+      // repeated events (every wheel tick / touch) from thrashing the text.
+      if (modalitySettled && coarse === coarsePointer) return;
+      // Snapshot the standing strings under the *old* modality so we can tell
+      // which (if any) is currently on screen before we overwrite the fragments.
+      const oldIntro = `${dropHint} · ${zoomHint}${keyHint}`;
+      const oldLoaded = currentModelLabel != null
+        ? t('loadedHint', { label: currentModelLabel, zoom: zoomHint }) : null;
+      const oldReduced = coarsePointer ? t('reducedDataCoarse') : t('reducedDataFine');
+      coarsePointer = coarse;
+      modalitySettled = true;
+      computeModalityStrings();
+      const cur = hint.textContent;
+      if (cur === oldIntro) {
+        hint.textContent = `${dropHint} · ${zoomHint}${keyHint}`;
+      } else if (oldLoaded != null && cur === oldLoaded) {
+        hint.textContent = t('loadedHint', { label: currentModelLabel, zoom: zoomHint });
+      } else if (cur === oldReduced) {
+        hint.textContent = coarsePointer ? t('reducedDataCoarse') : t('reducedDataFine');
+      }
+    }
+    // Passive, capture-phase listeners that classify the first (and any later)
+    // real interaction. touch → coarse; wheel / mouse-or-pen pointerdown /
+    // keydown → fine. They stay attached but no-op via setModality's guard once
+    // the modality is settled, and may re-settle if the user switches input type.
+    const onTouchInput = () => setModality(true);
+    const onPointerInput = (e) => {
+      if (e.pointerType === 'touch') setModality(true);
+      else setModality(false); // mouse / pen → fine pointer
+    };
+    const onFineInput = () => setModality(false); // wheel / keyboard
+    window.addEventListener('pointerdown', onPointerInput, { passive: true, capture: true });
+    window.addEventListener('touchstart', onTouchInput, { passive: true, capture: true });
+    window.addEventListener('wheel', onFineInput, { passive: true, capture: true });
+    window.addEventListener('keydown', onFineInput, { passive: true, capture: true });
     const spinner = document.getElementById('spinner');
     const toast = document.getElementById('toast');
     let spin = placeholder; // object the render loop rotates (null once static model loads)
@@ -2168,7 +2413,8 @@
       // Don't measure through the top-right gizmo box — its own handler owns it.
       const el = renderer.domElement;
       const inGizmoX = e.clientX >= el.clientWidth - GIZMO_DIM;
-      const inGizmoY = e.clientY >= GIZMO_TOP && e.clientY <= GIZMO_TOP + GIZMO_DIM;
+      const gTop = gizmoTop();
+      const inGizmoY = e.clientY >= gTop && e.clientY <= gTop + GIZMO_DIM;
       if (inGizmoX && inGizmoY) return;
       const rect = el.getBoundingClientRect();
       measureAt(
@@ -2301,7 +2547,8 @@
       // Don't pick through the top-right gizmo box — its own handler owns it.
       const el = renderer.domElement;
       const inGizmoX = e.clientX >= el.clientWidth - GIZMO_DIM;
-      const inGizmoY = e.clientY >= GIZMO_TOP && e.clientY <= GIZMO_TOP + GIZMO_DIM;
+      const gTop = gizmoTop();
+      const inGizmoY = e.clientY >= gTop && e.clientY <= gTop + GIZMO_DIM;
       if (inGizmoX && inGizmoY) return;
       const rect = el.getBoundingClientRect();
       pickAt(
@@ -3914,8 +4161,53 @@
     // --- Reset / fit view (button, `F` key, double-click canvas) ---
     document.getElementById('fit-btn').addEventListener('click', fitView);
     // Double-click re-fits — but not while measuring, where two quick clicks are a
-    // pair of measurement picks, not a fit gesture.
-    renderer.domElement.addEventListener('dblclick', () => { if (!measureMode) fitView(); });
+    // pair of measurement picks, not a fit gesture. On hybrid touch+mouse devices
+    // a touch double-tap can still emit a synthetic dblclick; suppressDblclickUntil
+    // (set by the touch handler below) swallows it so the fit never double-fires.
+    renderer.domElement.addEventListener('dblclick', () => {
+      if (measureMode) return;
+      if (performance.now() < suppressDblclickUntil) return;
+      fitView();
+    });
+
+    // --- Touch double-tap to fit (issue #105) --------------------------------
+    // dblclick is unreliable on touchscreens — many mobile browsers suppress or
+    // debounce the synthetic event and it collides with the browser's own
+    // double-tap-to-zoom — so touch gets its own detector off touchend timing.
+    // Two clean single-finger taps within DBLTAP_MS and DBLTAP_PX of each other
+    // call fitView(). Any multi-touch lift (pinch / two-finger pan) is ignored
+    // and resets the pending tap, so a fit can never fire mid-gesture. The canvas
+    // carries touch-action:none (CSS + OrbitControls), so the browser's native
+    // double-tap-zoom is already suppressed; preventDefault() on the second tap is
+    // a belt-and-braces guard for stragglers.
+    const DBLTAP_MS = 300;   // max gap between the two taps
+    const DBLTAP_PX = 30;    // max movement between taps (single finger)
+    let lastTapTime = 0;
+    let lastTapX = 0, lastTapY = 0;
+    let suppressDblclickUntil = 0;  // ignore synthetic dblclick until this time
+    renderer.domElement.addEventListener('touchend', (e) => {
+      // Only a clean single-finger lift with no fingers still down is a tap:
+      // anything else is (the tail of) a pinch / two-finger gesture — drop it and
+      // cancel any pending first tap so the pair can't span a gesture.
+      if (e.touches.length > 0 || e.changedTouches.length !== 1 || measureMode) {
+        lastTapTime = 0;
+        return;
+      }
+      const touch = e.changedTouches[0];
+      const now = performance.now();
+      const dt = now - lastTapTime;
+      const moved = Math.hypot(touch.clientX - lastTapX, touch.clientY - lastTapY);
+      if (lastTapTime && dt < DBLTAP_MS && moved < DBLTAP_PX) {
+        e.preventDefault();                 // stop any native double-tap-to-zoom
+        suppressDblclickUntil = now + 700;  // swallow the trailing synthetic dblclick
+        lastTapTime = 0;                    // consume the pair; a 3rd tap starts fresh
+        fitView();
+      } else {
+        lastTapTime = now;
+        lastTapX = touch.clientX;
+        lastTapY = touch.clientY;
+      }
+    }, { passive: false });
 
     // --- Keyboard-driven camera navigation -----------------------------------
     // OrbitControls only listens to pointer/wheel events, so a keyboard-only user
@@ -4030,11 +4322,12 @@
     renderer.domElement.addEventListener('pointerup', (e) => {
       const el = renderer.domElement;
       const inX = e.clientX >= el.clientWidth - GIZMO_DIM;
-      const inY = e.clientY >= GIZMO_TOP && e.clientY <= GIZMO_TOP + GIZMO_DIM;
+      const gTop = gizmoTop();
+      const inY = e.clientY >= gTop && e.clientY <= gTop + GIZMO_DIM;
       if (!inX || !inY) return;
       viewHelper.handleClick({
         clientX: e.clientX,
-        clientY: e.clientY + (innerHeight - GIZMO_DIM - GIZMO_TOP),
+        clientY: e.clientY + (innerHeight - GIZMO_DIM - gTop),
       });
       // Render-on-demand: arm the loop so the gizmo's snap animation
       // (viewHelper.animating) plays; renderFrame self-sustains it until it lands.
@@ -4266,6 +4559,146 @@
     // placeholder is parked (spin still points at it), so the idle spin comes back
     // to life; turning it ON simply lets the loop park on its next quiet frame.
     reduceMotion.addEventListener('change', invalidate);
+
+    // --- Mobile bottom-sheet control surface (issue #104) -------------------
+    // Relocates the primary actions (Open / Fit / Wireframe) and the sample
+    // #gallery into a bottom-anchored sheet on phone-width viewports, then moves
+    // them back to the header on wider screens. Nodes are MOVED, never cloned,
+    // so their existing handlers and live state (wireframe on/off, active sample
+    // pill) are preserved with zero duplicate wiring — a load can't double-fire.
+    // Collapsed/expanded is a class toggle driving a translateY; the collapse
+    // distance is the body's measured height, republished on resize and whenever
+    // the gallery/body reflows (async sample population, orientation change).
+    (function initControlSheet() {
+      const sheet = document.getElementById('control-sheet');
+      const handle = document.getElementById('sheet-handle');
+      const peek = document.getElementById('sheet-peek');
+      const body = document.getElementById('sheet-body');
+      if (!sheet || !handle || !peek || !body) return;
+
+      const openBtn = document.getElementById('open-btn');
+      const fitBtn = document.getElementById('fit-btn');
+      const wireEl = document.getElementById('wire-toggle');
+      const galleryEl = document.getElementById('gallery');
+      if (!openBtn || !fitBtn || !wireEl || !galleryEl) return;
+
+      // Record each relocatable node's original slot so it can be restored to
+      // the exact header / bottom-cluster position when leaving phone width.
+      const record = (el) => ({ parent: el.parentNode, next: el.nextElementSibling });
+      const homes = [
+        [openBtn, record(openBtn)],
+        [fitBtn, record(fitBtn)],
+        [wireEl, record(wireEl)],
+        [galleryEl, record(galleryEl)],
+      ];
+
+      let mounted = false;
+      let expanded = false;
+
+      function mount() {
+        if (mounted) return;
+        // Peek row order: Open → Fit → Wireframe (primary → secondary).
+        peek.append(openBtn, fitBtn, wireEl);
+        body.append(galleryEl);
+        sheet.classList.add('is-active');
+        mounted = true;
+        setExpanded(false); // start collapsed (peek only)
+        measure();
+      }
+      function unmount() {
+        if (!mounted) return;
+        for (const [el, h] of homes) {
+          if (h.next && h.next.parentNode === h.parent) h.parent.insertBefore(el, h.next);
+          else h.parent.appendChild(el);
+        }
+        sheet.classList.remove('is-active', 'is-expanded', 'is-dragging');
+        sheet.style.transform = '';
+        body.setAttribute('inert', '');
+        mounted = false;
+        expanded = false;
+      }
+
+      // Collapse distance = the body's laid-out height (it's the bottom-most
+      // child, so translating the sheet down by this hides the gallery exactly
+      // while the handle + peek + safe-area gap stay on screen).
+      function measure() {
+        if (!mounted) return;
+        sheet.style.setProperty('--sheet-shift', body.offsetHeight + 'px');
+        // Publish the collapsed peek height so #bottom-cluster (the hint) sits
+        // just above it rather than hiding behind the sheet.
+        document.documentElement.style.setProperty(
+          '--sheet-peek-h', (handle.offsetHeight + peek.offsetHeight) + 'px');
+      }
+
+      function setExpanded(next) {
+        expanded = next;
+        sheet.classList.toggle('is-expanded', next);
+        handle.setAttribute('aria-expanded', String(next));
+        handle.setAttribute('aria-label', next ? t('sheetCollapseAria') : t('sheetExpandAria'));
+        // Keep the off-screen gallery out of the tab order when collapsed.
+        if (next) body.removeAttribute('inert'); else body.setAttribute('inert', '');
+      }
+
+      // A drag already snapped in endDrag, so its trailing click must not toggle
+      // again — consume it and reset, which keeps later keyboard (Enter/Space)
+      // activations working since they arrive with dragMoved already cleared.
+      handle.addEventListener('click', () => {
+        if (dragMoved) { dragMoved = false; return; }
+        setExpanded(!expanded);
+      });
+
+      // Optional vertical drag: track the finger, move the sheet 1:1, then snap
+      // to the nearer state on release. Plain pointer events; no library. A drag
+      // sets dragMoved so the trailing click doesn't also toggle.
+      let dragging = false, dragStartY = 0, dragDy = 0, dragMoved = false, dragShift = 0;
+      const DRAG_SNAP = 40;
+      handle.addEventListener('pointerdown', (e) => {
+        if (!mounted) return;
+        dragging = true; dragMoved = false; dragStartY = e.clientY; dragDy = 0;
+        dragShift = parseFloat(getComputedStyle(sheet).getPropertyValue('--sheet-shift')) || body.offsetHeight;
+        sheet.classList.add('is-dragging');
+        if (handle.setPointerCapture) { try { handle.setPointerCapture(e.pointerId); } catch (_) {} }
+      });
+      handle.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        dragDy = e.clientY - dragStartY;
+        if (Math.abs(dragDy) > 4) dragMoved = true;
+        // Base offset is 0 when expanded, dragShift when collapsed; clamp to the
+        // travel range so the sheet can't overshoot either stop.
+        let y = (expanded ? 0 : dragShift) + dragDy;
+        y = Math.max(0, Math.min(dragShift, y));
+        sheet.style.transform = 'translateY(' + y + 'px)';
+      });
+      function endDrag() {
+        if (!dragging) return;
+        dragging = false;
+        sheet.classList.remove('is-dragging');
+        sheet.style.transform = ''; // hand the transform back to the CSS class
+        if (dragMoved) {
+          if (dragDy < -DRAG_SNAP) setExpanded(true);        // dragged up
+          else if (dragDy > DRAG_SNAP) setExpanded(false);   // dragged down
+          else setExpanded(expanded);                        // too small — stay
+        }
+      }
+      handle.addEventListener('pointerup', endDrag);
+      handle.addEventListener('pointercancel', endDrag);
+
+      // Same 600px cut as the header's label→icon collapse, so the sheet appears
+      // exactly when the header would otherwise go cryptic-icon-only.
+      const phone = matchMedia('(max-width: 600px)');
+      function sync() {
+        if (document.documentElement.classList.contains('embed')) { unmount(); return; }
+        if (phone.matches) mount(); else unmount();
+      }
+      phone.addEventListener('change', sync);
+      window.addEventListener('resize', () => { if (mounted) measure(); });
+      // Keep the collapse distance correct as the gallery populates async or the
+      // body reflows (orientation change, font load).
+      if (window.ResizeObserver) {
+        new ResizeObserver(() => { if (mounted) measure(); }).observe(body);
+      }
+      sync();
+    })();
   </script>
 </body>
 </html>

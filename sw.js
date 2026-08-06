@@ -4,13 +4,19 @@
 // occt-import-js.js and its sibling .wasm) and the samples come from the origin,
 // so a page reload while offline — or during a transient jsdelivr blip — dies on
 // a blank engine-error panel. This service worker precaches the exact pinned URLs
-// the app hardcodes and serves them cache-first, so a warm reload works fully
-// offline and a CDN hiccup is answered from cache. Zero-build and fully
-// GitHub-Pages compatible: HTTPS + a same-origin SW, no backend.
+// the app hardcodes — plus the PWA install assets (web manifest + maskable icons)
+// — and serves them cache-first, so a warm reload works fully offline, a CDN
+// hiccup is answered from cache, and an add-to-home-screen install resolves its
+// shell and icon with no network. Zero-build and fully GitHub-Pages compatible:
+// HTTPS + a same-origin, relative-scope SW, no backend.
 //
-// Bump CACHE_NAME whenever a pinned version below changes so the activate handler
-// evicts the stale cache (otherwise a version bump would keep serving old WASM).
-const CACHE_NAME = 'step-viewer-cache-v1';
+// Bump CACHE_VERSION whenever a pinned version below (or the shell / icon set)
+// changes so the activate handler evicts every stale cache whose name doesn't
+// match the current CACHE_NAME (otherwise a version bump would keep serving old
+// WASM / an old app shell). CACHE_NAME is derived from it so there is a single
+// knob to turn. Bumped to v2 with the PWA manifest + maskable icons (#102).
+const CACHE_VERSION = 'v2';
+const CACHE_NAME = `step-viewer-cache-${CACHE_VERSION}`;
 
 // Keep these pins in lockstep with the importmap in index.html and OCCT_VERSION
 // in src/step.js. Pinning by the exact versioned URL keeps the cache key stable
@@ -37,6 +43,11 @@ const PRECACHE_URLS = [
   './src/step.js',
   './src/step.worker.js',
   './src/i18n.js',
+  // PWA install assets — the manifest + both maskable icons, so an installed
+  // (add-to-home-screen) instance and its icon resolve fully offline too.
+  './manifest.webmanifest',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
   // Bundled gallery models.
   './samples/sample.step',
   './samples/block.step',
@@ -60,17 +71,22 @@ const PRECACHE_URLS = [
 // fetch handler consults this to decide cache-first vs. straight passthrough.
 const PRECACHE_SET = new Set(PRECACHE_URLS.map((u) => new URL(u, self.location).href));
 
-// Install: open the versioned cache and precache every pinned URL. Each put is
-// added individually and its failure swallowed, so one flaky cross-origin fetch
-// (jsdelivr blip mid-install) can't reject the whole install — the app still runs
-// online and the missing entry is filled on first cache-first miss (see fetch).
+// Install: open the versioned cache and precache every pinned URL. Each entry is
+// fetched with `cache: 'reload'` so the SW's own precache bypasses the HTTP disk
+// cache and stores a fresh copy (never a possibly-stale browser-cached one); the
+// pinned CDN URLs are versioned and jsdelivr sends permissive CORS headers, so
+// these cross-origin responses are non-opaque (200/ok) and fully cacheable. Each
+// add is awaited individually and its failure swallowed, so one flaky cross-
+// origin fetch (a jsdelivr blip mid-install) can't reject the whole install — the
+// app still runs online and the missing entry is filled on the first cache-first
+// miss (see fetch).
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
       await Promise.all(
         PRECACHE_URLS.map((url) =>
-          cache.add(url).catch((err) => {
+          cache.add(new Request(url, { cache: 'reload' })).catch((err) => {
             // Non-fatal: log and continue so install always resolves.
             console.warn('[sw] precache skipped:', url, err);
           })
@@ -82,9 +98,9 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate: drop any cache whose name isn't the current CACHE_NAME so a pinned-
-// version bump (new CACHE_NAME) evicts the stale WASM/module set, then claim open
-// clients so the new worker controls this page immediately.
+// Activate: drop any cache whose name isn't the current CACHE_NAME (derived from
+// CACHE_VERSION) so a version bump evicts the stale WASM / module / icon set, then
+// claim open clients so the new worker controls this page immediately.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
