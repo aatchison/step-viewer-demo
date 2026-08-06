@@ -44,6 +44,85 @@ export function readerForExtension(nameOrExt) {
   return READER_BY_EXT[ext] || null;
 }
 
+// Cap for the text scan in detectStepLengthUnit: STEP is plain ISO-10303-21 text
+// and the unit context is small, but a dense assembly's DATA section can be many
+// MB of geometry we never need to look at. Decode at most this many bytes — the
+// whole file when it's under the cap, otherwise a head+tail window (the unit
+// context lives near the top with the other definitions, but the
+// GEOMETRIC_REPRESENTATION_CONTEXT that references it can trail at the end), so
+// the scan stays bounded and cheap regardless of file size.
+const UNIT_SCAN_CAP = 4 * 1024 * 1024;
+
+// Decode a STEP ArrayBuffer as text and extract its declared length unit, mapping
+// to a short display symbol ('mm', 'm', 'cm', 'in', 'ft', 'mil') or null when it
+// can't be determined. Pure, bounded, and NEVER throws — any decode/parse failure
+// degrades to null so a detection miss can never block a render.
+//
+// STEP declares length as either an SI_UNIT — `SI_UNIT(.MILLI.,.METRE.)`,
+// `SI_UNIT($,.METRE.)` (no prefix ⇒ metre), `SI_UNIT(.CENTI.,.METRE.)` — or a
+// CONVERSION_BASED_UNIT naming a customary unit (`CONVERSION_BASED_UNIT('INCH',…)`).
+// A customary file still declares metre as the SI base the conversion is defined
+// against, so CONVERSION_BASED_UNIT names are checked FIRST — otherwise an inch
+// part would be mislabelled 'm'. Non-length conversion units (DEGREE for angle,
+// etc.) simply don't match the length-name map and are ignored.
+export function detectStepLengthUnit(buffer) {
+  try {
+    let bytes;
+    if (buffer instanceof ArrayBuffer) {
+      bytes = new Uint8Array(buffer);
+    } else if (ArrayBuffer.isView(buffer)) {
+      bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    } else {
+      return null;
+    }
+
+    // Bound the decode: whole file when small, else a head+tail window.
+    let text;
+    const dec = new TextDecoder('utf-8', { fatal: false });
+    if (bytes.length <= UNIT_SCAN_CAP) {
+      text = dec.decode(bytes);
+    } else {
+      const half = UNIT_SCAN_CAP >> 1;
+      const head = dec.decode(bytes.subarray(0, half));
+      const tail = dec.decode(bytes.subarray(bytes.length - half));
+      text = head + '\n' + tail;
+    }
+
+    // Customary (CONVERSION_BASED_UNIT) first — a customary STEP file also carries
+    // an SI metre base unit, so SI matching alone would report metre for an inch
+    // part. Scan every conversion-based unit's name and take the first that maps
+    // to a length symbol; angle/other conversion units fall through unmatched.
+    const CONV = {
+      INCH: 'in', INCHES: 'in',
+      FOOT: 'ft', FEET: 'ft',
+      MIL: 'mil', THOU: 'mil',
+    };
+    const convRe = /CONVERSION_BASED_UNIT\s*\(\s*'([^']*)'/gi;
+    let m;
+    while ((m = convRe.exec(text)) !== null) {
+      const sym = CONV[m[1].trim().toUpperCase()];
+      if (sym) return sym;
+    }
+
+    // SI length unit: the prefix slot is either $ (no prefix ⇒ metre) or a
+    // .PREFIX. token; the unit token must be .METRE. (mass is .GRAM., plane angle
+    // .RADIAN., etc. — matching METRE specifically isolates the length unit).
+    const si = /SI_UNIT\s*\(\s*(\$|\.[A-Z]+\.)\s*,\s*\.METRE\.\s*\)/i.exec(text);
+    if (si) {
+      const prefix = si[1].toUpperCase();
+      if (prefix === '$') return 'm';
+      if (prefix === '.MILLI.') return 'mm';
+      if (prefix === '.CENTI.') return 'cm';
+      if (prefix === '.METRE.') return 'm'; // defensive; not a real prefix
+      return null; // an unsupported SI prefix (MICRO/KILO/…) — don't fabricate
+    }
+
+    return null;
+  } catch (e) {
+    return null; // never let a detection failure block the render
+  }
+}
+
 // Run a low-priority task off the first-paint critical path. Prefer
 // requestIdleCallback so edge-line generation waits for an idle slot after the
 // mesh is on screen; fall back to a macrotask where it isn't available.
@@ -282,7 +361,20 @@ export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { co
   // yield the same `{ meshes, root }` shape.
   const { meshes, root } = await getMeshes(arrayBuffer, reader, onPhase);
 
-  return buildGroup(meshes, root, edgeStyle, onEdgesReady);
+  const group = buildGroup(meshes, root, edgeStyle, onEdgesReady);
+
+  // Native length unit (issue #95): STEP declares its length unit as plain
+  // ISO-10303-21 text, so decode + detect it here and stash the short symbol on
+  // the group. Guarded by the reader so it runs ONLY for STEP — IGES/BREP carry
+  // no reliable text length-unit field, so they report no unit rather than a
+  // wrong one. Detection is bounded and never throws; a miss leaves `unit` unset,
+  // which the UI reads as "unknown" and shows the current unitless dimensions.
+  if (reader === 'ReadStepFile') {
+    const unit = detectStepLengthUnit(arrayBuffer);
+    if (unit) group.userData.unit = unit;
+  }
+
+  return group;
 }
 
 // Back-compat thin wrapper: the original STEP-only entry point, preserved so any

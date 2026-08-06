@@ -1540,9 +1540,17 @@
       const tris = countTriangles(group);
       miName.textContent = label;
       miName.title = label; // full name on hover when the label is ellipsized
+      // Native length unit (issue #95): the loader stashes a short symbol on
+      // group.userData.unit when it could detect the STEP length unit (mm/m/in/…).
+      // Append it to the dimension line as " mm"; when unknown the suffix is '' so
+      // the display stays exactly the current bare numbers (no fabricated unit).
+      // Threaded via userData so every entry into this function — the load/swap
+      // path AND the color-by-part re-render — shows the unit identically.
+      const unitSym = group.userData && group.userData.unit ? group.userData.unit : '';
+      const unitSuffix = unitSym ? ' ' + unitSym : '';
       let stats = t('modelStats', {
         tris: tris.toLocaleString(),
-        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z),
+        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z), unit: unitSuffix,
       });
       // While color-by-part is active, note how many solids the assembly has
       // (group child count) so the mode's per-part coloring has a read-out.
@@ -1560,7 +1568,7 @@
       // per load. The visible .mi-name/.mi-stats are aria-hidden, so no duplicate.
       const summary = t('modelSummary', {
         label, tris: tris.toLocaleString(),
-        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z),
+        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z), unit: unitSuffix,
       });
       app.setAttribute('aria-label', summary);
       miA11y.textContent = summary;

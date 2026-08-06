@@ -214,11 +214,11 @@ const messages = {
     errGeneric: 'Could not load {label} — the file may be invalid or unsupported.',
 
     // --- Model-info HUD ---
-    modelStats: '{tris} tris · {x} × {y} × {z}',
+    modelStats: '{tris} tris · {x} × {y} × {z}{unit}',
     modelParts: '{parts} parts',
     modelPartsOne: '1 part',
     modelSummary:
-      '3D view of {label}: {tris} triangles, bounding box {x} by {y} by {z}. Use arrow keys to orbit.',
+      '3D view of {label}: {tris} triangles, bounding box {x} by {y} by {z}{unit}. Use arrow keys to orbit.',
 
     // --- Parts panel (assembly / multi-solid part list) ---
     partsPanelAria: 'Assembly parts',
