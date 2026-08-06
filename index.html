@@ -1621,6 +1621,10 @@
     // Compact dimension formatting: whole numbers past 100, one decimal past 10,
     // two below — keeps a tiny 0.80 gear and a 250 block both legible.
     function fmtDim(n) {
+      // Never render 'NaN'/'Infinity' in the HUD or measurement read-outs: a
+      // non-finite dimension (degenerate/corrupt geometry, issue #98) collapses
+      // to a neutral em-dash placeholder instead of leaking the raw token.
+      if (!Number.isFinite(n)) return '—';
       const a = Math.abs(n);
       if (a >= 100) return Math.round(n).toString();
       if (a >= 10) return n.toFixed(1);
@@ -1779,6 +1783,7 @@
       if (kind === 'http') return t('errHttp', { label, message: err.message });
       if (kind === 'parse') return t('errParse', { label });
       if (kind === 'empty') return t('errEmpty', { label });
+      if (kind === 'degenerate') return t('errDegenerate', { label });
       return t('errGeneric', { label });
     }
 
@@ -1842,6 +1847,18 @@
     // dimension is tighter (the horizontal one when aspect < 1). The 1.18 is
     // headroom padding. Extracted so the named-view presets (applyView) frame at
     // exactly the same distance as a Fit — only the direction differs.
+    // Finiteness guards for degenerate geometry (issue #98). A partial/malformed
+    // parse can report success yet carry NaN/±Infinity vertex positions; the
+    // resulting Box3 is NOT empty, so isEmpty() misses it. isFiniteVec checks a
+    // Vector3's three components; isFiniteBox checks a Box3's min/max corners
+    // (its own getSize/getCenter are then guaranteed finite too).
+    function isFiniteVec(v) {
+      return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+    }
+    function isFiniteBox(box) {
+      return !box.isEmpty() && isFiniteVec(box.min) && isFiniteVec(box.max);
+    }
+
     function fitDistanceForRadius(radius) {
       const fovV = camera.fov * Math.PI / 180;
       const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
@@ -1855,6 +1872,14 @@
       if (box.isEmpty()) return;
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
+      // Non-finite guard (issue #98): a subtly-malformed parse can yield NaN/±Inf
+      // vertex positions, giving a box that is NOT empty but whose size/center are
+      // non-finite. Framing on it would set camera.position/near/far to NaN and
+      // render the scene black with no recovery. Bail on the same contract as the
+      // empty-box early return — leave the camera/controls/object untouched. The
+      // swap path (showStepFromArrayBuffer) also pre-checks and aborts before this,
+      // so this is a defensive second line for any other frameObject caller.
+      if (!isFiniteVec(size) || !isFiniteVec(center)) return;
       obj.position.sub(center); // recenter at origin
 
       // Drop the ground grid to the (now recentered) model's base and size it to
@@ -2614,6 +2639,22 @@
       // `ext` selects the occt reader (STEP / IGES / BREP) inside the loader; the
       // rest of the swap path is format-agnostic (all three yield the same meshes).
       const model = await loadCadFromArrayBuffer(buf, ext, onPhase, currentEdgeStyle(), invalidate);
+      // Non-finite bounding-box guard (issue #98): a partial/subtly-malformed file
+      // can parse to success yet carry NaN/±Infinity vertex positions. The empty-
+      // geometry guard (#97) in the loader only catches a zero-vertex mesh list —
+      // a box built from NaN coordinates is NOT empty, so it slips through. If we
+      // let it reach frameObject it would set camera.position/near/far to NaN and
+      // black out the scene with no recovery. Check the parsed group's Box3 HERE,
+      // before any teardown: if it's non-finite, throw kind:'degenerate' so the
+      // catch surfaces a toast and the previous model/placeholder + active pill are
+      // all preserved (nothing below runs — no dispose, no camera move).
+      const parsedBox = new THREE.Box3().setFromObject(model);
+      if (!isFiniteBox(parsedBox)) {
+        disposeGroup(model); // free the just-built (unusable) GPU buffers; not added to the scene
+        const e = new Error('parsed geometry has non-finite bounding box');
+        e.kind = 'degenerate';
+        throw e;
+      }
       // Only tear down the old scene contents once the new parse succeeds.
       if (placeholder.parent) {
         scene.remove(placeholder);

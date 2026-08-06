@@ -213,6 +213,8 @@ const messages = {
       'Could not load {label} — the file could not be parsed; it may be invalid or an unsupported CAD variant.',
     errEmpty:
       'Could not display {label} — the file parsed successfully but contains no solid geometry (it may be surfaces/wireframe or an empty assembly).',
+    errDegenerate:
+      'Could not display {label} — the parsed geometry has invalid (non-finite) coordinates, so it cannot be framed. The previous model was kept.',
     errGeneric: 'Could not load {label} — the file may be invalid or unsupported.',
 
     // --- Model-info HUD ---
