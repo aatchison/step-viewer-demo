@@ -1,3 +1,4 @@
+// @ts-check
 // STEP loader core — parses STEP (ISO 10303) into three.js geometry via
 // occt-import-js (OpenCascade compiled to WebAssembly).
 //
@@ -17,6 +18,35 @@
 // engine's per-mesh arrays; it imports `three` itself, so step.js no longer needs
 // a direct three import.
 import { buildGroupFromOcctResult, repackResultMesh } from './step-core.js';
+
+/** @typedef {import('three').Group} Group */
+/** @typedef {import('./step-core.js').OcctMesh} OcctMesh */
+/** @typedef {import('./step-core.js').OcctNode} OcctNode */
+/** @typedef {import('./step-core.js').EdgeStyle} EdgeStyle */
+/** @typedef {import('./ui.js').ErrorKind} ErrorKind */
+/** @typedef {import('./ui.js').TaggedError} TaggedError */
+
+/**
+ * Provenance metadata recovered best-effort from a STEP HEADER block. Any field
+ * may be '' when it could not be read.
+ * @typedef {object} StepHeader
+ * @property {string} schema - FILE_SCHEMA identifier, e.g. AUTOMOTIVE_DESIGN.
+ * @property {string} ap - Application Protocol short name (AP203/AP214/AP242).
+ * @property {string} author - Author list, comma-joined.
+ * @property {string} organization - Organization list, comma-joined.
+ * @property {string} originatingSystem - Originating CAD system.
+ * @property {string} preprocessor - Preprocessor version string.
+ * @property {string} timestamp - FILE_NAME time_stamp.
+ */
+
+/**
+ * The `{ meshes, root }` shape both engines produce and buildGroup consumes.
+ * @typedef {object} ParseResult
+ * @property {OcctMesh[]} meshes - Per-mesh typed arrays, one per solid.
+ * @property {OcctNode | null} root - Sanitized assembly hierarchy, or null.
+ */
+
+/** A stage tag passed to the optional progress hook. @typedef {'engine' | 'parse'} LoadPhase */
 
 const OCCT_VERSION = '0.0.23';
 const OCCT_BASE = `https://cdn.jsdelivr.net/npm/occt-import-js@${OCCT_VERSION}/dist/`;
@@ -42,6 +72,11 @@ export const SUPPORTED_CAD_EXTENSIONS = Object.keys(READER_BY_EXT);
 
 // Normalize a file name or bare extension to the occt reader method, or null when
 // the extension isn't one occt reads. Accepts 'foo.IGES', '.iges', or 'iges'.
+/**
+ * @param {string} nameOrExt - A file name, dotted extension, or bare extension.
+ * @returns {string | null} The occt reader method (ReadStepFile / ReadIgesFile /
+ *   ReadBrepFile), or null when the extension isn't one occt reads.
+ */
 export function readerForExtension(nameOrExt) {
   const s = String(nameOrExt || '').toLowerCase();
   const dot = s.lastIndexOf('.');
@@ -70,6 +105,12 @@ const UNIT_SCAN_CAP = 4 * 1024 * 1024;
 // against, so CONVERSION_BASED_UNIT names are checked FIRST — otherwise an inch
 // part would be mislabelled 'm'. Non-length conversion units (DEGREE for angle,
 // etc.) simply don't match the length-name map and are ignored.
+/**
+ * Detect a STEP file's declared length unit. Pure, bounded, and never throws.
+ * @param {ArrayBuffer | ArrayBufferView} buffer - The raw STEP bytes.
+ * @returns {'mm' | 'm' | 'cm' | 'in' | 'ft' | 'mil' | null} The short unit
+ *   symbol, or null when it can't be determined.
+ */
 export function detectStepLengthUnit(buffer) {
   try {
     let bytes;
@@ -274,6 +315,12 @@ function stepApName(schemaText) {
 // throws: any decode/parse miss degrades to empty fields. Returns null when the
 // header isn't found in the window (non-STEP formats, or a header past the cap) or
 // when nothing usable was extracted, so callers can treat "no metadata" uniformly.
+/**
+ * Decode only the leading HEADER;…ENDSEC; block of a STEP file and extract, best
+ * effort, its provenance metadata. Bounded and never throws.
+ * @param {ArrayBuffer | ArrayBufferView} buffer - The raw STEP bytes.
+ * @returns {StepHeader | null} The recovered header, or null when none was found.
+ */
 export function parseStepHeader(buffer) {
   try {
     let bytes;
@@ -365,7 +412,7 @@ function handleWorkerMessage(ev) {
       }
       break;
     case 'init-error': {
-      const e = new Error(msg.message || 'Failed to load the 3D engine in the worker');
+      const e = /** @type {TaggedError} */ (new Error(msg.message || 'Failed to load the 3D engine in the worker'));
       e.kind = 'init';
       if (readyResolvers) {
         readyResolvers.reject(e);
@@ -389,7 +436,7 @@ function handleWorkerMessage(ev) {
       const p = pending.get(msg.id);
       if (p) {
         pending.delete(msg.id);
-        const e = new Error(msg.message || 'occt failed to parse the CAD data');
+        const e = /** @type {TaggedError} */ (new Error(msg.message || 'occt failed to parse the CAD data'));
         e.kind = 'parse';
         p.reject(e);
       }
@@ -404,7 +451,7 @@ function handleWorkerMessage(ev) {
 // abort, etc.) leaves the worker unusable — classify it as an engine/init failure
 // so the UI shows the persistent Retry panel and rebuilds a fresh worker.
 function handleWorkerError(ev) {
-  const e = new Error((ev && ev.message) || 'STEP parse worker crashed');
+  const e = /** @type {TaggedError} */ (new Error((ev && ev.message) || 'STEP parse worker crashed'));
   e.kind = 'init';
   if (readyResolvers) {
     readyResolvers.reject(e);
@@ -417,6 +464,12 @@ function handleWorkerError(ev) {
 // hangs forever. `err` is the failure that prompted the teardown; a plain
 // resetOcct()/successful path passes none, and pending parses get a generic
 // init-kind rejection.
+/**
+ * Terminate the worker (if any) and reject every in-flight parse so nothing hangs.
+ * @param {TaggedError} [err] - The failure that prompted teardown; pending parses
+ *   get a generic `kind:'init'` rejection when omitted.
+ * @returns {void}
+ */
 function teardownWorker(err) {
   if (worker) {
     worker.terminate();
@@ -425,7 +478,7 @@ function teardownWorker(err) {
   workerReadyPromise = null;
   readyResolvers = null;
   for (const p of pending.values()) {
-    const e = err || new Error('STEP parse worker was terminated');
+    const e = /** @type {TaggedError} */ (err || new Error('STEP parse worker was terminated'));
     if (!e.kind) e.kind = 'init';
     p.reject(e);
   }
@@ -446,7 +499,7 @@ function getWorkerReady() {
         worker = new Worker(new URL('./step.worker.js', import.meta.url));
       } catch (err) {
         workerReadyPromise = null;
-        const e = err instanceof Error ? err : new Error(String(err));
+        const e = /** @type {TaggedError} */ (err instanceof Error ? err : new Error(String(err)));
         e.kind = 'init';
         reject(e);
         return;
@@ -484,6 +537,12 @@ function postParse(arrayBuffer, reader) {
 // the session and this resolves against the main-thread engine instead, so the
 // engine is "up" wherever either path can load. It only rejects (kind:'init') if
 // BOTH the worker and the main-thread download/init fail (e.g. truly offline).
+/**
+ * Ensure a CAD engine is up (idempotent): the parse worker + its WASM engine
+ * when possible, otherwise the main-thread engine.
+ * @returns {Promise<unknown>} Resolves once an engine is ready.
+ * @throws {TaggedError} `kind:'init'` only if BOTH engines fail to load.
+ */
 export async function initOcct() {
   if (!workerDisabled) {
     try {
@@ -502,6 +561,12 @@ export async function initOcct() {
 // self-clears on rejection, so a still-pending (hung) attempt would otherwise be
 // re-awaited forever. Terminating here also kills any in-flight parse so a retry
 // starts a genuinely new attempt.
+/**
+ * Terminate the parse worker and discard cached engine promises so the next
+ * load spawns a fresh worker / re-downloads the engine. Used by the UI's Retry.
+ * `workerDisabled` stays sticky so a proven-unusable worker isn't retried.
+ * @returns {void}
+ */
 export function resetOcct() {
   teardownWorker();
   // Also discard the cached main-thread engine so a Retry after a total (worker +
@@ -529,6 +594,20 @@ export function resetOcct() {
 // render-on-demand loop, which would otherwise be parked when the deferred edges
 // finally attach a beat after first render (so the edges would only appear on the
 // next camera move). No-op when omitted.
+/**
+ * Parse a CAD file (STEP/IGES/BREP) into a THREE.Group of shaded meshes,
+ * off-thread via the worker when healthy, otherwise on the main thread.
+ * @param {ArrayBuffer | ArrayBufferView} buf - The raw file bytes.
+ * @param {string} ext - File name or extension used to pick the occt reader.
+ * @param {(phase: LoadPhase) => void} [onPhase] - Progress hook: 'engine' then 'parse'.
+ * @param {EdgeStyle} [edgeStyle] - Deferred feature-edge overlay stroke.
+ * @param {() => void} [onEdgesReady] - Redraw hook after each edge overlay builds.
+ * @returns {Promise<Group>} The loaded model group (with `userData.unit`
+ *   and `userData.stepHeader` set for STEP when detectable).
+ * @throws {TaggedError} `kind:'parse'` on unsupported extension or bad bytes,
+ *   `kind:'empty'` when the parse yields no renderable geometry, or `kind:'init'`
+ *   when the engine can't load.
+ */
 export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
   if (onPhase) onPhase('engine');
 
@@ -538,7 +617,7 @@ export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { co
   // belt-and-suspenders check for a stray unsupported call.
   const reader = readerForExtension(ext);
   if (!reader) {
-    const e = new Error(`Unsupported CAD file extension: ${ext}`);
+    const e = /** @type {TaggedError} */ (new Error(`Unsupported CAD file extension: ${ext}`));
     e.kind = 'parse';
     throw e;
   }
@@ -574,7 +653,7 @@ export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { co
     Array.isArray(meshes) &&
     meshes.some((m) => m && m.position && m.position.length > 0);
   if (!hasRenderableGeometry) {
-    const e = new Error('parsed OK but contains no solid geometry');
+    const e = /** @type {TaggedError} */ (new Error('parsed OK but contains no solid geometry'));
     e.kind = 'empty';
     throw e;
   }
@@ -607,6 +686,14 @@ export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { co
 // Back-compat thin wrapper: the original STEP-only entry point, preserved so any
 // caller (or bookmark) still works. Routes through the format-aware loader with the
 // STEP reader.
+/**
+ * Back-compat STEP-only wrapper around {@link loadCadFromArrayBuffer}.
+ * @param {ArrayBuffer | ArrayBufferView} buf - The raw STEP bytes.
+ * @param {(phase: LoadPhase) => void} [onPhase] - Progress hook: 'engine' then 'parse'.
+ * @param {EdgeStyle} [edgeStyle] - Deferred feature-edge overlay stroke.
+ * @param {() => void} [onEdgesReady] - Redraw hook after each edge overlay builds.
+ * @returns {Promise<Group>} The loaded model group.
+ */
 export function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
   return loadCadFromArrayBuffer(buf, 'step', onPhase, edgeStyle, onEdgesReady);
 }
@@ -658,14 +745,15 @@ function loadOcctFactoryMainThread() {
       reject(new Error('no DOM available for the main-thread occt fallback'));
       return;
     }
-    if (window.occtimportjs) {
-      resolve(window.occtimportjs);
+    const w = /** @type {any} */ (window);
+    if (w.occtimportjs) {
+      resolve(w.occtimportjs);
       return;
     }
     const script = document.createElement('script');
     script.src = OCCT_BASE + 'occt-import-js.js';
     script.onload = () => {
-      if (window.occtimportjs) resolve(window.occtimportjs);
+      if (w.occtimportjs) resolve(w.occtimportjs);
       else reject(new Error('occt-import-js loaded but did not expose a factory'));
     };
     script.onerror = () => reject(new Error('Failed to load occt-import-js from CDN'));
@@ -682,7 +770,7 @@ function initOcctMainThread() {
       .then((factory) => factory({ locateFile: (path) => OCCT_BASE + path }))
       .catch((err) => {
         mainThreadOcctPromise = null; // allow a retry on the next attempt
-        const e = err instanceof Error ? err : new Error(String(err));
+        const e = /** @type {TaggedError} */ (err instanceof Error ? err : new Error(String(err)));
         e.kind = 'init';
         throw e;
       });
@@ -698,7 +786,7 @@ async function parseOnMainThread(arrayBuffer, reader) {
   const occt = await initOcctMainThread();
   const result = occt[reader](new Uint8Array(arrayBuffer), null);
   if (!result || !result.success) {
-    const e = new Error(`occt ${reader} failed to parse the CAD data`);
+    const e = /** @type {TaggedError} */ (new Error(`occt ${reader} failed to parse the CAD data`));
     e.kind = 'parse';
     throw e;
   }

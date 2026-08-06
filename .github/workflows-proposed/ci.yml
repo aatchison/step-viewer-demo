@@ -3,8 +3,11 @@
 # The site itself is zero-build (plain ES modules + CDN, nothing bundled). This
 # workflow only exercises the DEV-ONLY test suite (node:test) so a broken sample
 # or a regression in src/step-core.js is caught on push / PR instead of landing
-# silently. It installs the devDependencies (occt-import-js + three) and runs the
-# same `npm test` a maintainer runs locally.
+# silently. It installs the devDependencies (occt-import-js + three, plus the
+# typecheck toolchain) and runs the same `npm test` a maintainer runs locally,
+# followed by `npm run typecheck` (JSDoc + checkJs, issue #111) so a cross-module
+# parameter/shape mismatch is caught too. Neither step emits any build output —
+# the site stays zero-build.
 #
 # NOTE: this file is committed as a PROPOSAL, and lives under
 # `.github/workflows-proposed/` rather than `.github/workflows/` on purpose: the
@@ -48,3 +51,6 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Typecheck (JSDoc + checkJs, no emit)
+        run: npm run typecheck

@@ -1,3 +1,4 @@
+// @ts-check
 // Localizable-strings groundwork — a single ES-module string table plus a tiny
 // locale runtime. Zero-build: no bundler, no backend, no dependency (not even
 // three.js). Adding a locale is one new object in `messages` below.
@@ -451,6 +452,10 @@ const messages = {
 // Resolve the active locale once, in preference order: ?lang=, then the
 // browser's language list, falling back to `en`. A region tag (e.g. es-MX) that
 // isn't listed falls back to its base language (es) when that is available.
+/**
+ * @param {string[]} available - Locale codes present in `messages`.
+ * @returns {string} The resolved locale code, or `'en'` as the fallback.
+ */
 function pickLocale(available) {
   const candidates = [];
   try {
@@ -482,6 +487,13 @@ try {
 
 // Look up `key` in the active locale, fall back to English per-key, then to the
 // raw key as a last resort, and interpolate any {name} placeholders from params.
+/**
+ * Look up a localized string, falling back to English per-key then to the raw
+ * key, and interpolate `{name}` placeholders.
+ * @param {string} key - The message key to resolve.
+ * @param {Record<string, unknown>} [params] - Values for `{name}` placeholders.
+ * @returns {string} The resolved, interpolated string (or `key` if unknown).
+ */
 export function t(key, params) {
   const table = messages[locale] || messages.en;
   let s = table[key];
@@ -500,6 +512,12 @@ export function t(key, params) {
 // Elements carrying data-i18n must not hold child elements whose text should
 // survive (their textContent is replaced) — put an inner <span data-i18n> when
 // siblings like an icon glyph need to stay.
+/**
+ * Populate static markup from the active locale table: `data-i18n` sets
+ * `textContent`, `data-i18n-attr="attr:key;…"` sets attributes.
+ * @param {Document | Element} [root=document] - Subtree root to localize.
+ * @returns {void}
+ */
 export function applyStaticI18n(root = document) {
   root.querySelectorAll('[data-i18n]').forEach((el) => {
     el.textContent = t(el.getAttribute('data-i18n'));

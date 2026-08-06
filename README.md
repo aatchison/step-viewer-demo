@@ -66,12 +66,23 @@ CDN via an importmap, and nothing here is bundled or shipped. Everything under
 run the exact same occt-import-js engine (pinned to the CDN version) in Node.
 
 ```bash
-npm ci     # install the dev-only test dependencies
-npm test   # run the node:test sample-parse regression suite (no browser needed)
+npm ci               # install the dev-only test + typecheck dependencies
+npm test             # run the node:test sample-parse regression suite (no browser)
+npm run typecheck    # tsc --noEmit: JSDoc + checkJs across the split modules (no output)
 ```
 
-A GitHub Actions workflow runs `npm ci && npm test` on every push / PR to `main`
-(Node 20, `ubuntu-latest`, read-only `GITHUB_TOKEN` via `permissions: contents: read`).
+`npm run typecheck` is **dev-only static type-checking** (issue #111): the ES
+modules under `src/` are annotated with JSDoc `@param`/`@returns`/`@throws` and
+topped with `// @ts-check`, and `tsc --noEmit` (config in `tsconfig.json`) catches
+parameter/shape mismatches across the split files. It **emits no JavaScript** — the
+shipped `index.html` / `src/*.js` are byte-for-byte unchanged and the site stays
+zero-build. (three@0.160.0 doesn't bundle its own `.d.ts`, so three's types come
+from the pinned `@types/three@0.160.0` devDependency — the same version as the CDN
+runtime engine.)
+
+A GitHub Actions workflow runs `npm ci`, then `npm test` and `npm run typecheck`, on
+every push / PR to `main` (Node 20, `ubuntu-latest`, read-only `GITHUB_TOKEN` via
+`permissions: contents: read`).
 
 **Note:** this commit only *proposes* the workflow. The automation token that opened the
 PR lacks GitHub's `workflow` scope — and GitHub refuses any push that touches

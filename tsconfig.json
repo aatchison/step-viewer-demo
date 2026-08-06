@@ -1,0 +1,36 @@
+{
+  // Dev-only type-checking config (issue #111). The site stays ZERO-BUILD: this
+  // never emits any JS (noEmit) — it only runs `tsc --noEmit` to catch
+  // parameter/shape mismatches across the split ES modules via JSDoc + checkJs.
+  // The shipped index.html / src/*.js are byte-for-byte unchanged.
+  //
+  // Note: three@0.160.0 does NOT bundle its own .d.ts types (the pinned CDN
+  // runtime version), so three's types come from the @types/three@0.160.0
+  // devDependency instead of "the three devDependency's bundled types". Same
+  // pinned version, so the checked types match the runtime engine exactly.
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext", "DOM", "DOM.Iterable", "WebWorker"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["three", "node"],
+    "strict": false
+  },
+  // Only the extracted, JSDoc-annotated modules with real public APIs are checked
+  // (each is topped with `// @ts-check`). src/main.js is the ~3.2k-line app entry
+  // point — the consumer of these APIs, not an API surface itself — and is left
+  // out of the typecheck scope so `tsc` stays green on the documented modules.
+  "include": [
+    "src/step.js",
+    "src/step-core.js",
+    "src/step.worker.js",
+    "src/scene.js",
+    "src/ui.js",
+    "src/i18n.js",
+    "test/samples.test.js"
+  ]
+}

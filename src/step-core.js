@@ -1,3 +1,4 @@
+// @ts-check
 // STEP core — the pure, node-importable half of the CAD loader (issue #108).
 //
 // src/step.js used to couple two very different things: the browser-only engine
@@ -19,6 +20,40 @@
 
 import * as THREE from 'three';
 
+/**
+ * One repacked result mesh — the flat typed-array shape both engines hand to
+ * {@link buildGroupFromOcctResult} (see {@link repackResultMesh} and the worker).
+ * @typedef {object} OcctMesh
+ * @property {Float32Array} position - Flat XYZ vertex positions (3 per vertex).
+ * @property {Float32Array | null} normal - Flat XYZ normals, or null (computed).
+ * @property {Uint32Array | null} index - Triangle indices, or null (non-indexed).
+ * @property {Float32Array | null} color - RGB in 0..1, or null (default blue).
+ * @property {string} name - STEP product/solid label, or '' when unnamed.
+ */
+
+/**
+ * A minimal, structured-clone-safe node of the occt assembly hierarchy.
+ * @typedef {object} OcctNode
+ * @property {string} [name] - The node's STEP label.
+ * @property {number[]} [meshes] - Indices into the flat result-mesh array.
+ * @property {OcctNode[]} [children] - Child nodes.
+ */
+
+/**
+ * Stroke style for the deferred feature-edge overlay.
+ * @typedef {object} EdgeStyle
+ * @property {number} color - Line color as a THREE hex color number.
+ * @property {number} opacity - Line opacity in 0..1.
+ */
+
+/**
+ * One bundled sample-gallery entry.
+ * @typedef {object} Sample
+ * @property {string} file - On-disk name under ./samples/.
+ * @property {string} labelKey - i18n key resolved to the display label at runtime.
+ * @property {string} reader - occt reader method for the file's format.
+ */
+
 // Bundled sample gallery — the SINGLE SOURCE OF TRUTH for which models ship under
 // ./samples/ (issue #109). Lives here, in the pure/node-importable core, so the app
 // (src/main.js gallery + deep-link + number-key shortcuts) and the parse regression
@@ -31,6 +66,7 @@ import * as THREE from 'three';
 // cleanly under Node. `reader` is the occt method the file's format needs, so a
 // headless test (which has no file-extension→reader dispatch UI) can parse each
 // sample with the right reader; it mirrors src/step.js's READER_BY_EXT.
+/** @type {Sample[]} */
 export const SAMPLES = [
   { file: 'sample.step',  labelKey: 'sampleGear',    reader: 'ReadStepFile' },
   { file: 'block.step',   labelKey: 'sampleBlock',   reader: 'ReadStepFile' },
@@ -75,6 +111,18 @@ const runWhenIdle =
 // "one mesh per solid". The cost is draw calls (a same-colour assembly no longer
 // collapses to one mesh); this is the deliberate, criteria-required trade for
 // assembly data fidelity, and each mesh's own colour/name is now preserved too.
+/**
+ * Build the THREE.Group (one Mesh per solid, per-part userData, non-enumerable
+ * `parts`/`tree` registries, deferred edge overlays) from either engine's
+ * per-mesh arrays plus the occt assembly hierarchy. Pure + headless-safe.
+ * @param {OcctMesh[]} meshes - Repacked per-mesh typed arrays (one per solid).
+ * @param {OcctNode | null} root - The sanitized occt assembly hierarchy, or null.
+ * @param {EdgeStyle} [edgeStyle] - Feature-edge overlay stroke; defaults to the
+ *   original faint line so an omitted argument is byte-for-byte unchanged.
+ * @param {() => void} [onEdgesReady] - Called after each mesh's edge overlay is
+ *   built in its idle slot (the app requests a redraw); no-op when omitted.
+ * @returns {THREE.Group} A group of shaded meshes ready to add to the scene.
+ */
 export function buildGroupFromOcctResult(meshes, root, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
   const group = new THREE.Group();
 
@@ -125,7 +173,7 @@ export function buildGroupFromOcctResult(meshes, root, edgeStyle = { color: 0x0a
   // cycle — while `group.userData.parts` / `.tree` stay directly readable by the UI.
   Object.defineProperty(group.userData, 'parts', {
     value: group.children
-      .filter((c) => c.isMesh)
+      .filter((c) => /** @type {any} */ (c).isMesh)
       .map((mesh) => ({ index: mesh.userData.partIndex, name: mesh.userData.partName, mesh })),
     enumerable: false, writable: true, configurable: true,
   });
@@ -146,9 +194,15 @@ export function buildGroupFromOcctResult(meshes, root, edgeStyle = { color: 0x0a
 // index/3, otherwise position-count/3. Moved here (issue #108) so the loader's
 // edge-skip guard and the model-info HUD share ONE triangle counter and can never
 // drift; the app imports it from this module instead of keeping a local copy.
+/**
+ * Sum triangles across every Mesh in the group (index.count/3 when indexed, else
+ * position.count/3), skipping decorative edge LineSegments and non-mesh children.
+ * @param {THREE.Object3D} group - Root object to traverse.
+ * @returns {number} Total triangle count, rounded to an integer.
+ */
 export function countTriangles(group) {
   let tris = 0;
-  group.traverse((obj) => {
+  group.traverse((/** @type {any} */ obj) => {
     if (!obj.isMesh || !obj.geometry) return;
     const g = obj.geometry;
     if (g.index) tris += g.index.count / 3;
@@ -165,6 +219,13 @@ export function countTriangles(group) {
 // pure core (issue #108/#109) so both the browser main-thread loader (src/step.js)
 // and the headless parse test import ONE repack and can't drift. Node-safe: only
 // Float32Array/Uint32Array, no browser globals.
+/**
+ * Repack one raw occt result mesh (nested `attributes.*.array` shape) into the
+ * flat {@link OcctMesh} typed-array shape {@link buildGroupFromOcctResult}
+ * consumes — the same structure the parse worker transfers back.
+ * @param {any} rm - A raw occt result mesh from `occt.Read*File(...).meshes[i]`.
+ * @returns {OcctMesh} The flat, typed-array repacked mesh.
+ */
 export function repackResultMesh(rm) {
   const position = Float32Array.from(rm.attributes.position.array);
 

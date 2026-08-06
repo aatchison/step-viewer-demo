@@ -5,10 +5,14 @@
   "description": "Dev/test tooling only. The site itself is zero-build: index.html loads three + occt-import-js from a CDN via importmap and nothing here is bundled or shipped.",
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/three": "0.160.0",
     "occt-import-js": "0.0.23",
-    "three": "0.160.0"
+    "three": "0.160.0",
+    "typescript": "5.4.5"
   }
 }
