@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>STEP Viewer Demo</title>
   <!-- Inline SVG favicon: a wireframe cube glyph (echoing the header wordmark)
        in brand-blue #0b1220 stroke on a rounded #4f9dff tile. Data-URI so the
@@ -230,6 +230,15 @@
         radial-gradient(ellipse 125% 105% at 50% 40%, var(--bg-0) 0%, var(--bg-1) 40%, var(--bg-2) 72%, var(--bg-3) 100%) fixed;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     #app { position: fixed; inset: 0; }
+    /* Safe-area probe. env() values are readable from CSS but NOT from script (a
+       custom property set to env() returns its raw token string, not a resolved
+       px). So we bind the top inset to a real, laid-out property here and let the
+       gizmo JS read the resolved height off getBoundingClientRect(). Zero-size and
+       hidden, so it never paints or catches input; height resolves to the inset
+       (0 on desktop). */
+    #safe-probe { position: fixed; top: 0; left: 0; width: 0;
+      height: env(safe-area-inset-top, 0px); visibility: hidden;
+      pointer-events: none; }
     /* The 3D view is keyboard-focusable (tabindex=0) so it can be driven by the
        Arrow/zoom/pan keys. Show the same accent ring the header controls use on
        keyboard focus, but inset (outline-offset negative) because #app spans the
@@ -251,7 +260,14 @@
     :root.embed #view-presets,
     :root.embed #model-info { display: none !important; }
     header { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
-      display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .6rem 1rem;
+      display: flex; align-items: center; flex-wrap: wrap; gap: .75rem;
+      /* Insets keep the controls clear of the notch (top), curved corners, and — in
+         landscape — the side notches. max() means the env value only ever grows the
+         base padding; on desktop the insets are 0 so this stays .6rem 1rem. */
+      padding: max(.6rem, env(safe-area-inset-top))
+               max(1rem, env(safe-area-inset-right))
+               .6rem
+               max(1rem, env(safe-area-inset-left));
       background: linear-gradient(var(--scrim-90), var(--scrim-0)); pointer-events: none; }
     /* Let flex children shrink instead of forcing the bar wider than a phone. */
     header > * { min-width: 0; }
@@ -561,9 +577,13 @@
        never overlap, no matter how far the pills wrap on narrow screens. Column
        flow (gallery above hint) with a fixed gap guarantees separation; the
        container is click-through and only the pills re-enable pointer events. */
-    #bottom-cluster { position: fixed; left: 0; right: 0; bottom: 1rem; z-index: 10;
+    #bottom-cluster { position: fixed; left: 0; right: 0;
+      /* Clear the home-indicator bar (and, in landscape, the side notches). max()
+         keeps the base 1rem on desktop where the insets are 0. */
+      bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 10;
       display: flex; flex-direction: column; align-items: center; gap: .6rem;
-      padding: 0 1rem; pointer-events: none; }
+      padding: 0 max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+      pointer-events: none; }
     /* Solid muted token instead of an opacity fade so the first-paint guidance and
        interaction hints stay readable against the dark canvas. */
     #hint { font-size: .8rem; color: var(--hc-muted, var(--muted)); max-width: min(92vw, 640px);
@@ -663,7 +683,8 @@
        to hug the same edge as the gizmo. Informational only, so pointer-events:
        none lets orbit drags pass straight through. Tokens mirror the gallery pills
        (translucent var(--panel) fill, var(--border) border, blur) so it reads as one system. */
-    #model-info { position: fixed; top: 13rem; right: 1rem; z-index: 10;
+    #model-info { position: fixed; top: calc(13rem + env(safe-area-inset-top));
+      right: max(1rem, env(safe-area-inset-right)); z-index: 10;
       display: flex; flex-direction: column; align-items: flex-end; gap: .1rem;
       max-width: min(60vw, 220px); text-align: right; pointer-events: none;
       background: var(--hc-panel-bg, var(--panel-tr)); border: 1px solid var(--hc-border, var(--border)); border-radius: 8px;
@@ -724,7 +745,8 @@
        var(--border) border, blur) so it reads as one system. max-height caps the
        list so a many-part assembly scrolls in place instead of overrunning the
        bottom cluster. */
-    #parts-panel { position: fixed; top: 19rem; right: 1rem; z-index: 11;
+    #parts-panel { position: fixed; top: calc(19rem + env(safe-area-inset-top));
+      right: max(1rem, env(safe-area-inset-right)); z-index: 11;
       display: flex; flex-direction: column; align-items: stretch;
       width: min(60vw, 220px); pointer-events: auto;
       background: var(--hc-panel-bg, var(--panel-tr)); border: 1px solid var(--hc-border, var(--border));
@@ -847,7 +869,14 @@
        keeps the now-square icon buttons comfortably tappable. Placed after the
        coarse block so these paddings win on equal specificity. */
     @media (max-width: 600px) {
-      header { gap: .5rem; padding: .5rem .75rem; }
+      header { gap: .5rem;
+        /* Keep the safe-area insets additive here — this padding shorthand would
+           otherwise clobber the base rule's insets on the exact (small) screens
+           where notches live. */
+        padding: max(.5rem, env(safe-area-inset-top))
+                 max(.75rem, env(safe-area-inset-right))
+                 .5rem
+                 max(.75rem, env(safe-area-inset-left)); }
       #wire-toggle .btn-label, #material-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
       #contrast-btn .btn-label, #blueprint-btn .btn-label, #colorpart-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
       #share-btn .btn-label, #embed-btn .btn-label,
@@ -876,6 +905,10 @@
        element's focus (see the app keydown listener) so it never hijacks Tab or
        the global 1–4 / W / ? shortcuts. aria-keyshortcuts advertises the camera
        keys to assistive tech; the aria-label spells them out in prose. -->
+  <!-- Safe-area top-inset probe (see #safe-probe CSS): the gizmo JS reads its
+       laid-out height to learn env(safe-area-inset-top) in px, which env() alone
+       won't expose to script. -->
+  <div id="safe-probe" aria-hidden="true"></div>
   <div id="app" role="img" tabindex="0"
        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight Plus Minus Home"
        data-i18n-attr="aria-label:appAriaDefault"
@@ -1348,9 +1381,18 @@
     // edge (must exceed the header height, ~60px on a compact touch header).
     const GIZMO_DIM = 128;
     const GIZMO_TOP = 68;
+    // On a notched phone the header grows downward by env(safe-area-inset-top), so
+    // the gizmo's inset must grow with it or the two collide. env() can't be read
+    // from JS, so we read the laid-out height of the #safe-probe element (its CSS
+    // height is bound to that inset). Recomputed on each call so an orientation
+    // change (portrait↔landscape flips which edge carries the inset) is picked up
+    // live. Resolves to 0 on desktop, so gizmoTop() == GIZMO_TOP there.
+    const safeProbe = document.getElementById('safe-probe');
+    const safeTop = () => (safeProbe ? safeProbe.getBoundingClientRect().height : 0);
+    const gizmoTop = () => GIZMO_TOP + safeTop();
     // The framebuffer uses a bottom-left origin, so a box whose top edge sits
-    // GIZMO_TOP px below the canvas top has its lower edge at this y.
-    const gizmoViewportY = () => innerHeight - GIZMO_DIM - GIZMO_TOP;
+    // gizmoTop() px below the canvas top has its lower edge at this y.
+    const gizmoViewportY = () => innerHeight - GIZMO_DIM - gizmoTop();
     // ViewHelper.render issues exactly one setViewport(x, 0, dim, dim) for the
     // gizmo pass (then restores the full viewport). Intercept that single call
     // and raise its y; everything else (the full-frame restore, width != dim)
@@ -2183,7 +2225,8 @@
       // Don't measure through the top-right gizmo box — its own handler owns it.
       const el = renderer.domElement;
       const inGizmoX = e.clientX >= el.clientWidth - GIZMO_DIM;
-      const inGizmoY = e.clientY >= GIZMO_TOP && e.clientY <= GIZMO_TOP + GIZMO_DIM;
+      const gTop = gizmoTop();
+      const inGizmoY = e.clientY >= gTop && e.clientY <= gTop + GIZMO_DIM;
       if (inGizmoX && inGizmoY) return;
       const rect = el.getBoundingClientRect();
       measureAt(
@@ -2316,7 +2359,8 @@
       // Don't pick through the top-right gizmo box — its own handler owns it.
       const el = renderer.domElement;
       const inGizmoX = e.clientX >= el.clientWidth - GIZMO_DIM;
-      const inGizmoY = e.clientY >= GIZMO_TOP && e.clientY <= GIZMO_TOP + GIZMO_DIM;
+      const gTop = gizmoTop();
+      const inGizmoY = e.clientY >= gTop && e.clientY <= gTop + GIZMO_DIM;
       if (inGizmoX && inGizmoY) return;
       const rect = el.getBoundingClientRect();
       pickAt(
@@ -4045,11 +4089,12 @@
     renderer.domElement.addEventListener('pointerup', (e) => {
       const el = renderer.domElement;
       const inX = e.clientX >= el.clientWidth - GIZMO_DIM;
-      const inY = e.clientY >= GIZMO_TOP && e.clientY <= GIZMO_TOP + GIZMO_DIM;
+      const gTop = gizmoTop();
+      const inY = e.clientY >= gTop && e.clientY <= gTop + GIZMO_DIM;
       if (!inX || !inY) return;
       viewHelper.handleClick({
         clientX: e.clientX,
-        clientY: e.clientY + (innerHeight - GIZMO_DIM - GIZMO_TOP),
+        clientY: e.clientY + (innerHeight - GIZMO_DIM - gTop),
       });
       // Render-on-demand: arm the loop so the gizmo's snap animation
       // (viewHelper.animating) plays; renderFrame self-sustains it until it lands.
