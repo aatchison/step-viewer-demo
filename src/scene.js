@@ -35,19 +35,9 @@ export function fitDistanceForRadius(radius, camera) {
   return Math.max(distV, distH) * 1.18;
 }
 
-// Sum triangles across every Mesh in the group. Skips the decorative edge
-// LineSegments (lines, not tris) and any non-mesh child: indexed geometry counts
-// index/3, otherwise position-count/3.
-export function countTriangles(group) {
-  let tris = 0;
-  group.traverse((obj) => {
-    if (!obj.isMesh || !obj.geometry) return;
-    const g = obj.geometry;
-    if (g.index) tris += g.index.count / 3;
-    else if (g.attributes.position) tris += g.attributes.position.count / 3;
-  });
-  return Math.round(tris);
-}
+// countTriangles moved to src/step-core.js (issue #108) so the CAD loader's
+// edge-skip guard and the model-info HUD share ONE per-group triangle counter and
+// can never drift; import it from there (main.js does).
 
 // Count the solids (mesh children) in a group — used to note part count in the
 // HUD while color-by-part is active. The edge overlay is a child of each mesh,

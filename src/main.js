@@ -4,10 +4,11 @@
     import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
     import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
     import { loadCadFromArrayBuffer, readerForExtension, resetOcct } from './step.js';
+    import { countTriangles } from './step-core.js';
     import { t, applyStaticI18n } from './i18n.js';
     import {
       isFiniteVec, isFiniteBox, fitDistanceForRadius,
-      countTriangles, countParts, disposeGroup,
+      countParts, disposeGroup,
     } from './scene.js';
     import {
       CAD_EXT_RE, extOf, fmtDim, fmtMB, roundSig,
@@ -513,7 +514,7 @@
     // stale model. (The markup default covers the pre-first-load window.)
     const APP_ARIA_EMPTY = t('appAriaEmpty');
 
-    // fmtDim now lives in ./ui.js; countTriangles in ./scene.js (imported above).
+    // fmtDim now lives in ./ui.js; countTriangles in ./step-core.js (imported above).
 
     // Refresh the HUD for the freshly loaded model. Called from the single
     // load/swap path (showStepFromArrayBuffer) so it covers gallery picks, number
