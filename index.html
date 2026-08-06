@@ -258,7 +258,7 @@
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
-    #contrast-btn:focus-visible, #save-btn:focus-visible, #export-btn:focus-visible,
+    #contrast-btn:focus-visible, #blueprint-btn:focus-visible, #save-btn:focus-visible, #export-btn:focus-visible,
     #share-btn:focus-visible, #embed-btn:focus-visible,
     #measure-btn:focus-visible, #measure-clear:focus-visible,
     #section-btn:focus-visible, #section-flip:focus-visible, .sp-axis:focus-visible,
@@ -454,6 +454,19 @@
     #contrast-btn[aria-pressed="true"] { color: var(--on-fg); background: var(--on-fill);
       border-color: var(--accent); }
     #contrast-btn[aria-pressed="true"]:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
+    /* Blueprint / edge-only toggle — a header control mirroring the neutral
+       fit/contrast buttons (icon-collapsible on narrow screens). aria-pressed
+       reflects whether blueprint mode is active; when pressed it borrows the same
+       accent on-state language as the wireframe / contrast toggles so "blueprint
+       is on" reads at a glance. */
+    #blueprint-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+      color: var(--ctrl-fg); background: var(--panel); border: 1px solid var(--hc-border, var(--border));
+      border-radius: 6px; padding: .35rem .7rem; display: inline-flex; align-items: center;
+      gap: .35rem; }
+    #blueprint-btn:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    #blueprint-btn[aria-pressed="true"] { color: var(--on-fg); background: var(--on-fill);
+      border-color: var(--accent); }
+    #blueprint-btn[aria-pressed="true"]:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
     /* Help affordance — a compact circular "?" button in the header that opens the
        keyboard-shortcuts panel. Neutral tokens like the fit/wireframe controls so
        it sits below the accent primary action; header is click-through so re-enable
@@ -692,7 +705,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn, #blueprint-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn, #theme-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -713,16 +726,16 @@
     @media (max-width: 600px) {
       header { gap: .5rem; padding: .5rem .75rem; }
       #wire-toggle .btn-label, #material-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
-      #contrast-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
+      #contrast-btn .btn-label, #blueprint-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
       #share-btn .btn-label, #embed-btn .btn-label,
       #measure-btn .btn-label, #measure-clear .btn-label, #section-btn .btn-label,
       #select-fit-btn .btn-label { display: none; }
       #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
-      #contrast-btn .btn-icon, #save-btn .btn-icon, #export-btn .btn-icon,
+      #contrast-btn .btn-icon, #blueprint-btn .btn-icon, #save-btn .btn-icon, #export-btn .btn-icon,
       #share-btn .btn-icon, #embed-btn .btn-icon,
       #measure-btn .btn-icon, #measure-clear .btn-icon, #section-btn .btn-icon,
       #select-fit-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-width: 44px; padding: .4rem;
+      #fit-btn, #open-btn, #contrast-btn, #blueprint-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
       #material-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
@@ -800,6 +813,16 @@
          the module script on load from the persisted / OS preference); the ◑ glyph
          shows on narrow screens where the label collapses (see max-width:600px). -->
     <button id="contrast-btn" type="button" title="Toggle high contrast (C)" aria-label="High contrast" aria-pressed="false" data-i18n-attr="title:contrastTitle;aria-label:contrastAria"><span class="btn-icon" aria-hidden="true">◑</span><span class="btn-label" data-i18n="contrastLabel">Contrast</span></button>
+    <!-- Blueprint / technical edge-only toggle. When on, the shaded faces of the
+         loaded model are hidden (material.visible=false, leaving the edge-overlay
+         children visible), the feature edges recolor to a high-contrast blueprint
+         stroke at full opacity, and the scene backdrop swaps to blueprint-blue
+         (dark theme) / white paper (light theme) — a clean drafting look that reads
+         geometry far more clearly than shaded metal. aria-pressed reflects the live
+         state; when on it borrows the same accent on-state language as the other
+         toggles (via .is-active). Collapses to the 📐 glyph under the same 600px /
+         coarse-pointer rules as the other header buttons. Also on the `B` key. -->
+    <button id="blueprint-btn" type="button" title="Toggle blueprint / edge-only view (B)" aria-label="Blueprint (edge-only) view" aria-pressed="false" data-i18n-attr="title:blueprintTitle;aria-label:blueprintAria"><span class="btn-icon" aria-hidden="true">📐</span><span class="btn-label" data-i18n="blueprintLabel">Blueprint</span></button>
     <!-- Save-image control. Captures the current framed render (scene + gizmo) as
          a downloadable PNG (see saveImage). Neutral tokens like the fit/contrast
          buttons; collapses to the ⤓ glyph under the same 600px / coarse-pointer
@@ -882,6 +905,7 @@
       <li><span class="k" data-i18n="kHome">Home</span><span class="d" data-i18n="descHome">Re-fit / reset view</span></li>
       <li><span class="k">W</span><span class="d" data-i18n="descWireframe">Toggle wireframe</span></li>
       <li><span class="k">C</span><span class="d" data-i18n="descContrast">Toggle high contrast</span></li>
+      <li><span class="k">B</span><span class="d" data-i18n="descBlueprint">Toggle blueprint (edge-only) view</span></li>
       <li><span class="k">T</span><span class="d" data-i18n="descTheme">Toggle light / dark theme</span></li>
       <li><span class="k">S</span><span class="d" data-i18n="descSave">Save image (PNG)</span></li>
       <li><span class="k">E</span><span class="d" data-i18n="descExport">Export model as GLB</span></li>
@@ -1175,6 +1199,16 @@
       groundShadow.renderOrder = 1;
       groundShadow.raycast = () => {}; // decorative — never a pick/hit target
       scene.add(groundShadow);
+
+      // Blueprint mode reads as a clean technical drawing with no floor, so the
+      // grid + contact shadow are hidden while it's on. groundTo rebuilds both
+      // fresh (default-visible) on every fit / theme / contrast change, so re-hide
+      // them here whenever the mode is active — this is the single choke point that
+      // keeps them hidden across every rebuild path.
+      if (blueprint) {
+        groundGrid.visible = false;
+        groundShadow.visible = false;
+      }
     }
 
     // Placeholder object — shown while the sample loads and kept as a fallback
@@ -1214,6 +1248,13 @@
     // cleared by loadFile.
     let currentSampleFile = null;
     let wireframe = false; // wireframe render state, applied to loaded meshes
+    // Blueprint / technical edge-only render state. When on, the shaded faces of
+    // currentModel are hidden and only the high-contrast feature-edge overlay is
+    // drawn against a blueprint backdrop. Declared here (with the other render-
+    // state flags) because groundTo reads it to keep the grid/shadow hidden across
+    // grid rebuilds while the mode is on. Transient like wireframe/measure/section
+    // (not persisted): a viewing mode, not a saved preference.
+    let blueprint = false;
     // prefers-reduced-motion query. Declared here (used by both the model swap-in
     // transition below and the placeholder-spin gate in the render loop). Live, so
     // a mid-session OS setting change is honored.
@@ -2205,6 +2246,12 @@
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
       applyMaterialPreset(model); // adopt the persisted material/lighting preset
+      // Re-assert blueprint mode on the freshly loaded model: force-build its edges
+      // (idle build hasn't run yet), hide its faces, recolor edges + backdrop. The
+      // outgoing model's force-built edges were freed by disposeGroup above (no
+      // GPU leak across the swap). frameObject's groundTo below re-hides the grid
+      // via its own blueprint guard.
+      if (blueprint) applyBlueprint(true);
       frameObject(model); // frame at scale 1 before the transition shrinks it
       // Reapply the section clip plane to the freshly loaded meshes so switching
       // models mid-section keeps cutting. frameObject has just recentered the model
@@ -2625,7 +2672,7 @@
         try { localStorage.setItem(CONTRAST_KEY, on ? 'high' : 'normal'); } catch (e) {}
       }
       if (lastGroundSize) groundTo(lastGroundSize);
-      applyEdgeContrast(currentModel);
+      refreshEdgeStyling();
     }
 
     contrastBtn.setAttribute('aria-pressed', highContrast ? 'true' : 'false');
@@ -2656,7 +2703,7 @@
     function applyThemeScene() {
       renderer.toneMappingExposure = sceneTheme().exposure;
       if (lastGroundSize) groundTo(lastGroundSize);
-      applyEdgeContrast(currentModel);
+      refreshEdgeStyling();
     }
 
     // Show the glyph of the theme the button switches TO... actually of the ACTIVE
@@ -2687,6 +2734,129 @@
       try { stored = localStorage.getItem(THEME_KEY); } catch (err) {}
       if (stored !== 'light' && stored !== 'dark') applyTheme(e.matches, false);
     });
+
+    // --- Blueprint / technical edge-only view (header button + `B` key) --------
+    // A clean drafting look: hide the shaded faces of currentModel and draw only
+    // the high-contrast feature-edge overlay against a blueprint backdrop —
+    // blueprint-blue in dark theme, white paper with dark lines in light theme.
+    // Reads geometry far more clearly than shaded metal, and is a distinctive
+    // presentation mode. The mode is transient (not persisted) and layers cleanly
+    // over the material preset (faces just hide, so exiting returns to the preset),
+    // wireframe (faces are hidden either way; edges still read), and section.
+    const blueprintBtn = document.getElementById('blueprint-btn');
+    // Blueprint backdrops, applied via scene.background (the canvas is otherwise
+    // alpha:true / transparent — see the WebGLRenderer setup). Deep blueprint-blue
+    // for dark theme; a near-white paper for light theme.
+    const BLUEPRINT_BG_DARK = 0x0e2a4d;
+    const BLUEPRINT_BG_LIGHT = 0xf4f6fb;
+    // Edge strokes at FULL opacity: a near-white cyan on the blue backdrop, dark
+    // navy ink on the white-paper backdrop — high contrast either way.
+    const BLUEPRINT_EDGE_DARK = { color: 0xdcefff, opacity: 1 };
+    const BLUEPRINT_EDGE_LIGHT = { color: 0x12233f, opacity: 1 };
+    const blueprintBg = () => (lightTheme ? BLUEPRINT_BG_LIGHT : BLUEPRINT_BG_DARK);
+    const blueprintEdge = () => (lightTheme ? BLUEPRINT_EDGE_LIGHT : BLUEPRINT_EDGE_DARK);
+
+    // Force-build the feature-edge overlay for every mesh in the group that lacks
+    // one. Edges are normally deferred to an idle slot (step.js scheduleEdges), so
+    // when blueprint mode switches on they may not exist yet — without them the
+    // mode would show nothing. Meshes are collected first (not built mid-traverse)
+    // and skipped if they already carry a LineSegments child, so this never doubles
+    // up an overlay; step.js's own idle build carries the mirror guard, so a build
+    // here and a pending idle build can't both land. Built with the current
+    // (non-blueprint) edge style; the caller recolors to the blueprint stroke next.
+    function forceBuildEdges(group) {
+      if (!group) return;
+      const style = currentEdgeStyle();
+      const meshes = [];
+      group.traverse((o) => { if (o.isMesh && o.geometry) meshes.push(o); });
+      meshes.forEach((mesh) => {
+        if (mesh.children.some((c) => c.isLineSegments)) return;
+        const edgeGeom = new THREE.EdgesGeometry(mesh.geometry, 30);
+        const edges = new THREE.LineSegments(
+          edgeGeom,
+          new THREE.LineBasicMaterial({ color: style.color, transparent: true, opacity: style.opacity })
+        );
+        edges.raycast = () => {}; // decorative overlay — never a pick/hit target
+        mesh.add(edges);
+      });
+    }
+
+    // Show/hide the shaded faces of a group by toggling each mesh material's
+    // `visible`, NOT the mesh's own `visible` — the edge overlay is a child of the
+    // mesh, so hiding the mesh would hide the edges too. material.visible=false
+    // drops the shaded faces from the render while the LineSegments children keep
+    // drawing. Leaves every other material property (preset color/shading,
+    // wireframe, clipping planes, selection emissive) untouched, so exiting
+    // blueprint restores the exact prior look.
+    function setFacesVisible(group, visible) {
+      if (!group) return;
+      group.traverse((obj) => {
+        if (!obj.isMesh || !obj.material) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach((m) => { m.visible = visible; });
+      });
+    }
+
+    // Recolor the model's feature-edge overlay to the blueprint stroke (full
+    // opacity, theme-appropriate color). Mirrors applyEdgeContrast but for the
+    // blueprint palette so the same edge LineSegments serve both looks.
+    function applyBlueprintEdges(group) {
+      if (!group) return;
+      const style = blueprintEdge();
+      group.traverse((obj) => {
+        if (!obj.isLineSegments || !obj.material) return;
+        obj.material.color.setHex(style.color);
+        obj.material.transparent = style.opacity < 1;
+        obj.material.opacity = style.opacity;
+        obj.material.needsUpdate = true;
+      });
+    }
+
+    // Single choke point for edge stroke + backdrop, called by the theme/contrast
+    // scene refreshers: in blueprint mode keep the blueprint backdrop + stroke
+    // (re-derived for the now-current theme); otherwise restore the normal faint
+    // theme edge (applyEdgeContrast) — scene.background is left as-is because it's
+    // only ever set by blueprint mode (null the rest of the time).
+    function refreshEdgeStyling() {
+      if (blueprint) {
+        scene.background = new THREE.Color(blueprintBg());
+        applyBlueprintEdges(currentModel);
+      } else {
+        applyEdgeContrast(currentModel);
+      }
+    }
+
+    // Enter/leave blueprint mode. On enter: ensure edges exist, hide the shaded
+    // faces, recolor the edges to the blueprint stroke, swap the backdrop, and
+    // hide the ground grid + contact shadow. On leave: restore face visibility,
+    // the normal theme edge color/opacity, the transparent backdrop, and the grid/
+    // shadow — leaving the material preset, wireframe, section, and theme states
+    // fully intact. GPU resources: force-built edges are children of currentModel,
+    // so the existing disposeGroup path frees them on the next model swap (no leak);
+    // this only ever mutates the live currentModel (an isInScene object), never a
+    // discarded group.
+    function applyBlueprint(on) {
+      blueprint = on;
+      blueprintBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      blueprintBtn.classList.toggle('is-active', on);
+      if (on) {
+        forceBuildEdges(currentModel);   // edges may be idle-deferred / absent
+        setFacesVisible(currentModel, false);
+        applyBlueprintEdges(currentModel);
+        scene.background = new THREE.Color(blueprintBg());
+        if (groundGrid) groundGrid.visible = false;
+        if (groundShadow) groundShadow.visible = false;
+      } else {
+        setFacesVisible(currentModel, true);
+        applyEdgeContrast(currentModel); // restore the faint theme edge
+        scene.background = null;          // restore the transparent backdrop
+        if (groundGrid) groundGrid.visible = true;
+        if (groundShadow) groundShadow.visible = true;
+      }
+    }
+
+    function toggleBlueprint() { applyBlueprint(!blueprint); }
+    blueprintBtn.addEventListener('click', toggleBlueprint);
 
     // --- Save image / PNG capture (header ⤓ button + `S` key) -----------------
     // Export the current framed render (scene + orientation gizmo) as a PNG the
@@ -3073,6 +3243,8 @@
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
       // C toggles the high-contrast theme (mirrors the header toggle).
       if (e.key === 'c' || e.key === 'C') toggleContrast();
+      // B toggles the blueprint / edge-only view (mirrors the header 📐 button).
+      if (e.key === 'b' || e.key === 'B') toggleBlueprint();
       // T toggles the light/dark theme (mirrors the header ☀/🌙 toggle).
       if (e.key === 't' || e.key === 'T') toggleTheme();
       // S saves the current view as a PNG (mirrors the header ⤓ button).

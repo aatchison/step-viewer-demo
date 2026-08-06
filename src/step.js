@@ -185,6 +185,11 @@ function scheduleEdges(mesh, geometry, edgeStyle) {
     // The group may have been swapped out before this idle slot ran; if it's no
     // longer in the scene, skip so we don't build edges on a discarded model.
     if (!isInScene(mesh)) return;
+    // Blueprint mode force-builds any missing edge overlay synchronously when it
+    // switches on (see index.html applyBlueprint). If that already ran for this
+    // mesh, skip here so a mesh never ends up with two overlapping LineSegments
+    // children (a GPU-geometry leak surviving until the next disposeGroup).
+    if (mesh.children.some((c) => c.isLineSegments)) return;
     const edgeGeom = new THREE.EdgesGeometry(geometry, 30);
     const edges = new THREE.LineSegments(
       edgeGeom,
