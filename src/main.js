@@ -4,7 +4,7 @@
     import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
     import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
     import { loadCadFromArrayBuffer, readerForExtension, resetOcct } from './step.js';
-    import { countTriangles } from './step-core.js';
+    import { countTriangles, SAMPLES as SAMPLE_MANIFEST } from './step-core.js';
     import { t, applyStaticI18n } from './i18n.js';
     import {
       isFiniteVec, isFiniteBox, fitDistanceForRadius,
@@ -1638,15 +1638,14 @@
     // in CI-style node checks) and loads through the same path as user files.
     // Labels route through the string table so gallery pills, the hint, and the
     // model-info HUD all read the model name in the active locale.
-    const SAMPLES = [
-      { file: 'sample.step',  label: t('sampleGear') },
-      { file: 'block.step',   label: t('sampleBlock') },
-      { file: 'tetra.step',   label: t('sampleTetra') },
-      { file: 'pyramid.step', label: t('samplePyramid') },
-      // IGES sample — exercises the ReadIgesFile path (occt reads it for free) from
-      // the gallery, so the new multi-format loader is covered end-to-end from the UI.
-      { file: 'cube.iges',    label: t('sampleCube') },
-    ];
+    // Gallery models come from the shared SAMPLE_MANIFEST (src/step-core.js) — the
+    // single source of truth the parse test also reads (issue #109), so the app's
+    // list and the test's list can never drift. The manifest carries only stable
+    // data (on-disk file name + i18n labelKey); resolve the localized display label
+    // here via t() so a locale switch relabels the pills. Shape ({ file, label }) is
+    // exactly what loadSample/parseHash/the pills already consume — including the
+    // IGES sample, which the manifest carries alongside the STEP ones.
+    const SAMPLES = SAMPLE_MANIFEST.map((s) => ({ file: s.file, label: t(s.labelKey) }));
 
     const gallery = document.getElementById('gallery');
 

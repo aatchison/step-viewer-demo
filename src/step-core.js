@@ -19,6 +19,28 @@
 
 import * as THREE from 'three';
 
+// Bundled sample gallery — the SINGLE SOURCE OF TRUTH for which models ship under
+// ./samples/ (issue #109). Lives here, in the pure/node-importable core, so the app
+// (src/main.js gallery + deep-link + number-key shortcuts) and the parse regression
+// test (test/samples.test.js) read the exact same list and can never drift: a sample
+// added or removed here is picked up by both without editing two places.
+//
+// Only stable, locale-independent data belongs here: the on-disk `file` name and the
+// i18n `labelKey`. The localized display label is resolved by the app at runtime via
+// t(labelKey) — the core stays free of the i18n/browser table so it keeps importing
+// cleanly under Node. `reader` is the occt method the file's format needs, so a
+// headless test (which has no file-extension→reader dispatch UI) can parse each
+// sample with the right reader; it mirrors src/step.js's READER_BY_EXT.
+export const SAMPLES = [
+  { file: 'sample.step',  labelKey: 'sampleGear',    reader: 'ReadStepFile' },
+  { file: 'block.step',   labelKey: 'sampleBlock',   reader: 'ReadStepFile' },
+  { file: 'tetra.step',   labelKey: 'sampleTetra',   reader: 'ReadStepFile' },
+  { file: 'pyramid.step', labelKey: 'samplePyramid', reader: 'ReadStepFile' },
+  // IGES sample — occt reads it for free via ReadIgesFile; kept in the same list so
+  // the gallery, shortcuts, and the parse test all cover it too.
+  { file: 'cube.iges',    labelKey: 'sampleCube',    reader: 'ReadIgesFile' },
+];
+
 // Run a low-priority task off the first-paint critical path. Prefer
 // requestIdleCallback so edge-line generation waits for an idle slot after the
 // mesh is on screen; fall back to a macrotask where it isn't available, and to a
@@ -133,6 +155,35 @@ export function countTriangles(group) {
     else if (g.attributes.position) tris += g.attributes.position.count / 3;
   });
   return Math.round(tris);
+}
+
+// Repack one raw occt result mesh (nested `attributes.position.array` shape the
+// engine returns) into the flat { position, normal, index, color, name } typed-array
+// shape buildGroupFromOcctResult consumes. This is the exact structure the parse
+// worker transfers back to the main thread (see step.worker.js), so the group is
+// built from a byte-for-byte-identical input regardless of engine. Lives here in the
+// pure core (issue #108/#109) so both the browser main-thread loader (src/step.js)
+// and the headless parse test import ONE repack and can't drift. Node-safe: only
+// Float32Array/Uint32Array, no browser globals.
+export function repackResultMesh(rm) {
+  const position = Float32Array.from(rm.attributes.position.array);
+
+  let normal = null;
+  if (rm.attributes.normal && rm.attributes.normal.array) {
+    normal = Float32Array.from(rm.attributes.normal.array);
+  }
+
+  let index = null;
+  if (rm.index && rm.index.array) {
+    index = Uint32Array.from(rm.index.array);
+  }
+
+  let color = null;
+  if (rm.color && rm.color.length >= 3) {
+    color = Float32Array.from([rm.color[0], rm.color[1], rm.color[2]]);
+  }
+
+  return { position, normal, index, color, name: rm.name || '' };
 }
 
 // Build a per-result-mesh-index name array from the occt assembly hierarchy. Walks

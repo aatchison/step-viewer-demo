@@ -1,0 +1,5 @@
+# Dev-only test dependencies. The deployed site loads three + occt-import-js from a
+# CDN (see index.html's importmap), so node_modules is never shipped — it exists only
+# so `npm test` can parse the bundled samples in Node. package-lock.json IS committed
+# (below) so CI installs the exact same versions.
+node_modules/

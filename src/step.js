@@ -16,7 +16,7 @@
 // that feeds it. buildGroupFromOcctResult builds the THREE.Group from either
 // engine's per-mesh arrays; it imports `three` itself, so step.js no longer needs
 // a direct three import.
-import { buildGroupFromOcctResult } from './step-core.js';
+import { buildGroupFromOcctResult, repackResultMesh } from './step-core.js';
 
 const OCCT_VERSION = '0.0.23';
 const OCCT_BASE = `https://cdn.jsdelivr.net/npm/occt-import-js@${OCCT_VERSION}/dist/`;
@@ -705,29 +705,8 @@ async function parseOnMainThread(arrayBuffer, reader) {
   return { meshes: result.meshes.map(repackResultMesh), root: result.root || null };
 }
 
-// Repack one occt result mesh into the { position, normal, index, color, name }
-// typed-array shape the worker transfers back (see step.worker.js), so buildGroup
-// is fed byte-for-byte the same structure from either engine.
-function repackResultMesh(rm) {
-  const position = Float32Array.from(rm.attributes.position.array);
-
-  let normal = null;
-  if (rm.attributes.normal && rm.attributes.normal.array) {
-    normal = Float32Array.from(rm.attributes.normal.array);
-  }
-
-  let index = null;
-  if (rm.index && rm.index.array) {
-    index = Uint32Array.from(rm.index.array);
-  }
-
-  let color = null;
-  if (rm.color && rm.color.length >= 3) {
-    color = Float32Array.from([rm.color[0], rm.color[1], rm.color[2]]);
-  }
-
-  return { position, normal, index, color, name: rm.name || '' };
-}
+// repackResultMesh now lives in ./step-core.js (issue #109) so the browser loader
+// and the headless parse test share ONE repack and can't drift; imported above.
 
 // Permanently route to the main-thread engine for the rest of the session and tear
 // down the (broken) worker so nothing keeps awaiting it.
