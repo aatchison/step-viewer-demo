@@ -131,6 +131,13 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
 
     const mesh = new THREE.Mesh(geometry, material);
 
+    // Stash the resolved occt base color on the mesh so the app's material
+    // presets (Studio/Technical/Clay/X-ray) can recolor and restore the part's
+    // real color without re-parsing the STEP. `color` above is the same value
+    // the default Studio material starts with; clone so a later preset mutating
+    // material.color can never mutate this reference.
+    mesh.userData.baseColor = color.clone();
+
     // Carry the STEP sub-object name through to the Mesh so the click-to-select
     // picker can label the face it hit. occt-import-js exposes a per-mesh `name`
     // (the STEP product/solid label); it can be empty, so the picker falls back
@@ -178,6 +185,11 @@ function scheduleEdges(mesh, geometry, edgeStyle) {
     // The group may have been swapped out before this idle slot ran; if it's no
     // longer in the scene, skip so we don't build edges on a discarded model.
     if (!isInScene(mesh)) return;
+    // Blueprint mode force-builds any missing edge overlay synchronously when it
+    // switches on (see index.html applyBlueprint). If that already ran for this
+    // mesh, skip here so a mesh never ends up with two overlapping LineSegments
+    // children (a GPU-geometry leak surviving until the next disposeGroup).
+    if (mesh.children.some((c) => c.isLineSegments)) return;
     const edgeGeom = new THREE.EdgesGeometry(geometry, 30);
     const edges = new THREE.LineSegments(
       edgeGeom,
