@@ -773,6 +773,12 @@
     #gallery .sample.is-active { color: var(--on-fg); background: var(--on-fill);
       border-color: var(--accent); }
     #gallery .sample:disabled { opacity: .5; cursor: progress; }
+    /* Temporary File-backed pills from a multi-file drop/selection (issue #99).
+       Dashed border signals "session-only, not a bundled sample"; the file name
+       is clamped so a long name can't blow out the wrapped strip at 360/390px. */
+    #gallery .sample.dropped { border-style: dashed;
+      max-width: min(42vw, 12rem); overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; }
     /* Standard-view preset cluster — a fixed vertical toolbar on the left edge,
        vertically centered so it clears the header (top), the top-right gizmo +
        model-info HUD, and the centered bottom cluster at every width. The
@@ -977,7 +983,7 @@
          preference by the module script). Bound to the `T` key. -->
     <button id="theme-btn" type="button" title="Toggle light / dark theme (T)" aria-label="Toggle light and dark theme" aria-pressed="false" data-i18n-attr="title:themeTitle;aria-label:themeAria"><span class="tb-glyph" aria-hidden="true">🌙</span></button>
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
-    <input id="file-input" type="file" accept=".step,.stp,.igs,.iges,.brp,.brep" hidden />
+    <input id="file-input" type="file" accept=".step,.stp,.igs,.iges,.brp,.brep" multiple hidden />
   </header>
   <!-- Standard-view preset cluster: one-click canonical camera viewpoints
        (Front/Back/Top/Bottom/Right/Left/Iso) for CAD-style inspection. A fixed
@@ -4005,12 +4011,97 @@
       invalidate();
     });
 
+    // --- Multi-file intake (issue #99) -----------------------------------------
+    // BOTH entry points — the file picker and full-window drag-drop — used to keep
+    // only files[0], silently discarding the rest of a multi-file drop/selection
+    // with no signal. They now funnel through ingestFiles(), which filters the set
+    // to the CAD extensions occt reads (the same CAD_EXT_RE the single-file guard
+    // uses) and then, uniformly for both sources:
+    //   • 0 valid  → reject the whole set — the lone-file wording for a single
+    //                wrong-extension file, a count-aware line for a larger set.
+    //   • 1 valid  → load it exactly as before (no queue to switch between).
+    //   • >1 valid → load the first AND render every valid file as a temporary
+    //                gallery pill (reusing the .sample markup, backed by the
+    //                in-memory File) so the user can switch between them without
+    //                re-dropping. Session-only: the Files are never persisted and
+    //                the pills are replaced by the next intake / single-file load.
+
+    // Temporary File-backed gallery pills from the last multi-file intake. Each
+    // entry is { file, pill }. Cleared by clearDroppedPills().
+    let droppedEntries = [];
+
+    function clearDroppedPills() {
+      droppedEntries.forEach((e) => e.pill.remove());
+      droppedEntries = [];
+    }
+
+    // Build one temporary pill per valid File and append it to the gallery. No
+    // dataset.file: loadSample marks its active pill by matching dataset.file to a
+    // bundled sample name, so leaving it unset keeps these pills out of that match
+    // — loading a bundled sample then correctly deactivates every dropped pill.
+    function renderDroppedPills(files) {
+      clearDroppedPills();
+      files.forEach((file) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sample dropped'; // reuse the gallery-pill styling
+        btn.textContent = file.name;
+        btn.setAttribute('aria-pressed', 'false');
+        btn.title = t('droppedTitle', { name: file.name });
+        const entry = { file, pill: btn };
+        // Ignore clicks while a load is in flight (spinner active) so two files
+        // can't race; a bundled-sample load also disables .sample buttons.
+        btn.addEventListener('click', () => {
+          if (!spinner.classList.contains('active')) loadDroppedFile(entry);
+        });
+        gallery.appendChild(btn);
+        droppedEntries.push(entry);
+      });
+    }
+
+    // Load one File-backed pill: make it the active pill (deactivating every other
+    // gallery pill, bundled or dropped), then load through the same loadFile path a
+    // drag-drop/open uses, so the size guard, hash/share reset, and error handling
+    // are all identical to a single-file load.
+    function loadDroppedFile(entry) {
+      gallery.querySelectorAll('.sample').forEach((b) => {
+        const active = b === entry.pill;
+        b.classList.toggle('is-active', active);
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      loadFile(entry.file);
+    }
+
+    // Shared intake for a FileList (or File[]) from either entry point.
+    function ingestFiles(fileList) {
+      const all = Array.from(fileList || []);
+      if (!all.length) return;
+      const valid = all.filter((f) => CAD_EXT_RE.test(f.name));
+      if (!valid.length) {
+        // Nothing readable in the selection. Keep the original single-file hint for
+        // a lone wrong-extension file; generalize (with the count) for a real set.
+        hint.textContent = all.length === 1
+          ? t('notStepFile', { name: all[0].name })
+          : t('noValidInSet', { count: all.length });
+        return;
+      }
+      if (valid.length === 1) {
+        clearDroppedPills(); // a single valid file has no queue to offer
+        loadFile(valid[0]);
+        return;
+      }
+      // Multiple valid files: build the switchable queue and load the first.
+      renderDroppedPills(valid);
+      loadDroppedFile(droppedEntries[0]);
+      showToast(t('multiDropQueued', { count: valid.length }));
+    }
+
     // --- File picker ---
     const fileInput = document.getElementById('file-input');
     document.getElementById('open-btn').addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', () => {
-      if (fileInput.files.length) loadFile(fileInput.files[0]);
-      fileInput.value = ''; // allow re-selecting the same file
+      ingestFiles(fileInput.files);
+      fileInput.value = ''; // allow re-selecting the same file(s)
     });
 
     // --- Full-window drag-and-drop ---
@@ -4039,13 +4130,10 @@
       e.preventDefault();
       dragDepth = 0;
       overlay.classList.remove('active');
-      const file = e.dataTransfer && e.dataTransfer.files[0];
-      if (!file) return;
-      if (!CAD_EXT_RE.test(file.name)) {
-        hint.textContent = t('notStepFile', { name: file.name });
-        return;
-      }
-      loadFile(file);
+      // Same multi-file logic as the picker: filter the whole drop to CAD files
+      // and either load one, queue several as pills, or reject the set — never
+      // silently keep files[0] and drop the rest.
+      ingestFiles(e.dataTransfer && e.dataTransfer.files);
     });
 
     addEventListener('resize', () => {

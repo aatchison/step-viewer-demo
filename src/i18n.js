@@ -192,6 +192,11 @@ const messages = {
     couldNotLoadConsole: 'Could not load {label} — see console',
     notStepFile: '{name} is not a supported CAD file (.step, .stp, .iges, .igs, .brep, .brp)',
 
+    // --- Multi-file drop / selection (issue #99) ---
+    noValidInSet: 'No supported CAD file (.step, .stp, .iges, .igs, .brep, .brp) in the {count} dropped item(s)',
+    multiDropQueued: '{count} files added to the gallery — click a pill to switch between them',
+    droppedTitle: 'Loaded file: {name}',
+
     // --- Large-file size guard ---
     sizeSoftWarn: '{label} is large ({size}) — parsing may be slow.',
     sizeHardConfirm:
