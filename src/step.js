@@ -52,6 +52,15 @@ export async function initOcct() {
   return occtPromise;
 }
 
+// Discard the cached engine-init promise so the next initOcct() starts a fresh
+// download + init. Used by the UI's Retry after an engine/CDN load failure or a
+// stall: initOcct only self-clears the cache on rejection, so a still-pending
+// (hung) attempt would otherwise be re-awaited forever. Clearing it here lets a
+// retry kick off a genuinely new attempt.
+export function resetOcct() {
+  occtPromise = null;
+}
+
 // Parses a STEP file (as an ArrayBuffer / TypedArray) and returns a THREE.Group
 // of Meshes. Throws on parse failure so callers can handle it.
 //
