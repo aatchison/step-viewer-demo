@@ -986,6 +986,7 @@
     async function loadFile(file) {
       retryAction = () => loadFile(file); // Retry re-reads + re-loads this file
       hint.textContent = `Loading ${file.name}…`;
+      armStallOnFirstUserLoad(); // reduced-data: arm the watchdog on this first real load
       setLoading(true);
       try {
         const buf = await file.arrayBuffer();
@@ -1036,6 +1037,7 @@
             phase === 'parse' ? 'Parsing STEP model…' : 'Loading 3D engine…')
         : null;
       if (staged) setLoadStatus('Loading 3D engine…');
+      armStallOnFirstUserLoad(); // reduced-data: arm the watchdog on this first real load
       setLoading(true);
       try {
         const res = await fetch(`./samples/${sample.file}`);
@@ -1085,10 +1087,41 @@
       gallery.appendChild(btn);
     });
 
-    // Show the first bundled sample on page load. Arm the stall watchdog for this
-    // initial engine + model download so a slow/broken CDN doesn't hang forever.
-    startStallWatch();
-    loadSample(SAMPLES[0]);
+    // Respect prefers-reduced-data: on metered/limited connections, the heavy
+    // startup cost (three.js + occt/WASM engine + a multi-MB sample STEP file)
+    // must not be paid before the user asks. Read the query once at boot.
+    const reduceData = matchMedia('(prefers-reduced-data: reduce)').matches;
+
+    if (reduceData) {
+      // Nothing is downloading yet — clear the static "Loading 3D engine…"
+      // spinner + status line so the page doesn't imply a fetch is underway,
+      // and invite the user to pick a model. The gallery pills are keyboard-
+      // focusable buttons, so the reworded #hint prompt plus the pills form the
+      // keyboard-first entry point. The stall watchdog and the staged engine-
+      // loading spinner stay disarmed until the user's first real load (see
+      // armStallOnFirstUserLoad + the `staged` path in loadSample/loadFile),
+      // exactly honoring the reduced-data intent.
+      setLoading(false);
+      setLoadStatus(null);
+      hint.textContent = coarsePointer
+        ? 'Data saver is on — tap a model in the gallery below to load it.'
+        : 'Data saver is on — pick a model from the gallery below, open a file, or drop a .step / .stp file to load it.';
+    } else {
+      // Show the first bundled sample on page load. Arm the stall watchdog for
+      // this initial engine + model download so a slow/broken CDN doesn't hang
+      // forever.
+      startStallWatch();
+      loadSample(SAMPLES[0]);
+    }
+
+    // In reduced-data mode the boot-time stall watchdog is deferred, so the
+    // FIRST user-initiated load arms it (once) — a slow/broken engine download
+    // on that genuine request still can't spin forever. No-op after the first
+    // render, and in default mode (where boot already armed it) since reduceData
+    // is false. Called from both loadSample and loadFile.
+    function armStallOnFirstUserLoad() {
+      if (reduceData && !firstRenderDone) startStallWatch();
+    }
 
     // --- Wireframe toggle (checkbox + `W` key) ---
     const wireCheck = document.getElementById('wire-check');
