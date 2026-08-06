@@ -353,21 +353,22 @@
        keys to assistive tech; the aria-label spells them out in prose. -->
   <div id="app" role="img" tabindex="0"
        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight Plus Minus Home"
+       data-i18n-attr="aria-label:appAriaDefault"
        aria-label="Interactive 3D view of the loaded STEP model. Drag to orbit, scroll or pinch to zoom. When focused: Arrow keys orbit, plus and minus keys zoom, Shift plus Arrow keys pan, and Home re-fits the view."></div>
   <header>
-    <h1><span class="glyph" aria-hidden="true">◈</span>STEP Viewer</h1>
-    <span class="tag">three.js · occt-import-js · demo</span>
+    <h1><span class="glyph" aria-hidden="true">◈</span><span data-i18n="appName">STEP Viewer</span></h1>
+    <span class="tag" data-i18n="tag">three.js · occt-import-js · demo</span>
     <span class="spacer"></span>
-    <label id="wire-toggle" title="Toggle wireframe (W)">
-      <input id="wire-check" type="checkbox" aria-label="Wireframe" /> <span class="btn-icon" aria-hidden="true">▦</span><span class="btn-label">Wireframe</span>
+    <label id="wire-toggle" title="Toggle wireframe (W)" data-i18n-attr="title:wireframeTitle">
+      <input id="wire-check" type="checkbox" aria-label="Wireframe" data-i18n-attr="aria-label:wireframeLabel" /> <span class="btn-icon" aria-hidden="true">▦</span><span class="btn-label" data-i18n="wireframeLabel">Wireframe</span>
     </label>
-    <button id="fit-btn" type="button" title="Fit / reset view (R or F, or double-click canvas)" aria-label="Fit view"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label">Fit view</span></button>
+    <button id="fit-btn" type="button" title="Fit / reset view (R or F, or double-click canvas)" aria-label="Fit view" data-i18n-attr="title:fitTitle;aria-label:fitAria"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label" data-i18n="fitLabel">Fit view</span></button>
     <!-- High-contrast toggle. aria-pressed reflects the live state (corrected by
          the module script on load from the persisted / OS preference); the ◑ glyph
          shows on narrow screens where the label collapses (see max-width:600px). -->
-    <button id="contrast-btn" type="button" title="Toggle high contrast (C)" aria-label="High contrast" aria-pressed="false"><span class="btn-icon" aria-hidden="true">◑</span><span class="btn-label">Contrast</span></button>
-    <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label">Open STEP file…</span></button>
-    <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog">?</button>
+    <button id="contrast-btn" type="button" title="Toggle high contrast (C)" aria-label="High contrast" aria-pressed="false" data-i18n-attr="title:contrastTitle;aria-label:contrastAria"><span class="btn-icon" aria-hidden="true">◑</span><span class="btn-label" data-i18n="contrastLabel">Contrast</span></button>
+    <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file" data-i18n-attr="title:openTitle;aria-label:openAria"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label" data-i18n="openLabel">Open STEP file…</span></button>
+    <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
   <!-- Keyboard-shortcuts / controls help. Native <dialog> (opened via showModal)
@@ -377,29 +378,29 @@
        heading. -->
   <dialog id="help-dialog" aria-labelledby="help-title">
     <div class="help-head">
-      <h2 id="help-title">Shortcuts &amp; controls</h2>
-      <button id="help-close" type="button" aria-label="Close help">×</button>
+      <h2 id="help-title" data-i18n="helpHeading">Shortcuts &amp; controls</h2>
+      <button id="help-close" type="button" aria-label="Close help" data-i18n-attr="aria-label:helpCloseAria">×</button>
     </div>
     <ul class="help-list">
-      <li><span class="k">Drag</span><span class="d">Orbit the model</span></li>
-      <li><span class="k">Scroll</span><span class="d">Zoom in / out</span></li>
+      <li><span class="k" data-i18n="kDrag">Drag</span><span class="d" data-i18n="descOrbitModel">Orbit the model</span></li>
+      <li><span class="k" data-i18n="kScroll">Scroll</span><span class="d" data-i18n="descZoom">Zoom in / out</span></li>
       <!-- Keyboard camera controls — active while the 3D view (Tab to it) is
            focused; the arrows orbit, +/- dolly, Shift+arrows pan, Home re-fits. -->
-      <li><span class="k">←</span><span class="k">→</span><span class="k">↑</span><span class="k">↓</span><span class="d">Orbit camera (view focused)</span></li>
-      <li><span class="k">+</span><span class="k">−</span><span class="d">Zoom camera in / out</span></li>
-      <li><span class="k">⇧</span><span class="k">←→↑↓</span><span class="d">Pan the view target</span></li>
-      <li><span class="k">Home</span><span class="d">Re-fit / reset view</span></li>
-      <li><span class="k">W</span><span class="d">Toggle wireframe</span></li>
-      <li><span class="k">C</span><span class="d">Toggle high contrast</span></li>
-      <li><span class="k">F</span><span class="k">R</span><span class="d">Fit / reset view</span></li>
-      <li><span class="k">1</span><span class="k">4</span><span class="d">Load gallery samples</span></li>
-      <li><span class="k">Drop</span><span class="d">Open a .step / .stp file</span></li>
+      <li><span class="k">←</span><span class="k">→</span><span class="k">↑</span><span class="k">↓</span><span class="d" data-i18n="descOrbitCamera">Orbit camera (view focused)</span></li>
+      <li><span class="k">+</span><span class="k">−</span><span class="d" data-i18n="descZoomCamera">Zoom camera in / out</span></li>
+      <li><span class="k">⇧</span><span class="k">←→↑↓</span><span class="d" data-i18n="descPan">Pan the view target</span></li>
+      <li><span class="k" data-i18n="kHome">Home</span><span class="d" data-i18n="descHome">Re-fit / reset view</span></li>
+      <li><span class="k">W</span><span class="d" data-i18n="descWireframe">Toggle wireframe</span></li>
+      <li><span class="k">C</span><span class="d" data-i18n="descContrast">Toggle high contrast</span></li>
+      <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
+      <li><span class="k">1</span><span class="k">4</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
+      <li><span class="k" data-i18n="kDrop">Drop</span><span class="d" data-i18n="descOpen">Open a .step / .stp file</span></li>
     </ul>
   </dialog>
   <!-- Bottom cluster: gallery stacked directly above the hint in a single
        container so they share layout and can never overlap. -->
   <div id="bottom-cluster">
-    <nav id="gallery" aria-label="Sample models"></nav>
+    <nav id="gallery" aria-label="Sample models" data-i18n-attr="aria-label:galleryAria"></nav>
     <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
          load start / success / error text set here is read out to AT users. -->
     <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · keys: 1–4 samples, R reset, W wireframe</div>
@@ -426,7 +427,7 @@
        engine…' shows before the ES module (and multi-MB three.js + occt/WASM
        download) run. The module advances it to 'Parsing STEP model…' and clears
        it on first render. Only shown for the initial auto-load. -->
-  <p id="load-status" class="active" role="status" aria-live="polite">Loading 3D engine…</p>
+  <p id="load-status" class="active" role="status" aria-live="polite" data-i18n="loadStatusEngine">Loading 3D engine…</p>
   <div id="toast" role="alert"></div>
   <!-- Persistent engine-load failure state. Shown by showEngineError() on an
        'init'-kind failure (occt/WASM engine / CDN download) or when the stall
@@ -435,10 +436,10 @@
        vanishes. role=alert announces it; the Retry button re-attempts the last
        load (gallery pick or dropped file). Hidden until an engine failure. -->
   <div id="engine-error" role="alert" hidden>
-    <p class="ee-msg">Couldn't load the 3D engine — check your connection.</p>
-    <button id="engine-retry" type="button">Retry</button>
+    <p class="ee-msg" data-i18n="engineErrorDefault">Couldn't load the 3D engine — check your connection.</p>
+    <button id="engine-retry" type="button" data-i18n="retry">Retry</button>
   </div>
-  <div id="drop-overlay"><span>Drop a .step / .stp file to load</span></div>
+  <div id="drop-overlay"><span data-i18n="dropOverlay">Drop a .step / .stp file to load</span></div>
 
   <script type="importmap">
   {
@@ -454,6 +455,13 @@
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
     import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
     import { loadStepFromArrayBuffer, resetOcct } from './src/step.js';
+    import { t, applyStaticI18n } from './src/i18n.js';
+
+    // Populate all static markup strings from the localized table (and write the
+    // resolved <html lang>, done at i18n.js import time). Runs before any JS
+    // message builder below reads t(), and before the hint is composed, so the
+    // whole UI renders in the chosen locale from first module execution.
+    applyStaticI18n();
 
     const app = document.getElementById('app');
     // alpha:true so the canvas clears transparent — the page's radial-vignette
@@ -623,16 +631,14 @@
     // Touch devices orbit/zoom with gestures, not a scroll wheel — word the
     // interaction hint to match the pointer modality.
     const coarsePointer = matchMedia('(pointer: coarse)').matches;
-    const zoomHint = coarsePointer ? 'drag to orbit · pinch to zoom'
-                                   : 'drag to orbit · scroll to zoom';
+    const zoomHint = coarsePointer ? t('zoomPinch') : t('zoomScroll');
     // First-paint discoverability guidance, worded for the current pointer
     // modality. Shown from load (the static markup carries a generic version) and
     // kept on screen until the first model actually renders.
-    const dropHint = coarsePointer ? 'tap a model in the gallery below'
-                                    : 'pick a model from the gallery below, or drag & drop a .step / .stp file';
+    const dropHint = coarsePointer ? t('hintTapModel') : t('hintPickModel');
     // On touch devices there's no keyboard, so only surface the key shortcuts on
     // fine-pointer (mouse/keyboard) devices; touch users get the gesture hint only.
-    const keyHint = coarsePointer ? '' : ' · keys: 1–4 samples, R reset, W wireframe';
+    const keyHint = coarsePointer ? '' : t('keyHint');
     hint.textContent = `${dropHint} · ${zoomHint}${keyHint}`;
     const spinner = document.getElementById('spinner');
     const toast = document.getElementById('toast');
@@ -691,7 +697,7 @@
     const engineError = document.getElementById('engine-error');
     const engineRetry = document.getElementById('engine-retry');
     const engineErrorMsg = engineError.querySelector('.ee-msg');
-    const ENGINE_ERROR_DEFAULT = "Couldn't load the 3D engine — check your connection.";
+    const ENGINE_ERROR_DEFAULT = t('engineErrorDefault');
     let retryAction = null;
 
     function showEngineError(msg) {
@@ -726,9 +732,7 @@
     // summary after a load (updateModelInfo); on a failure with nothing on
     // screen it reverts to this non-model description rather than lying about a
     // stale model. (The markup default covers the pre-first-load window.)
-    const APP_ARIA_EMPTY =
-      'No 3D model loaded. Pick a model from the gallery or open a STEP file. ' +
-      'When focused: Arrow keys orbit, plus and minus keys zoom, Shift plus Arrow keys pan, and Home re-fits the view.';
+    const APP_ARIA_EMPTY = t('appAriaEmpty');
 
     // Compact dimension formatting: whole numbers past 100, one decimal past 10,
     // two below — keeps a tiny 0.80 gear and a 250 block both legible.
@@ -762,8 +766,10 @@
       const tris = countTriangles(group);
       miName.textContent = label;
       miName.title = label; // full name on hover when the label is ellipsized
-      miStats.textContent =
-        `${tris.toLocaleString()} tris · ${fmtDim(size.x)} × ${fmtDim(size.y)} × ${fmtDim(size.z)}`;
+      miStats.textContent = t('modelStats', {
+        tris: tris.toLocaleString(),
+        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z),
+      });
       modelInfo.hidden = false;
 
       // Compose a natural-language summary that reuses the same number/dimension
@@ -771,10 +777,10 @@
       // name so AT users querying the view hear what's on screen, and (b) push it
       // into the polite #model-info live region (.mi-a11y) so it's announced once
       // per load. The visible .mi-name/.mi-stats are aria-hidden, so no duplicate.
-      const summary =
-        `3D view of ${label}: ${tris.toLocaleString()} triangles, ` +
-        `bounding box ${fmtDim(size.x)} by ${fmtDim(size.y)} by ${fmtDim(size.z)}. ` +
-        `Use arrow keys to orbit.`;
+      const summary = t('modelSummary', {
+        label, tris: tris.toLocaleString(),
+        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z),
+      });
       app.setAttribute('aria-label', summary);
       miA11y.textContent = summary;
     }
@@ -854,13 +860,10 @@
     // or 'parse' (invalid STEP bytes); anything else falls back to generic.
     function describeError(err, label) {
       const kind = err && err.kind;
-      if (kind === 'init')
-        return `Could not load ${label} — the 3D engine (occt/WASM) failed to download. Check your connection and reload.`;
-      if (kind === 'http')
-        return `Could not load ${label} — the file could not be fetched (${err.message}).`;
-      if (kind === 'parse')
-        return `Could not load ${label} — the file could not be parsed; it may be invalid or an unsupported STEP variant.`;
-      return `Could not load ${label} — the file may be invalid or unsupported.`;
+      if (kind === 'init') return t('errInit', { label });
+      if (kind === 'http') return t('errHttp', { label, message: err.message });
+      if (kind === 'parse') return t('errParse', { label });
+      return t('errGeneric', { label });
     }
 
     // First-paint loader + stall watchdog. The static spinner is cleared once the
@@ -878,11 +881,11 @@
         // as an engine-load failure. Surface the same persistent Retry panel the
         // 'init' error path uses (Retry resets the pending occt attempt), rather
         // than an eternal spinner plus a toast that self-dismisses.
-        hint.textContent = "Couldn't load the 3D engine — check your connection.";
+        hint.textContent = t('engineErrorDefault');
         // No model ever rendered — keep the canvas accessible name in its
         // non-model state instead of the generic "loaded model" markup default.
         if (!currentModel) resetModelInfo();
-        showEngineError('Loading the 3D engine is taking too long — check your connection and retry.');
+        showEngineError(t('engineErrorStall'));
       }, STALL_MS);
     }
     function markFirstRender() {
@@ -979,13 +982,13 @@
       startSwapIn(model); // ease the new model in (scale + fade) instead of popping
       markFirstRender(); // first successful render clears the loader + stall watch
       hideEngineError(); // a successful load supersedes any engine-failure panel
-      hint.textContent = `${label} · ${zoomHint}`;
+      hint.textContent = t('loadedHint', { label, zoom: zoomHint });
     }
 
     // Read a user-supplied File and load it, reporting failures via the hint.
     async function loadFile(file) {
       retryAction = () => loadFile(file); // Retry re-reads + re-loads this file
-      hint.textContent = `Loading ${file.name}…`;
+      hint.textContent = t('loading', { label: file.name });
       armStallOnFirstUserLoad(); // reduced-data: arm the watchdog on this first real load
       setLoading(true);
       try {
@@ -993,7 +996,7 @@
         await showStepFromArrayBuffer(buf, file.name);
       } catch (err) {
         console.error('STEP load failed:', err);
-        hint.textContent = `Could not load ${file.name} — see console`;
+        hint.textContent = t('couldNotLoadConsole', { label: file.name });
         // Nothing valid rendered (a prior model, if any, is still on screen and
         // keeps its accurate summary) — reset the accessible name so AT users
         // aren't told a stale successful model is loaded.
@@ -1010,11 +1013,13 @@
     // --- Sample gallery ---
     // Bundled models under ./samples/. Each parses via occt-import-js (verified
     // in CI-style node checks) and loads through the same path as user files.
+    // Labels route through the string table so gallery pills, the hint, and the
+    // model-info HUD all read the model name in the active locale.
     const SAMPLES = [
-      { file: 'sample.step',  label: 'Gear' },
-      { file: 'block.step',   label: 'Block' },
-      { file: 'tetra.step',   label: 'Tetrahedron' },
-      { file: 'pyramid.step', label: 'Pyramid' },
+      { file: 'sample.step',  label: t('sampleGear') },
+      { file: 'block.step',   label: t('sampleBlock') },
+      { file: 'tetra.step',   label: t('sampleTetra') },
+      { file: 'pyramid.step', label: t('samplePyramid') },
     ];
 
     const gallery = document.getElementById('gallery');
@@ -1027,16 +1032,16 @@
       buttons.forEach((b) => { b.disabled = true; });
       // Keep the first-paint guidance visible during the initial auto-load; only
       // swap to a per-load "Loading…" message once the user is past first render.
-      if (firstRenderDone) hint.textContent = `Loading ${sample.label}…`;
+      if (firstRenderDone) hint.textContent = t('loading', { label: sample.label });
       // The initial auto-load (before first render) gets staged textual status —
       // engine init then parse — beneath the spinner; subsequent loads keep the
       // lighter bare spinner. onPhase is only wired for that first load.
       const staged = !firstRenderDone;
       const onPhase = staged
         ? (phase) => setLoadStatus(
-            phase === 'parse' ? 'Parsing STEP model…' : 'Loading 3D engine…')
+            phase === 'parse' ? t('loadStatusParse') : t('loadStatusEngine'))
         : null;
-      if (staged) setLoadStatus('Loading 3D engine…');
+      if (staged) setLoadStatus(t('loadStatusEngine'));
       armStallOnFirstUserLoad(); // reduced-data: arm the watchdog on this first real load
       setLoading(true);
       try {
@@ -1058,7 +1063,7 @@
         });
       } catch (err) {
         console.error('STEP load failed:', err);
-        hint.textContent = `Could not load ${sample.label} — see console`;
+        hint.textContent = t('couldNotLoadConsole', { label: sample.label });
         // Revert the accessible name only when nothing valid is on screen; a
         // previously loaded model keeps its own (still-accurate) summary.
         if (!currentModel) resetModelInfo();
@@ -1082,7 +1087,7 @@
       btn.dataset.file = sample.file;
       btn.setAttribute('aria-pressed', 'false');
       // Surface the number-key shortcut (1–4) on the pill so it's discoverable.
-      btn.title = `${sample.label} (press ${i + 1})`;
+      btn.title = t('sampleTitle', { label: sample.label, n: i + 1 });
       btn.addEventListener('click', () => loadSample(sample));
       gallery.appendChild(btn);
     });
@@ -1103,9 +1108,7 @@
       // exactly honoring the reduced-data intent.
       setLoading(false);
       setLoadStatus(null);
-      hint.textContent = coarsePointer
-        ? 'Data saver is on — tap a model in the gallery below to load it.'
-        : 'Data saver is on — pick a model from the gallery below, open a file, or drop a .step / .stp file to load it.';
+      hint.textContent = coarsePointer ? t('reducedDataCoarse') : t('reducedDataFine');
     } else {
       // Show the first bundled sample on page load. Arm the stall watchdog for
       // this initial engine + model download so a slow/broken CDN doesn't hang
@@ -1386,7 +1389,7 @@
       const file = e.dataTransfer && e.dataTransfer.files[0];
       if (!file) return;
       if (!/\.(step|stp)$/i.test(file.name)) {
-        hint.textContent = `${file.name} is not a .step/.stp file`;
+        hint.textContent = t('notStepFile', { name: file.name });
         return;
       }
       loadFile(file);
