@@ -1612,18 +1612,72 @@
     scene.add(placeholder);
 
     const hint = document.getElementById('hint');
-    // Touch devices orbit/zoom with gestures, not a scroll wheel — word the
-    // interaction hint to match the pointer modality.
-    const coarsePointer = matchMedia('(pointer: coarse)').matches;
-    const zoomHint = coarsePointer ? t('zoomPinch') : t('zoomScroll');
-    // First-paint discoverability guidance, worded for the current pointer
-    // modality. Shown from load (the static markup carries a generic version) and
-    // kept on screen until the first model actually renders.
-    const dropHint = coarsePointer ? t('hintTapModel') : t('hintPickModel');
-    // On touch devices there's no keyboard, so only surface the key shortcuts on
-    // fine-pointer (mouse/keyboard) devices; touch users get the gesture hint only.
-    const keyHint = coarsePointer ? '' : t('keyHint');
+    // Interaction-hint modality (issue #106). Touch devices orbit/zoom with
+    // gestures, not a scroll wheel, and have no keyboard — so the wording differs
+    // ('pinch to zoom' + no key hints vs 'scroll to zoom' + key hints). The
+    // `(pointer: coarse)` media query only reports the device's *primary* pointer,
+    // which lies on hybrids (touch laptop, tablet + trackpad, phone + paired
+    // mouse). So we render the media-query guess immediately (no blank flash), then
+    // correct it in place from the first real interaction that contradicts it.
+    let coarsePointer = matchMedia('(pointer: coarse)').matches;
+    let modalitySettled = false; // true once a real interaction has confirmed/corrected the guess
+    // Modality-worded fragments, recomputed by computeModalityStrings() whenever
+    // coarsePointer flips. `zoomHint` is also read by the loaded-model hint below.
+    let zoomHint, dropHint, keyHint;
+    function computeModalityStrings() {
+      // drag to orbit · pinch|scroll to zoom
+      zoomHint = coarsePointer ? t('zoomPinch') : t('zoomScroll');
+      // First-paint discoverability guidance, worded for the current modality.
+      dropHint = coarsePointer ? t('hintTapModel') : t('hintPickModel');
+      // Key shortcuts only make sense with a keyboard — hidden for pure-touch.
+      keyHint = coarsePointer ? '' : t('keyHint');
+    }
+    computeModalityStrings();
     hint.textContent = `${dropHint} · ${zoomHint}${keyHint}`;
+    // Re-word the standing hint when the observed modality contradicts the guess.
+    // We only rewrite when the current #hint text is exactly the standing hint we
+    // last composed (intro, loaded-model, or reduced-data). If a transient message
+    // (measure result, section toggle, selection, error…) is showing, none match,
+    // so we leave it untouched rather than clobbering it. The #app aria-label is
+    // deliberately kept modality-neutral (it names *both* "scroll or pinch"), so it
+    // never contradicts the visible hint and needs no update here.
+    function setModality(coarse) {
+      // Idempotent: once settled to this modality, do nothing — this makes the
+      // input listeners cheap no-ops after the modality is decided, and prevents
+      // repeated events (every wheel tick / touch) from thrashing the text.
+      if (modalitySettled && coarse === coarsePointer) return;
+      // Snapshot the standing strings under the *old* modality so we can tell
+      // which (if any) is currently on screen before we overwrite the fragments.
+      const oldIntro = `${dropHint} · ${zoomHint}${keyHint}`;
+      const oldLoaded = currentModelLabel != null
+        ? t('loadedHint', { label: currentModelLabel, zoom: zoomHint }) : null;
+      const oldReduced = coarsePointer ? t('reducedDataCoarse') : t('reducedDataFine');
+      coarsePointer = coarse;
+      modalitySettled = true;
+      computeModalityStrings();
+      const cur = hint.textContent;
+      if (cur === oldIntro) {
+        hint.textContent = `${dropHint} · ${zoomHint}${keyHint}`;
+      } else if (oldLoaded != null && cur === oldLoaded) {
+        hint.textContent = t('loadedHint', { label: currentModelLabel, zoom: zoomHint });
+      } else if (cur === oldReduced) {
+        hint.textContent = coarsePointer ? t('reducedDataCoarse') : t('reducedDataFine');
+      }
+    }
+    // Passive, capture-phase listeners that classify the first (and any later)
+    // real interaction. touch → coarse; wheel / mouse-or-pen pointerdown /
+    // keydown → fine. They stay attached but no-op via setModality's guard once
+    // the modality is settled, and may re-settle if the user switches input type.
+    const onTouchInput = () => setModality(true);
+    const onPointerInput = (e) => {
+      if (e.pointerType === 'touch') setModality(true);
+      else setModality(false); // mouse / pen → fine pointer
+    };
+    const onFineInput = () => setModality(false); // wheel / keyboard
+    window.addEventListener('pointerdown', onPointerInput, { passive: true, capture: true });
+    window.addEventListener('touchstart', onTouchInput, { passive: true, capture: true });
+    window.addEventListener('wheel', onFineInput, { passive: true, capture: true });
+    window.addEventListener('keydown', onFineInput, { passive: true, capture: true });
     const spinner = document.getElementById('spinner');
     const toast = document.getElementById('toast');
     let spin = placeholder; // object the render loop rotates (null once static model loads)
