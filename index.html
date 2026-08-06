@@ -104,6 +104,7 @@
        regardless of embed), so the frame opens at the intended view. */
     :root.embed header,
     :root.embed #bottom-cluster,
+    :root.embed #view-presets,
     :root.embed #model-info { display: none !important; }
     header { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
       display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .6rem 1rem;
@@ -130,6 +131,8 @@
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
     #contrast-btn:focus-visible, #save-btn:focus-visible, #export-btn:focus-visible,
     #share-btn:focus-visible, #embed-btn:focus-visible,
+    #measure-btn:focus-visible, #measure-clear:focus-visible,
+    #section-btn:focus-visible, #section-flip:focus-visible, .sp-axis:focus-visible,
     #help-btn:focus-visible, #help-close:focus-visible, #gallery .sample:focus-visible,
     #share-fallback-close:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
@@ -153,11 +156,134 @@
     #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
-    #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+    #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
       color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .35rem .7rem; }
-    #save-btn, #export-btn, #share-btn, #embed-btn { display: inline-flex; align-items: center; gap: .35rem; }
-    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover { background: #232a35; border-color: #3a4150; }
+    #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { display: inline-flex; align-items: center; gap: .35rem; }
+    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover, #measure-btn:hover, #measure-clear:hover, #section-btn:hover, #select-fit-btn:hover { background: #232a35; border-color: #3a4150; }
+    /* Measure toggle active state — reuses the same accent on-state language as the
+       wireframe toggle / gallery pills (lifted text over a translucent blue fill
+       with the accent border) so "measure mode is on" reads at a glance. Both the
+       .is-active class and aria-pressed are set in JS (per the wireframe toggle
+       pattern); styling keys on .is-active. Placed after :hover so the active fill
+       wins when not hovering. */
+    #measure-btn.is-active { color: #eaf2ff; background: #1f3350cc; border-color: #4f9dff; }
+    #measure-btn.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    /* Section toggle active state — same accent on-state language as the measure /
+       wireframe toggles and gallery pills (lifted text over a translucent blue
+       fill with the accent border) so "section mode is on" reads at a glance. Both
+       .is-active and aria-pressed are set in JS (per the measure-toggle pattern);
+       styling keys on .is-active. Placed after :hover so the active fill wins when
+       not hovering. */
+    #section-btn.is-active { color: #eaf2ff; background: #1f3350cc; border-color: #4f9dff; }
+    #section-btn.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    /* Clear-measurement button is disabled until something is measured. */
+    #measure-clear:disabled { opacity: .5; cursor: not-allowed; }
+    #measure-clear:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
+    #measure-clear[hidden] { display: none; }
+    /* Fit-to-selection button — hidden until a face is picked (like measure-clear),
+       so it only appears once there's a selection to frame. */
+    #select-fit-btn[hidden] { display: none; }
+    /* Floating distance read-out for the measurement tool. Positioned each frame
+       in the render loop from the segment midpoint projected to screen px, so it
+       tracks the 3D points as the camera orbits. Centered on its anchor point
+       (translate -50%,-50%), click-through, tabular figures. Tokens mirror the
+       gallery pills' accent on-state so it reads as one system. aria-hidden — the
+       numeric distance is announced through the #hint live region instead. */
+    #measure-label { position: fixed; z-index: 12; transform: translate(-50%, -50%);
+      pointer-events: none; font-size: .74rem; font-weight: 600;
+      font-variant-numeric: tabular-nums; color: #eaf2ff; background: #1f3350ee;
+      border: 1px solid #4f9dff; border-radius: 6px; padding: .12rem .4rem;
+      white-space: nowrap; box-shadow: 0 2px 8px #0008; }
+    #measure-label[hidden] { display: none; }
+    /* Section / cross-section controls. A compact floating panel shown only while
+       Section mode is on (toggled from the header ⧈ button). Parked at the
+       bottom-left corner where the canvas is clear of the header (top), the
+       vertically-centered view-preset toolbar (left-center), the top-right gizmo +
+       model-info HUD, and the centered bottom cluster. Tokens mirror the gallery
+       pills / HUD (translucent panel fill, muted border, blur) so it reads as one
+       system. The panel itself is a normal interactive control cluster (pointer
+       events on). Hidden in embed mode alongside the rest of the chrome. */
+    :root.embed #section-panel { display: none !important; }
+    #section-panel { position: fixed; left: 1rem; bottom: 1rem; z-index: 11;
+      display: flex; flex-direction: column; gap: .45rem; width: min(52vw, 220px);
+      color: #e6edf3; background: var(--hc-panel-bg, #1b2029cc);
+      border: 1px solid var(--hc-border, #2a2f3a); border-radius: 10px;
+      padding: .55rem .6rem; backdrop-filter: blur(4px);
+      box-shadow: 0 6px 20px #0006; }
+    /* display:flex above overrides the hidden attribute's display:none — restore
+       it so the panel stays invisible until Section mode is turned on. */
+    #section-panel[hidden] { display: none; }
+    #section-panel .sp-title { font-size: .74rem; font-weight: 600; color: #cfe0ff;
+      letter-spacing: .2px; }
+    /* flex-wrap so the axis pills + flip never overflow the panel on the narrowest
+       phones (at 360px the 40px coarse-pointer targets can exceed the panel width);
+       the flip button then drops to a second line instead of clipping. */
+    #section-panel .sp-axes { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+    /* Axis + flip pills reuse the gallery-pill on/off language so the selected
+       axis and the flip state read at a glance. */
+    #section-panel .sp-axis, #section-panel .sp-flip { pointer-events: auto;
+      cursor: pointer; font: inherit; font-size: .78rem; font-weight: 600;
+      color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a);
+      border-radius: 6px; padding: .25rem .5rem; min-width: 1.9rem;
+      display: inline-flex; align-items: center; justify-content: center; }
+    #section-panel .sp-axis:hover, #section-panel .sp-flip:hover { background: #232a35;
+      border-color: #3a4150; }
+    #section-panel .sp-axis.is-active { color: #eaf2ff; background: #1f3350cc;
+      border-color: #4f9dff; }
+    #section-panel .sp-axis.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    #section-panel .sp-flip { margin-left: auto; } /* push flip to the right edge */
+    #section-panel .sp-flip.is-active { color: #eaf2ff; background: #1f3350cc;
+      border-color: #4f9dff; }
+    #section-panel .sp-flip.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    /* The cut-position slider. accent-color themes the native track/thumb to the
+       app blue; width:100% fills the panel. The slider is a static control (no
+       animation), so it is inherently reduced-motion safe. */
+    #section-panel .sp-slider { width: 100%; margin: 0; accent-color: #4f9dff;
+      cursor: pointer; }
+    /* Touch: give the axis/flip pills and the slider thumb a comfortable target. */
+    @media (pointer: coarse) {
+      #section-panel .sp-axis, #section-panel .sp-flip { min-height: 40px; min-width: 40px; }
+      #section-panel .sp-slider { height: 40px; }
+    }
+    /* Exploded-view controls — a compact floating panel mirroring #section-panel
+       but anchored bottom-RIGHT (section sits bottom-left) so the two never collide.
+       Shown once a model is loaded; a single-solid model disables the slider and
+       reveals the honest-degrade hint. Hidden in embed mode like the rest of the
+       chrome. */
+    :root.embed #explode-panel { display: none !important; }
+    /* Width is capped at 38vw (not the 52vw the section panel uses) so that when
+       BOTH panels are open at once — Section (bottom-left) + Explode (bottom-right)
+       — they never collide on the narrowest phones: at 360px the section panel can
+       reach ~187px from the left, leaving ~141px on the right, and 38vw = ~137px
+       clears it; wider viewports have ample room and the 200px cap keeps it tidy. */
+    #explode-panel { position: fixed; right: 1rem; bottom: 1rem; z-index: 11;
+      display: flex; flex-direction: column; gap: .4rem; width: min(38vw, 200px);
+      color: #e6edf3; background: var(--hc-panel-bg, #1b2029cc);
+      border: 1px solid var(--hc-border, #2a2f3a); border-radius: 10px;
+      padding: .55rem .6rem; backdrop-filter: blur(4px);
+      box-shadow: 0 6px 20px #0006; }
+    /* display:flex above overrides the hidden attribute — restore none so the panel
+       stays invisible until the first model loads. */
+    #explode-panel[hidden] { display: none; }
+    #explode-panel .ep-title { font-size: .74rem; font-weight: 600; color: #cfe0ff;
+      letter-spacing: .2px; }
+    /* The explode-amount slider (0 = collapsed, 1 = fully spread). accent-color
+       themes the native track/thumb to the app blue; a static control, so it is
+       inherently reduced-motion safe. */
+    #explode-panel .ep-slider { width: 100%; margin: 0; accent-color: #4f9dff;
+      cursor: pointer; pointer-events: auto; }
+    #explode-panel .ep-slider:disabled { cursor: not-allowed; opacity: .5; }
+    /* Honest-degrade note shown only for single-solid models (see refreshExplode). */
+    #explode-panel .ep-hint { font-size: .7rem; color: var(--hc-muted, #8b949e);
+      line-height: 1.3; }
+    #explode-panel .ep-hint[hidden] { display: none; }
+    #explode-panel.is-disabled .ep-title { color: var(--hc-muted, #8b949e); }
+    #explode-slider:focus-visible { outline: 2px solid #4f9dff; outline-offset: 2px; }
+    /* Touch: give the slider thumb a comfortable target. */
+    @media (pointer: coarse) {
+      #explode-panel .ep-slider { height: 40px; }
+    }
     /* Non-shareable state: a user-opened file has no restorable link, so the
        button is disabled (updateShareState) — dim it and drop the pointer. The
        Export GLB button is disabled the same way until a real model is loaded
@@ -343,6 +469,12 @@
       color: #cfe0ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #model-info .mi-stats { font-size: .7rem; color: var(--hc-muted, #8b949e);
       font-variant-numeric: tabular-nums; }
+    /* Selected-face readout — appears in the model-info HUD only while a face is
+       picked. Tinted the same teal as the WebGL highlight emissive so the on-screen
+       glow and the label read as one selection. */
+    #model-info .mi-sel { max-width: 100%; font-size: .7rem; font-weight: 600;
+      color: #4fe0b0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #model-info .mi-sel[hidden] { display: none; }
     /* Screen-reader-only utility: visually removed but present in the a11y tree.
        Used for the natural-language model summary announced via #model-info's
        polite live region (the visible name/stats are aria-hidden so the summary
@@ -361,6 +493,24 @@
     #gallery .sample.is-active { color: #eaf2ff; background: #1f3350cc;
       border-color: #4f9dff; }
     #gallery .sample:disabled { opacity: .5; cursor: progress; }
+    /* Standard-view preset cluster — a fixed vertical toolbar on the left edge,
+       vertically centered so it clears the header (top), the top-right gizmo +
+       model-info HUD, and the centered bottom cluster at every width. The
+       container is click-through (pointer-events:none) so orbit drags pass
+       through the gaps; only the pills re-enable pointer events. Pills reuse the
+       gallery-pill tokens (translucent fill, muted border, blur) so the cluster
+       reads as one system with the rest of the chrome. */
+    #view-presets { position: fixed; left: 1rem; top: 50%; transform: translateY(-50%);
+      z-index: 10; display: flex; flex-direction: column; gap: .4rem;
+      pointer-events: none; }
+    #view-presets .preset { pointer-events: auto; cursor: pointer; font: inherit;
+      font-size: .78rem; color: #cfe0ff; background: var(--hc-panel-bg, #1b2029cc);
+      border: 1px solid var(--hc-border, #2a2f3a); border-radius: 999px;
+      padding: .3rem .8rem; backdrop-filter: blur(4px);
+      display: inline-flex; align-items: center; justify-content: center; gap: .35rem; }
+    #view-presets .preset:hover { background: #232a35; border-color: #3a4150; }
+    #view-presets .preset:focus-visible { outline: 2px solid #4f9dff;
+      outline-offset: 2px; border-color: #4f9dff; }
     /* Full-window drag-over affordance. */
     #drop-overlay { position: fixed; inset: 0; z-index: 20; display: none;
       align-items: center; justify-content: center; pointer-events: none;
@@ -377,13 +527,14 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
       #gallery { gap: .75rem; }
       #gallery .sample { min-height: 44px; padding: .5rem 1.1rem;
         display: inline-flex; align-items: center; }
+      #view-presets .preset { min-height: 44px; padding: .5rem 1rem; }
     }
     /* Small screens (~600px): compact the header controls to icon-only so the bar
        stays a single row on a 390px phone instead of wrapping to two rows of
@@ -398,13 +549,22 @@
       header { gap: .5rem; padding: .5rem .75rem; }
       #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
       #contrast-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
-      #share-btn .btn-label, #embed-btn .btn-label { display: none; }
+      #share-btn .btn-label, #embed-btn .btn-label,
+      #measure-btn .btn-label, #measure-clear .btn-label, #section-btn .btn-label,
+      #select-fit-btn .btn-label { display: none; }
       #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
       #contrast-btn .btn-icon, #save-btn .btn-icon, #export-btn .btn-icon,
-      #share-btn .btn-icon, #embed-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn { min-width: 44px; padding: .4rem;
+      #share-btn .btn-icon, #embed-btn .btn-icon,
+      #measure-btn .btn-icon, #measure-clear .btn-icon, #section-btn .btn-icon,
+      #select-fit-btn .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
+      /* Preset cluster collapses to axis-sign glyphs on the same narrow
+         breakpoint, mirroring the header controls' label→icon collapse. */
+      #view-presets .preset .btn-label { display: none; }
+      #view-presets .preset .btn-icon { display: inline-block; }
+      #view-presets .preset { min-width: 44px; padding: .4rem; }
     }
   </style>
 </head>
@@ -426,6 +586,32 @@
       <input id="wire-check" type="checkbox" aria-label="Wireframe" data-i18n-attr="aria-label:wireframeLabel" /> <span class="btn-icon" aria-hidden="true">▦</span><span class="btn-label" data-i18n="wireframeLabel">Wireframe</span>
     </label>
     <button id="fit-btn" type="button" title="Fit / reset view (R or F, or double-click canvas)" aria-label="Fit view" data-i18n-attr="title:fitTitle;aria-label:fitAria"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label" data-i18n="fitLabel">Fit view</span></button>
+    <!-- Measure toggle. When active, a click raycasts against the loaded meshes to
+         place two markers and read out the distance between them. aria-pressed
+         reflects the live state; when on it borrows the accent on-state language of
+         the wireframe toggle / gallery pills (via .is-active) so "measure mode is
+         on" reads at a glance. Collapses to the 📏 glyph under the same 600px /
+         coarse-pointer rules as the other header buttons. -->
+    <button id="measure-btn" type="button" title="Measure distance between two points (M)" aria-label="Measure distance" aria-pressed="false" data-i18n-attr="title:measureTitle;aria-label:measureAria"><span class="btn-icon" aria-hidden="true">📏</span><span class="btn-label" data-i18n="measureLabel">Measure</span></button>
+    <!-- Clear the current measurement (markers + line + label). Shown only while
+         Measure mode is on (or a measurement lingers); disabled until there's
+         something to clear. Also reachable via the Esc key. -->
+    <button id="measure-clear" type="button" hidden disabled title="Clear measurement (Esc)" aria-label="Clear measurement" data-i18n-attr="title:measureClearTitle;aria-label:measureClearAria"><span class="btn-icon" aria-hidden="true">✕</span><span class="btn-label" data-i18n="measureClearLabel">Clear</span></button>
+    <!-- Section / cross-section toggle. When active, a shared clipping plane cuts
+         through the loaded model (renderer.localClippingEnabled + per-material
+         clippingPlanes) so internal geometry — wall thickness, bores, pockets —
+         can be inspected. aria-pressed reflects the live state; when on it borrows
+         the accent on-state language of the measure / wireframe toggles (via
+         .is-active) so "section mode is on" reads at a glance. Turning it on shows
+         the axis / slider / flip panel (#section-panel). Collapses to the ⧈ glyph
+         under the same 600px / coarse-pointer rules as the other header buttons. -->
+    <button id="section-btn" type="button" title="Toggle section / cross-section clip plane" aria-label="Section / cross-section clip plane" aria-pressed="false" data-i18n-attr="title:sectionTitle;aria-label:sectionAria"><span class="btn-icon" aria-hidden="true">⧈</span><span class="btn-label" data-i18n="sectionLabel">Section</span></button>
+    <!-- Fit-to-selection. Click a face on the model to select it (see the picker in
+         the module script), then this reframes the camera on that face's own bounds
+         — distinct from the global Fit, which reframes the whole model. Hidden until
+         a face is selected; also reachable via the Z key. Collapses to the ⊹ glyph
+         under the same 600px / coarse-pointer rules as the other header buttons. -->
+    <button id="select-fit-btn" type="button" hidden title="Fit camera to the selected face (Z)" aria-label="Fit to selection" data-i18n-attr="title:selectFitTitle;aria-label:selectFitAria"><span class="btn-icon" aria-hidden="true">⊹</span><span class="btn-label" data-i18n="selectFitLabel">Fit selection</span></button>
     <!-- High-contrast toggle. aria-pressed reflects the live state (corrected by
          the module script on load from the persisted / OS preference); the ◑ glyph
          shows on narrow screens where the label collapses (see max-width:600px). -->
@@ -466,6 +652,25 @@
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
+  <!-- Standard-view preset cluster: one-click canonical camera viewpoints
+       (Front/Back/Top/Bottom/Right/Left/Iso) for CAD-style inspection. A fixed
+       vertical toolbar on the left edge, clear of the header, the top-right
+       gizmo + model-info HUD, and the centered bottom cluster at every width.
+       Each button snaps the camera to an axis-aligned direction at the current
+       fit distance (applyView) with a ~250ms ease (instant under reduced
+       motion). Visible word labels collapse to axis-sign glyphs on the <600px
+       icon-only breakpoint like the header controls; each button carries an
+       aria-label + title naming the view, its axis, and its numpad shortcut.
+       Works before any model loads (frames currentModel || placeholder). -->
+  <nav id="view-presets" aria-label="Standard camera views" data-i18n-attr="aria-label:presetsAria">
+    <button class="preset" type="button" data-view="front" aria-label="Front view (+Z, Numpad 1)" title="Front view (+Z, Numpad 1)" data-i18n-attr="aria-label:viewFrontDesc;title:viewFrontDesc"><span class="btn-icon" aria-hidden="true">+Z</span><span class="btn-label" data-i18n="viewFrontLabel">Front</span></button>
+    <button class="preset" type="button" data-view="back" aria-label="Back view (−Z, Numpad 2)" title="Back view (−Z, Numpad 2)" data-i18n-attr="aria-label:viewBackDesc;title:viewBackDesc"><span class="btn-icon" aria-hidden="true">−Z</span><span class="btn-label" data-i18n="viewBackLabel">Back</span></button>
+    <button class="preset" type="button" data-view="right" aria-label="Right view (+X, Numpad 3)" title="Right view (+X, Numpad 3)" data-i18n-attr="aria-label:viewRightDesc;title:viewRightDesc"><span class="btn-icon" aria-hidden="true">+X</span><span class="btn-label" data-i18n="viewRightLabel">Right</span></button>
+    <button class="preset" type="button" data-view="left" aria-label="Left view (−X, Numpad 4)" title="Left view (−X, Numpad 4)" data-i18n-attr="aria-label:viewLeftDesc;title:viewLeftDesc"><span class="btn-icon" aria-hidden="true">−X</span><span class="btn-label" data-i18n="viewLeftLabel">Left</span></button>
+    <button class="preset" type="button" data-view="top" aria-label="Top view (+Y, Numpad 5)" title="Top view (+Y, Numpad 5)" data-i18n-attr="aria-label:viewTopDesc;title:viewTopDesc"><span class="btn-icon" aria-hidden="true">+Y</span><span class="btn-label" data-i18n="viewTopLabel">Top</span></button>
+    <button class="preset" type="button" data-view="bottom" aria-label="Bottom view (−Y, Numpad 6)" title="Bottom view (−Y, Numpad 6)" data-i18n-attr="aria-label:viewBottomDesc;title:viewBottomDesc"><span class="btn-icon" aria-hidden="true">−Y</span><span class="btn-label" data-i18n="viewBottomLabel">Bottom</span></button>
+    <button class="preset" type="button" data-view="iso" aria-label="Isometric view (Numpad 0)" title="Isometric view (Numpad 0)" data-i18n-attr="aria-label:viewIsoDesc;title:viewIsoDesc"><span class="btn-icon" aria-hidden="true">◈</span><span class="btn-label" data-i18n="viewIsoLabel">Iso</span></button>
+  </nav>
   <!-- Keyboard-shortcuts / controls help. Native <dialog> (opened via showModal)
        so Escape-to-close and focus trapping are handled by the platform; the ×
        button and a backdrop click also dismiss it. Opened from the header "?"
@@ -489,8 +694,21 @@
       <li><span class="k">C</span><span class="d" data-i18n="descContrast">Toggle high contrast</span></li>
       <li><span class="k">S</span><span class="d" data-i18n="descSave">Save image (PNG)</span></li>
       <li><span class="k">E</span><span class="d" data-i18n="descExport">Export model as GLB</span></li>
+      <!-- Point-to-point measurement: M toggles the tool, Esc clears the current
+           measurement. -->
+      <li><span class="k">M</span><span class="d" data-i18n="descMeasure">Toggle distance measure</span></li>
+      <li><span class="k" data-i18n="kEsc">Esc</span><span class="d" data-i18n="descMeasureClear">Clear measurement</span></li>
+      <li><span class="k" data-i18n="kClick">Click</span><span class="d" data-i18n="descSelect">Select a face (Esc / empty click clears)</span></li>
+      <li><span class="k">Z</span><span class="d" data-i18n="descSelectFit">Fit to selected face</span></li>
+      <!-- Exploded view — a slider control (no shortcut); listed so it's discoverable
+           alongside the other inspection tools. -->
+      <li><span class="k" data-i18n="kDrag">Drag</span><span class="d" data-i18n="descExplode">Explode multi-part assemblies</span></li>
       <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
       <li><span class="k">1</span><span class="k">4</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
+      <!-- Standard-view presets — numpad keys (NumLock-independent via e.code)
+           snap to canonical viewpoints; distinct from the top-row 1–4 sample
+           keys above. -->
+      <li><span class="k">Num</span><span class="k">0–6</span><span class="d" data-i18n="descViews">Standard views (Front/Back/Top/Bottom/Right/Left/Iso)</span></li>
       <li><span class="k" data-i18n="kDrop">Drop</span><span class="d" data-i18n="descOpen">Open a .step / .stp file</span></li>
     </ul>
   </dialog>
@@ -514,7 +732,43 @@
          sentence) rather than twice (name + terse stats). -->
     <span class="mi-name" aria-hidden="true"></span>
     <span class="mi-stats" aria-hidden="true"></span>
+    <!-- Picked-face name (click-to-select). aria-hidden; the selection is announced
+         through the #hint live region so it isn't read out twice. Shown only while a
+         face is selected. -->
+    <span class="mi-sel" aria-hidden="true" hidden></span>
     <span class="mi-a11y sr-only"></span>
+  </div>
+  <!-- Floating distance read-out for the point-to-point measurement tool. Shown
+       once two points are placed; positioned each frame in the render loop from
+       the projected segment midpoint so it tracks the model as the camera orbits.
+       aria-hidden — the numeric distance is announced through the #hint live
+       region so it isn't read out twice. -->
+  <div id="measure-label" hidden aria-hidden="true"></div>
+  <!-- Section / cross-section controls. Shown only while Section mode is on (the
+       header ⧈ toggle sets .hidden). Axis radios (X/Y/Z) set the clip-plane
+       normal; the range slider drives the plane's position across the model's
+       bounding box (live, in the render loop); the ⇄ flip button reverses which
+       half is kept. All wired in the module script (setSectionMode et al.). -->
+  <div id="section-panel" hidden role="group" aria-labelledby="section-panel-label">
+    <span id="section-panel-label" class="sp-title" data-i18n="sectionPanelTitle">Section</span>
+    <div class="sp-axes" role="radiogroup" aria-label="Section plane axis" data-i18n-attr="aria-label:sectionAxisAria">
+      <button type="button" class="sp-axis is-active" data-axis="x" role="radio" aria-checked="true" aria-label="Cut along the X axis" data-i18n-attr="aria-label:sectionAxisXAria">X</button>
+      <button type="button" class="sp-axis" data-axis="y" role="radio" aria-checked="false" aria-label="Cut along the Y axis" data-i18n-attr="aria-label:sectionAxisYAria">Y</button>
+      <button type="button" class="sp-axis" data-axis="z" role="radio" aria-checked="false" aria-label="Cut along the Z axis" data-i18n-attr="aria-label:sectionAxisZAria">Z</button>
+      <button type="button" id="section-flip" class="sp-flip" aria-pressed="false" title="Flip cut direction" aria-label="Flip the cut direction" data-i18n-attr="title:sectionFlipTitle;aria-label:sectionFlipAria"><span aria-hidden="true">⇄</span></button>
+    </div>
+    <input id="section-slider" class="sp-slider" type="range" min="0" max="1" step="0.005" value="0.5" aria-label="Section plane position" data-i18n-attr="aria-label:sectionSliderAria" />
+  </div>
+  <!-- Exploded-view controls. Shown once a model is loaded. The range slider (0→1)
+       spreads each top-level solid radially outward from the assembly center and
+       collapses them back at 0 (driven by applyExplode in the module script; source
+       geometry is never mutated, so it is fully reversible). Single-solid models
+       disable the slider and reveal the .ep-hint so it degrades honestly instead of
+       doing nothing. Hidden in embed mode via CSS. -->
+  <div id="explode-panel" hidden role="group" aria-labelledby="explode-panel-label">
+    <span id="explode-panel-label" class="ep-title" data-i18n="explodePanelTitle">Explode</span>
+    <input id="explode-slider" class="ep-slider" type="range" min="0" max="1" step="0.01" value="0" aria-label="Explode assembly view" data-i18n-attr="aria-label:explodeSliderAria" />
+    <span id="explode-hint" class="ep-hint" hidden data-i18n="explodeSingle">Single-solid model — explode applies to multi-part assemblies.</span>
   </div>
   <!-- The visual spinner is decorative (aria-hidden); the staged status line
        below it is the accessible status channel (role=status / aria-live=polite)
@@ -1046,6 +1300,22 @@
     }
 
     // Center a group on the origin and frame the camera around it.
+    // Fit distance for a model of the given bounding radius at the current
+    // viewport aspect. Fit must respect the aspect ratio: a model as wide as it
+    // is tall overflows horizontally on portrait/narrow screens if we only
+    // satisfy the vertical FOV. Compute the distance for BOTH the vertical and
+    // horizontal FOV and take the larger, so the model fits in whichever
+    // dimension is tighter (the horizontal one when aspect < 1). The 1.18 is
+    // headroom padding. Extracted so the named-view presets (applyView) frame at
+    // exactly the same distance as a Fit — only the direction differs.
+    function fitDistanceForRadius(radius) {
+      const fovV = camera.fov * Math.PI / 180;
+      const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
+      const distV = radius / Math.sin(fovV / 2);
+      const distH = radius / Math.sin(fovH / 2);
+      return Math.max(distV, distH) * 1.18;
+    }
+
     function frameObject(obj) {
       const box = new THREE.Box3().setFromObject(obj);
       if (box.isEmpty()) return;
@@ -1058,16 +1328,7 @@
       groundTo(size);
 
       const radius = 0.5 * Math.max(size.x, size.y, size.z) || 1;
-      // Fit must respect the viewport aspect ratio: a model as wide as it is tall
-      // overflows horizontally on portrait/narrow screens if we only satisfy the
-      // vertical FOV. Compute the distance for BOTH the vertical and horizontal
-      // FOV and take the larger, so the model fits in whichever dimension is
-      // tighter (the horizontal one when aspect < 1).
-      const fovV = camera.fov * Math.PI / 180;
-      const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
-      const distV = radius / Math.sin(fovV / 2);
-      const distH = radius / Math.sin(fovH / 2);
-      const dist = Math.max(distV, distH) * 1.18;
+      const dist = fitDistanceForRadius(radius);
       camera.position.set(dist * 0.6, dist * 0.5, dist * 0.8);
       camera.near = Math.max(dist / 1000, 0.01);
       camera.far = dist * 1000;
@@ -1083,7 +1344,605 @@
 
     // Re-frame whatever object is currently on screen (loaded STEP model, or the
     // placeholder before/if no model loads). Recoverable from any lost/zoom state.
-    function fitView() { frameObject(currentModel || placeholder); }
+    function fitView() {
+      // Documented interop: a global Fit collapses any exploded view first, so the
+      // framing and the ground grid/shadow footprint (groundTo, inside frameObject)
+      // are computed on the collapsed model rather than the spread-apart bounds.
+      resetExplode();
+      frameObject(currentModel || placeholder);
+    }
+
+    // --- Named standard-view presets ------------------------------------------
+    // One-click canonical viewpoints for CAD inspection. Each preset points the
+    // camera down a fixed direction at the SAME framed distance a Fit would use
+    // (fitDistanceForRadius reused), with the orbit target snapped to the origin
+    // (frameObject recenters every model there), so the part stays fully in frame
+    // and only the direction changes. Ortho dirs are unit vectors → distance =
+    // fit distance; the iso dir reuses the default 0.6/0.5/0.8 placement so the
+    // Iso preset matches the default framed view exactly.
+    const PRESET_DIRS = {
+      front:  new THREE.Vector3(0, 0, 1),   // +Z
+      back:   new THREE.Vector3(0, 0, -1),  // -Z
+      top:    new THREE.Vector3(0, 1, 0),   // +Y
+      bottom: new THREE.Vector3(0, -1, 0),  // -Y
+      right:  new THREE.Vector3(1, 0, 0),   // +X
+      left:   new THREE.Vector3(-1, 0, 0),  // -X
+      iso:    new THREE.Vector3(0.6, 0.5, 0.8),
+    };
+    // Numpad → preset map. Keyed on e.code so it's NumLock-independent and never
+    // collides with the top-row 1–4 sample keys (those match e.key).
+    const NUMPAD_VIEWS = {
+      Numpad0: 'iso',   Numpad1: 'front', Numpad2: 'back',
+      Numpad3: 'right', Numpad4: 'left',  Numpad5: 'top', Numpad6: 'bottom',
+    };
+    const PRESET_MS = 250; // ease duration for the snap
+    // easeInOutQuad — smooth accelerate/decelerate for the position/target lerp.
+    const easePreset = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+    // In-flight snap: { fromPos, toPos, fromTarget, toTarget, start } or null.
+    // Advanced by the render loop (re-entrant with OrbitControls damping: it only
+    // sets camera.position/target, which controls.update() reads back next).
+    let presetAnim = null;
+
+    function applyView(preset) {
+      const dir = PRESET_DIRS[preset];
+      if (!dir) return;
+      // Works before any model loads: fall back to the placeholder's bounds.
+      const obj = currentModel || placeholder;
+      const box = new THREE.Box3().setFromObject(obj);
+      if (box.isEmpty()) return;
+      const size = box.getSize(new THREE.Vector3());
+      const radius = 0.5 * Math.max(size.x, size.y, size.z) || 1;
+      const dist = fitDistanceForRadius(radius);
+      const toPos = dir.clone().multiplyScalar(dist);
+      const toTarget = new THREE.Vector3(0, 0, 0);
+      // Keep the clip planes sane for this distance (mirrors frameObject) so a
+      // preset from a far-zoomed state doesn't near/far-clip the model.
+      camera.near = Math.max(dist / 1000, 0.01);
+      camera.far = dist * 1000;
+      camera.updateProjectionMatrix();
+      if (reduceMotion.matches) {
+        // Reduced motion → instant jump, no tween.
+        camera.position.copy(toPos);
+        controls.target.copy(toTarget);
+        controls.update();
+        presetAnim = null;
+        return;
+      }
+      presetAnim = {
+        fromPos: camera.position.clone(),
+        toPos,
+        fromTarget: controls.target.clone(),
+        toTarget,
+        start: performance.now(),
+      };
+    }
+
+    // Wire the preset toolbar buttons to their view. The debounced hash writer on
+    // controls 'change' (scheduleHashWrite) persists the resulting camera to the
+    // deep-link hash automatically, so no explicit writeHash is needed here.
+    document.querySelectorAll('#view-presets .preset').forEach((btn) => {
+      btn.addEventListener('click', () => applyView(btn.dataset.view));
+    });
+
+    // --- Point-to-point distance measurement ----------------------------------
+    // A CAD inspection tool. With Measure mode on, a click raycasts (a
+    // THREE.Raycaster from the pointer through the camera) against currentModel's
+    // meshes only — the decorative feature-edge LineSegments already have raycast
+    // disabled (see step.js), so they're naturally excluded — to place two markers,
+    // draw a line between them, and read out the Euclidean distance in model units
+    // (same fmtDim formatting as the bbox HUD). OrbitControls stays live, so a
+    // measuring click is told apart from an orbit drag by pointer travel: a
+    // pointerup within MEASURE_CLICK_TOL px of its pointerdown counts as a click.
+    // Markers/line render with depthTest:false + a raised renderOrder so they stay
+    // visible against the metal surface instead of being occluded by it. The
+    // distance is an HTML overlay (#measure-label) projected each frame from the
+    // segment midpoint in the render loop, so it tracks as the user orbits. All
+    // measurement geometry lives directly in the scene (never inside currentModel),
+    // so a model swap can't attach it to a discarded group; it's still torn down
+    // explicitly on swap (clearMeasurement in showStepFromArrayBuffer) so a stale
+    // measurement never lingers onto the next model.
+    const measureBtn = document.getElementById('measure-btn');
+    const measureClearBtn = document.getElementById('measure-clear');
+    const measureLabel = document.getElementById('measure-label');
+    const measureRay = new THREE.Raycaster();
+    const _measNdc = new THREE.Vector2();
+    const _measMid = new THREE.Vector3();
+    const measurePoints = []; // world-space hit points (0, 1, or 2)
+    let measureMarkers = [];  // marker Meshes currently in the scene
+    let measureLine = null;   // the connecting Line, once two points exist
+    let measureMode = false;  // Measure toggle state
+    // pointerdown bookkeeping so pointerup can tell a click from an orbit drag.
+    let measureDownX = 0, measureDownY = 0, measureDownId = -1;
+    const MEASURE_CLICK_TOL = 6;    // px of travel still counted as a click
+    const MEASURE_COLOR = 0xffd24a; // amber — reads against the blue metal + dark bg
+
+    // Marker radius scaled to the current model so the spheres read at any part
+    // size (a 0.8mm gear vs a 250mm block). getSize is translation/rotation-safe.
+    function measureMarkerRadius() {
+      if (!currentModel) return 0.02;
+      const size = new THREE.Box3().setFromObject(currentModel).getSize(new THREE.Vector3());
+      return (Math.max(size.x, size.y, size.z) || 1) * 0.02;
+    }
+
+    // Enable + show the Clear button only when it's useful: visible while Measure
+    // mode is on OR a measurement lingers, and enabled only when there's something
+    // to clear.
+    function updateMeasureClearState() {
+      if (!measureClearBtn) return;
+      const has = measurePoints.length > 0;
+      measureClearBtn.hidden = !(measureMode || has);
+      measureClearBtn.disabled = !has;
+    }
+
+    // Remove markers + line + label and reset the point list, disposing every
+    // geometry/material so nothing leaks. Safe to call when nothing is measured.
+    function clearMeasurement() {
+      measureMarkers.forEach((m) => {
+        scene.remove(m);
+        m.geometry.dispose();
+        m.material.dispose();
+      });
+      measureMarkers = [];
+      if (measureLine) {
+        scene.remove(measureLine);
+        measureLine.geometry.dispose();
+        measureLine.material.dispose();
+        measureLine = null;
+      }
+      measurePoints.length = 0;
+      measureLabel.hidden = true;
+      updateMeasureClearState();
+    }
+
+    // Drop a marker sphere at a world-space hit point. depthTest:false + a high
+    // renderOrder keep it drawn over the shaded model.
+    function addMeasureMarker(point) {
+      const r = measureMarkerRadius();
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 16, 12),
+        new THREE.MeshBasicMaterial({ color: MEASURE_COLOR, depthTest: false })
+      );
+      marker.position.copy(point);
+      marker.renderOrder = 999;   // draw last so it's never occluded
+      marker.raycast = () => {};  // never a pick target itself
+      scene.add(marker);
+      measureMarkers.push(marker);
+    }
+
+    // Build the connecting line once both endpoints exist (same over-draw treatment
+    // as the markers so it stays visible against the surface).
+    function buildMeasureLine() {
+      const geom = new THREE.BufferGeometry().setFromPoints(measurePoints);
+      measureLine = new THREE.Line(
+        geom,
+        new THREE.LineBasicMaterial({ color: MEASURE_COLOR, depthTest: false })
+      );
+      measureLine.renderOrder = 999;
+      measureLine.raycast = () => {};
+      scene.add(measureLine);
+    }
+
+    // Handle a confirmed measuring click at NDC coords: raycast currentModel and,
+    // on a hit, advance the two-point measurement. A click after a completed
+    // measurement restarts a fresh one from that hit.
+    function measureAt(ndcX, ndcY) {
+      if (!currentModel) return;
+      _measNdc.set(ndcX, ndcY);
+      measureRay.setFromCamera(_measNdc, camera);
+      const hits = measureRay.intersectObject(currentModel, true);
+      if (!hits.length) return;
+      const p = hits[0].point.clone();
+      if (measurePoints.length >= 2) clearMeasurement(); // start a new measurement
+      measurePoints.push(p);
+      addMeasureMarker(p);
+      updateMeasureClearState();
+      if (measurePoints.length === 1) {
+        hint.textContent = t('measureFirst');
+      } else {
+        buildMeasureLine();
+        const dist = measurePoints[0].distanceTo(measurePoints[1]);
+        measureLabel.textContent = fmtDim(dist);
+        measureLabel.hidden = false;
+        hint.textContent = t('measureResult', { dist: fmtDim(dist) });
+      }
+    }
+
+    // Turn Measure mode on/off. Toggling off clears an in-progress (single-point)
+    // measurement; a completed one is left on screen until Clear / a model swap.
+    function setMeasureMode(on) {
+      measureMode = on;
+      measureBtn.classList.toggle('is-active', on);
+      measureBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      if (on) {
+        hint.textContent = t('measureOn');
+      } else {
+        if (measurePoints.length === 1) clearMeasurement();
+        hint.textContent = t('measureOff');
+      }
+      updateMeasureClearState();
+    }
+    function toggleMeasure() { setMeasureMode(!measureMode); }
+    measureBtn.addEventListener('click', toggleMeasure);
+    if (measureClearBtn) measureClearBtn.addEventListener('click', clearMeasurement);
+
+    // Distinguish a measuring click from an orbit drag by pointer travel: remember
+    // where the press started, then on release measure only if the pointer barely
+    // moved. OrbitControls still gets the same events, so orbit keeps working.
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      if (!measureMode || e.button !== 0) return;
+      measureDownX = e.clientX; measureDownY = e.clientY; measureDownId = e.pointerId;
+    });
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      if (!measureMode || e.button !== 0 || e.pointerId !== measureDownId) return;
+      measureDownId = -1;
+      // A press that traveled is an orbit drag, not a click — ignore it.
+      if (Math.hypot(e.clientX - measureDownX, e.clientY - measureDownY) > MEASURE_CLICK_TOL) return;
+      // Don't measure through the top-right gizmo box — its own handler owns it.
+      const el = renderer.domElement;
+      const inGizmoX = e.clientX >= el.clientWidth - GIZMO_DIM;
+      const inGizmoY = e.clientY >= GIZMO_TOP && e.clientY <= GIZMO_TOP + GIZMO_DIM;
+      if (inGizmoX && inGizmoY) return;
+      const rect = el.getBoundingClientRect();
+      measureAt(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+    });
+
+    updateMeasureClearState(); // reflect the initial (nothing measured) state
+
+    // --- Click-to-select a face + fit-to-selection ----------------------------
+    // CAD inspection: a plain canvas click (when Measure isn't the active click
+    // owner) raycasts currentModel's meshes and highlights the hit mesh by
+    // emissive-tinting its OWN material — no overlay mesh/geometry is created, so
+    // the "highlight resources" are just the saved material props we restore on
+    // clear (nothing to dispose or leak). Emissive tint is orthogonal to
+    // material.wireframe and material.opacity, so the highlight rides along with
+    // the wireframe toggle and never disturbs the swap-in fade. The picked
+    // sub-object name (mesh.name from the STEP child — set in src/step.js — or a
+    // 'Face N' index fallback) shows in the model-info HUD. Decorative feature
+    // edges already have raycast disabled (src/step.js) so they're never pickable.
+    const selectFitBtn = document.getElementById('select-fit-btn');
+    const miSel = document.querySelector('#model-info .mi-sel');
+    const selectRay = new THREE.Raycaster();
+    const _selNdc = new THREE.Vector2();
+    const SELECT_EMISSIVE = 0x0f7a58;       // teal glow — distinct from measure amber
+    const SELECT_EMISSIVE_INTENSITY = 0.9;
+    // The current selection, or null: the picked mesh plus the material's
+    // pre-highlight emissive so clearSelection restores it exactly.
+    let selected = null;
+    // pointerdown bookkeeping so pointerup tells a pick-click from an orbit drag
+    // (mirrors the measurement tool).
+    let selectDownX = 0, selectDownY = 0, selectDownId = -1;
+    const SELECT_CLICK_TOL = 6; // px of travel still counted as a click
+
+    // Resolve a human label for the picked mesh: the STEP sub-object name if the
+    // loader carried one, else a 1-based index among the model's mesh children
+    // (edges are children of each mesh, not of the group, so group.children are
+    // all meshes).
+    function selectionName(mesh) {
+      if (mesh.name) return mesh.name;
+      const i = currentModel ? currentModel.children.indexOf(mesh) : -1;
+      return t('selectFallback', { index: i >= 0 ? i + 1 : 1 });
+    }
+
+    // Restore the previously highlighted material and drop the selection + its HUD
+    // readout / Fit button. Safe to call with nothing selected. Restoring a
+    // material prop (not disposing an overlay) IS the whole cleanup — no leak.
+    function clearSelection(announce) {
+      if (selected) {
+        const m = selected.mesh.material;
+        if (m && !Array.isArray(m) && m.emissive) {
+          m.emissive.setHex(selected.emissive);
+          m.emissiveIntensity = selected.emissiveIntensity;
+          m.needsUpdate = true;
+        }
+        selected = null;
+      }
+      if (miSel) { miSel.hidden = true; miSel.textContent = ''; }
+      if (selectFitBtn) selectFitBtn.hidden = true;
+      if (announce) hint.textContent = t('selectCleared');
+    }
+
+    // Highlight `mesh` and surface its name. Clears any prior selection first so
+    // only one face is ever lit. Our loaded meshes always carry a single
+    // MeshStandardMaterial (see src/step.js); guard anyway.
+    function selectMesh(mesh) {
+      const m = mesh.material;
+      if (!m || Array.isArray(m) || !m.emissive) return;
+      clearSelection(false);
+      selected = { mesh, emissive: m.emissive.getHex(), emissiveIntensity: m.emissiveIntensity };
+      m.emissive.setHex(SELECT_EMISSIVE);
+      m.emissiveIntensity = SELECT_EMISSIVE_INTENSITY;
+      m.needsUpdate = true;
+      const name = selectionName(mesh);
+      if (miSel) { miSel.textContent = t('selectReadout', { name }); miSel.hidden = false; }
+      if (selectFitBtn) selectFitBtn.hidden = false;
+      hint.textContent = t('selectHint', { name });
+    }
+
+    // Raycast currentModel at NDC coords: a hit selects that mesh; a miss clears
+    // any current selection (click empty space to deselect).
+    function pickAt(ndcX, ndcY) {
+      if (!currentModel) return;
+      _selNdc.set(ndcX, ndcY);
+      selectRay.setFromCamera(_selNdc, camera);
+      const hits = selectRay.intersectObject(currentModel, true);
+      const hit = hits.find((h) => h.object && h.object.isMesh);
+      if (hit) selectMesh(hit.object);
+      else if (selected) clearSelection(true);
+    }
+
+    // Reframe the camera on the selected mesh's own bounds — the same aspect-aware
+    // distance math and default view direction as frameObject, but with the orbit
+    // target set to the selection CENTER (not the origin) so a small feature fills
+    // the frame. Distinct from the global Fit, which reframes the whole model.
+    function fitToSelection() {
+      if (!selected) return;
+      const box = new THREE.Box3().setFromObject(selected.mesh);
+      if (box.isEmpty()) return;
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const radius = 0.5 * Math.max(size.x, size.y, size.z) || 1;
+      const dist = fitDistanceForRadius(radius);
+      camera.position.set(center.x + dist * 0.6, center.y + dist * 0.5, center.z + dist * 0.8);
+      camera.near = Math.max(dist / 1000, 0.01);
+      camera.far = dist * 1000;
+      camera.updateProjectionMatrix();
+      controls.target.copy(center);          // frame the feature, not the origin
+      controls.minDistance = radius * 0.4;
+      controls.maxDistance = dist * 6;
+      controls.update();
+    }
+
+    if (selectFitBtn) selectFitBtn.addEventListener('click', fitToSelection);
+
+    // Tell a pick-click from an orbit drag by pointer travel (mirrors the measure
+    // tool). Selection is inert while Measure owns the click.
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      if (measureMode || e.button !== 0) return;
+      selectDownX = e.clientX; selectDownY = e.clientY; selectDownId = e.pointerId;
+    });
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      if (measureMode || e.button !== 0 || e.pointerId !== selectDownId) return;
+      selectDownId = -1;
+      // A press that traveled is an orbit drag, not a click — ignore it.
+      if (Math.hypot(e.clientX - selectDownX, e.clientY - selectDownY) > SELECT_CLICK_TOL) return;
+      // Don't pick through the top-right gizmo box — its own handler owns it.
+      const el = renderer.domElement;
+      const inGizmoX = e.clientX >= el.clientWidth - GIZMO_DIM;
+      const inGizmoY = e.clientY >= GIZMO_TOP && e.clientY <= GIZMO_TOP + GIZMO_DIM;
+      if (inGizmoX && inGizmoY) return;
+      const rect = el.getBoundingClientRect();
+      pickAt(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+    });
+
+    // --- Section / cross-section clip plane ------------------------------------
+    // A core CAD-inspection capability: cut through the model to inspect internal
+    // geometry (wall thickness, bores, pockets). three.js does this natively with
+    // no extra dependency via material clipping planes, so it stays zero-build.
+    //
+    // Approach — DoubleSide back-faces, not solid caps: the loaded materials
+    // already render with side: THREE.DoubleSide (see src/step.js), so the cut
+    // reveals the model's back-facing interior surfaces as a visible cross-section
+    // rather than leaving black holes where the front faces were removed. We
+    // deliberately do NOT build solid cap geometry (stencil capping is a much
+    // larger, non-zero-build effort); the double-sided interior read is the chosen,
+    // dependency-free approach.
+    //
+    // One shared THREE.Plane drives the cut for every mesh material. Because the
+    // array assigned to material.clippingPlanes holds that same plane object,
+    // mutating the plane's constant/normal in place (on slider drag / axis / flip)
+    // is reflected on the very next render — no reassignment, so the drag is live.
+    const sectionBtn = document.getElementById('section-btn');
+    const sectionPanel = document.getElementById('section-panel');
+    const sectionSlider = document.getElementById('section-slider');
+    const sectionFlipBtn = document.getElementById('section-flip');
+    const sectionAxisBtns = Array.from(document.querySelectorAll('#section-panel .sp-axis'));
+    const SECTION_AXES = {
+      x: new THREE.Vector3(1, 0, 0),
+      y: new THREE.Vector3(0, 1, 0),
+      z: new THREE.Vector3(0, 0, 1),
+    };
+    const sectionPlane = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0);
+    let sectionMode = false;
+    let sectionAxis = 'x';
+    let sectionFlip = false;
+
+    // Assign (or clear) the shared clip plane on every material in a group. When
+    // Section is on, each material gets the shared [sectionPlane]; when off, an
+    // empty array restores normal, un-clipped rendering. Traverses all materials
+    // (shaded meshes and, if already built, the decorative edge overlay) so the
+    // cut is consistent. Called on toggle and on every fresh load/swap so a model
+    // change mid-section keeps clipping.
+    function applyClipping(group) {
+      if (!group) return;
+      const planes = sectionMode ? [sectionPlane] : [];
+      group.traverse((obj) => {
+        if (!obj.material) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach((m) => { m.clippingPlanes = planes; });
+      });
+    }
+
+    // Position the shared plane from the current axis, flip, and slider value. The
+    // model is recentered on the origin by frameObject, so the slider value is a
+    // world-space cut coordinate along the axis. For an axis unit normal n and cut
+    // coordinate c, the plane keeps n·p + constant > 0; with constant = -c that
+    // keeps the +axis half (p·axis > c). Flip negates BOTH normal and constant so
+    // the opposite half is kept instead. Mutates the plane in place (live drag).
+    function updateSectionPlane() {
+      const sign = sectionFlip ? -1 : 1;
+      sectionPlane.normal.copy(SECTION_AXES[sectionAxis]).multiplyScalar(sign);
+      const c = parseFloat(sectionSlider.value);
+      sectionPlane.constant = -c * sign;
+    }
+
+    // Re-derive the slider min/max from the current model's bounding box along the
+    // active axis (the same Box3 math frameObject/updateModelInfo use), then place
+    // the plane. `resetToMid` recenters the cut (used on enable / axis change /
+    // model swap) so a fresh section starts as a clean half-cut through the middle.
+    function updateSectionRange(resetToMid) {
+      if (!currentModel) return;
+      const box = new THREE.Box3().setFromObject(currentModel);
+      if (box.isEmpty()) return;
+      const lo = box.min[sectionAxis];
+      const hi = box.max[sectionAxis];
+      const span = (hi - lo) || 1;
+      sectionSlider.min = lo;
+      sectionSlider.max = hi;
+      sectionSlider.step = span / 200;
+      const v = parseFloat(sectionSlider.value);
+      if (resetToMid || !isFinite(v) || v < lo || v > hi) {
+        sectionSlider.value = (lo + hi) / 2;
+      }
+      updateSectionPlane();
+    }
+
+    // Turn Section mode on/off. Enabling flips on the renderer's local clipping,
+    // shows the axis/slider/flip panel, derives the slider range from the model,
+    // and assigns the shared plane to every material. Disabling clears the planes
+    // (empty array) and turns local clipping back off, restoring normal rendering.
+    function setSectionMode(on) {
+      sectionMode = on;
+      renderer.localClippingEnabled = on;
+      sectionBtn.classList.toggle('is-active', on);
+      sectionBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      sectionPanel.hidden = !on;
+      if (on) {
+        updateSectionRange(true);      // derive range + place the plane
+        applyClipping(currentModel);   // assign the shared plane to all materials
+        hint.textContent = t('sectionOn');
+      } else {
+        applyClipping(currentModel);   // planes = [] → restore normal rendering
+        hint.textContent = t('sectionOff');
+      }
+    }
+    function toggleSection() { setSectionMode(!sectionMode); }
+    sectionBtn.addEventListener('click', toggleSection);
+
+    // Axis radios: set the plane normal and re-derive the slider range for the new
+    // axis (which resets the cut to the middle of that axis's extent).
+    sectionAxisBtns.forEach((b) => {
+      b.addEventListener('click', () => {
+        sectionAxis = b.dataset.axis;
+        sectionAxisBtns.forEach((o) => {
+          const active = o === b;
+          o.classList.toggle('is-active', active);
+          o.setAttribute('aria-checked', active ? 'true' : 'false');
+        });
+        updateSectionRange(true);
+      });
+    });
+
+    // Flip button: reverse which half of the model is kept (negate normal +
+    // constant, handled by updateSectionPlane reading sectionFlip).
+    sectionFlipBtn.addEventListener('click', () => {
+      sectionFlip = !sectionFlip;
+      sectionFlipBtn.setAttribute('aria-pressed', sectionFlip ? 'true' : 'false');
+      sectionFlipBtn.classList.toggle('is-active', sectionFlip);
+      updateSectionPlane();
+    });
+
+    // Slider drag: move the cut live. Only the shared plane's constant changes, so
+    // the render loop shows the new cut on the next frame without reassignment.
+    sectionSlider.addEventListener('input', updateSectionPlane);
+
+    // --- Exploded view --------------------------------------------------------
+    // A standard assembly-inspection tool. STEP files often hold multiple solids,
+    // which occt already returns as separate meshes in the group (see step.js) but
+    // renders coincident. The Explode slider (0→1) translates each top-level child
+    // mesh outward along the unit vector from the group's overall bbox center to
+    // that child's own bbox center, by slider × model-size × EXPLODE_SPREAD, so
+    // parts spread apart and collapse cleanly back at 0.
+    //
+    // We cache each child's ORIGINAL local position and its (unit) explode direction
+    // ONCE per loaded model (recomputed in the swap path), then drive positions from
+    // the slider by writing child.position only — source geometry is never touched,
+    // so it's fully reversible and costs one vector add per child per frame of drag.
+    //
+    // Fit interop (documented choice): a global Fit (fitView — button / F / R / Home
+    // / double-click) RESETS explode to 0 before framing. That keeps frameObject's
+    // bbox — and therefore groundTo's grid/shadow footprint — on the collapsed
+    // model, so the ground always sits under the collapsed footprint and the fit
+    // frames the real (un-spread) part. The slider snaps back to 0 to match.
+    const explodePanel = document.getElementById('explode-panel');
+    const explodeSlider = document.getElementById('explode-slider');
+    const explodeHint = document.getElementById('explode-hint');
+    const EXPLODE_SPREAD = 0.6; // fraction of the model's max dimension a part travels at slider=1
+    let explodeEntries = [];    // [{ mesh, base: Vector3, dir: Vector3 }] for the live model
+    let explodeScale = 1;       // model max-dimension — scales the spread distance
+    let explodeMulti = false;   // true only when the model has >1 solid (enables the control)
+
+    // Cache the per-child original position + outward explode direction and the
+    // model size, from the current model's world-space bounds converted into the
+    // group's local frame (child.position space). Runs after frameObject has
+    // recentered the group at scale 1 and before the swap-in scale animation, so
+    // the captured base positions and directions are stable. Rebuilt on every load/
+    // swap so a new model never inherits the previous cache.
+    function computeExplode() {
+      explodeEntries = [];
+      explodeScale = 1;
+      explodeMulti = false;
+      if (!currentModel) return;
+      currentModel.updateWorldMatrix(true, true);
+      const groupBox = new THREE.Box3().setFromObject(currentModel);
+      if (groupBox.isEmpty()) return;
+      const size = groupBox.getSize(new THREE.Vector3());
+      explodeScale = Math.max(size.x, size.y, size.z) || 1;
+      // Overall center, expressed in the group's local coordinate space so the
+      // resulting direction can be added straight onto child.position.
+      const overall = currentModel.worldToLocal(groupBox.getCenter(new THREE.Vector3()));
+      const meshes = currentModel.children.filter((c) => c.isMesh);
+      explodeMulti = meshes.length > 1;
+      for (const mesh of meshes) {
+        const cbox = new THREE.Box3().setFromObject(mesh);
+        if (cbox.isEmpty()) continue;
+        const center = currentModel.worldToLocal(cbox.getCenter(new THREE.Vector3()));
+        const dir = center.sub(overall); // group-local translation cancels → world-space direction
+        if (dir.lengthSq() > 1e-10) dir.normalize();
+        else dir.set(0, 0, 0); // a solid centered on the overall center simply doesn't move
+        explodeEntries.push({ mesh, base: mesh.position.clone(), dir });
+      }
+    }
+
+    // Drive child positions from a slider value t in [0,1]. Writes only
+    // child.position (no geometry mutation), so t=0 restores every base exactly.
+    function applyExplode(t) {
+      const amt = t * explodeScale * EXPLODE_SPREAD;
+      for (const e of explodeEntries) {
+        e.mesh.position.copy(e.base).addScaledVector(e.dir, amt);
+      }
+    }
+
+    // Reset the slider to 0, collapse the parts, and set the control's enabled/hint
+    // state for the freshly loaded model. Called from the swap path after
+    // computeExplode so a new model always starts collapsed and never inherits the
+    // previous explode state or enabled/disabled state.
+    function refreshExplodeControl() {
+      explodeSlider.value = '0';
+      applyExplode(0);
+      explodeSlider.disabled = !explodeMulti;
+      explodeHint.hidden = explodeMulti;
+      explodePanel.classList.toggle('is-disabled', !explodeMulti);
+      if (explodeMulti) explodePanel.removeAttribute('title');
+      else explodePanel.title = t('explodeSingle'); // tooltip on the panel for the disabled control
+    }
+
+    // Collapse the model and snap the slider back to 0. Used by the global Fit so
+    // framing + ground footprint are computed on the collapsed model.
+    function resetExplode() {
+      if (!explodeEntries.length) return;
+      explodeSlider.value = '0';
+      applyExplode(0);
+    }
+
+    explodeSlider.addEventListener('input', () => {
+      applyExplode(parseFloat(explodeSlider.value) || 0);
+    });
 
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
@@ -1097,16 +1956,36 @@
         placeholder.geometry.dispose();
         placeholder.material.dispose();
       }
+      // Drop any face selection from the outgoing model while its material is
+      // still valid (restores the emissive, hides the readout / Fit button) so a
+      // stale highlight/selection can't carry onto the incoming model.
+      clearSelection(false);
       if (currentModel) {
         scene.remove(currentModel);
         disposeGroup(currentModel);
       }
+      // Tear down any measurement from the outgoing model so markers/line/label
+      // never linger onto — or measure against — the incoming one.
+      clearMeasurement();
       spin = null;
       currentModel = model;
       currentModelLabel = label; // remember for the Save-image PNG filename
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
       frameObject(model); // frame at scale 1 before the transition shrinks it
+      // Reapply the section clip plane to the freshly loaded meshes so switching
+      // models mid-section keeps cutting. frameObject has just recentered the model
+      // on the origin, so re-derive the slider range from the new model's bbox and
+      // re-center the cut. When section is off, applyClipping assigns [] (no-op cut).
+      if (sectionMode) updateSectionRange(true);
+      applyClipping(model);
+      // Cache each solid's base position + outward explode direction from the
+      // freshly framed (recentered, scale-1) model, then reset the control to 0 so
+      // the new model starts collapsed and never inherits the previous explode
+      // state. Multi-solid enables the slider; single-solid disables it with a hint.
+      computeExplode();
+      refreshExplodeControl();
+      explodePanel.hidden = false; // reveal the control now a model is on screen
       // Deep-link restore: if a saved camera state came with the load (from the
       // URL hash), override frameObject's default placement with it, then let
       // controls.update() settle (and clamp to the just-set min/maxDistance). A
@@ -1817,8 +2696,24 @@
       if (e.key === 's' || e.key === 'S') saveImageSafe();
       // E exports the loaded model as a binary GLB (mirrors the header 📦 button).
       if (e.key === 'e' || e.key === 'E') exportGLB();
+      // M toggles the point-to-point distance measurement tool.
+      if (e.key === 'm' || e.key === 'M') toggleMeasure();
+      // Esc clears any current measurement (markers + line + label). Only acts when
+      // there's something to clear, so it never swallows Escape otherwise; the help
+      // dialog's own Escape-to-close already returned above when it was open.
+      if (e.key === 'Escape' && measurePoints.length) { clearMeasurement(); return; }
+      // Esc also clears a face selection (after any measurement above). Only acts
+      // when something is selected, so it never swallows Escape otherwise.
+      if (e.key === 'Escape' && selected) { clearSelection(true); return; }
+      // Z fits the view to the selected face (mirrors the ⊹ button); distinct from
+      // the global Fit on F/R below.
+      if (e.key === 'z' || e.key === 'Z') fitToSelection();
       // R and F both re-fit/reset the view (same as the Fit button).
       if (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R') fitView();
+      // Numpad keys snap to a standard camera view (Front/Back/Top/Bottom/Right/
+      // Left/Iso). Keyed on e.code so NumLock state is irrelevant and this never
+      // collides with the top-row 1–4 sample keys below (which match e.key).
+      if (NUMPAD_VIEWS[e.code]) { applyView(NUMPAD_VIEWS[e.code]); return; }
       // Number keys 1–4 load the matching gallery sample (Gear/Block/Tetra/
       // Pyramid) and update the active pill via loadSample. Skip while a load is
       // already in flight (pills are disabled during a fetch) so rapid key
@@ -1832,7 +2727,9 @@
 
     // --- Reset / fit view (button, `F` key, double-click canvas) ---
     document.getElementById('fit-btn').addEventListener('click', fitView);
-    renderer.domElement.addEventListener('dblclick', fitView);
+    // Double-click re-fits — but not while measuring, where two quick clicks are a
+    // pair of measurement picks, not a fit gesture.
+    renderer.domElement.addEventListener('dblclick', () => { if (!measureMode) fitView(); });
 
     // --- Keyboard-driven camera navigation -----------------------------------
     // OrbitControls only listens to pointer/wheel events, so a keyboard-only user
@@ -1914,6 +2811,10 @@
       // pan) and the modal help state.
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (helpDialog.open) return;
+      // Numpad view-preset keys are owned by the global handler (applyView). With
+      // NumLock OFF they also carry Arrow/Home e.key values, so defer them here to
+      // avoid a double-fire (orbit + snap) when the 3D view is focused.
+      if (NUMPAD_VIEWS[e.code]) return;
       const shift = e.shiftKey;
       let handled = true;
       switch (e.key) {
@@ -2013,7 +2914,33 @@
       // Advance the gizmo's snap-to-axis animation (armed by clicking a gizmo
       // axis); it drives camera.position, which OrbitControls.update reads back.
       if (viewHelper.animating) viewHelper.update(delta);
+      // Advance an in-flight named-view snap: ease camera.position + orbit target
+      // toward the preset pose. Runs BEFORE controls.update(), which reads the
+      // mutated position/target back (same cooperative pattern as the keyboard
+      // camera keys), so it never fights the OrbitControls damping tail.
+      if (presetAnim) {
+        const p = Math.min(1, (performance.now() - presetAnim.start) / PRESET_MS);
+        const e = easePreset(p);
+        camera.position.lerpVectors(presetAnim.fromPos, presetAnim.toPos, e);
+        controls.target.lerpVectors(presetAnim.fromTarget, presetAnim.toTarget, e);
+        if (p >= 1) presetAnim = null;
+      }
       controls.update();
+      // Track the measurement label to the segment midpoint: project the world-
+      // space midpoint to normalized device coords, then to screen px. Runs after
+      // controls.update() so the camera matrices are current for this frame. A
+      // midpoint behind the camera / beyond the far plane (|z| > 1) is hidden so
+      // the label never jumps to a mirrored on-screen position.
+      if (measurePoints.length === 2) {
+        _measMid.copy(measurePoints[0]).add(measurePoints[1]).multiplyScalar(0.5).project(camera);
+        if (_measMid.z <= 1) {
+          measureLabel.style.left = (_measMid.x * 0.5 + 0.5) * innerWidth + 'px';
+          measureLabel.style.top = (-_measMid.y * 0.5 + 0.5) * innerHeight + 'px';
+          measureLabel.style.visibility = 'visible';
+        } else {
+          measureLabel.style.visibility = 'hidden';
+        }
+      }
       // autoClear is off: clear once, draw the scene, then overlay the gizmo.
       renderer.clear();
       renderer.render(scene, camera);
