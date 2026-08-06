@@ -33,6 +33,18 @@
         document.documentElement.setAttribute('data-contrast', c);
       }
     } catch (e) {}
+    // Embed mode: when the viewer is loaded with the `embed` flag — a hash key
+    // (#…&embed=1, layered on the deep-link state) or a ?embed query param —
+    // tag <html> with .embed BEFORE first paint so the chrome-hiding CSS below
+    // applies immediately (no flash of header/gallery/HUD that then vanishes).
+    // Presence-only: `embed`, `embed=1`, etc. all count.
+    try {
+      var hp = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+      var sp = new URLSearchParams(location.search || '');
+      if (hp.get('embed') != null || sp.get('embed') != null) {
+        document.documentElement.classList.add('embed');
+      }
+    } catch (e) {}
   </script>
   <style>
     :root { color-scheme: dark; }
@@ -81,6 +93,18 @@
        mouse click leaves it ring-free via :focus-visible. */
     #app:focus { outline: none; }
     #app:focus-visible { outline: 2px solid #4f9dff; outline-offset: -2px; }
+    /* --- Embed mode ------------------------------------------------------------
+       When the viewer is opened with the `embed` flag (hash key or query param,
+       detected pre-paint by the head script which adds .embed to <html>), strip
+       the non-essential chrome so a small embedded <iframe> shows just the
+       interactive model + orientation gizmo. The canvas (#app) and the gizmo
+       (drawn as a canvas overlay pass, not a DOM node) are left untouched, and
+       OrbitControls stay attached, so orbit / zoom / pan keep working inside the
+       frame. The shared sample + camera state is still honored (parseHash runs
+       regardless of embed), so the frame opens at the intended view. */
+    :root.embed header,
+    :root.embed #bottom-cluster,
+    :root.embed #model-info { display: none !important; }
     header { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
       display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .6rem 1rem;
       background: linear-gradient(#0e1116cc, #0e111600); pointer-events: none; }
@@ -104,8 +128,10 @@
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
-    #contrast-btn:focus-visible, #help-btn:focus-visible, #help-close:focus-visible,
-    #gallery .sample:focus-visible {
+    #contrast-btn:focus-visible, #save-btn:focus-visible, #export-btn:focus-visible,
+    #share-btn:focus-visible, #embed-btn:focus-visible,
+    #help-btn:focus-visible, #help-close:focus-visible, #gallery .sample:focus-visible,
+    #share-fallback-close:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
     /* Secondary control — neutral text/fill so it sits below the accent primary
@@ -127,10 +153,17 @@
     #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
-    #fit-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+    #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
       color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .35rem .7rem; }
-    #fit-btn:hover { background: #232a35; border-color: #3a4150; }
+    #save-btn, #export-btn, #share-btn, #embed-btn { display: inline-flex; align-items: center; gap: .35rem; }
+    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover { background: #232a35; border-color: #3a4150; }
+    /* Non-shareable state: a user-opened file has no restorable link, so the
+       button is disabled (updateShareState) — dim it and drop the pointer. The
+       Export GLB button is disabled the same way until a real model is loaded
+       (updateExportState). */
+    #share-btn:disabled, #export-btn:disabled, #embed-btn:disabled { opacity: .5; cursor: not-allowed; }
+    #share-btn:disabled:hover, #export-btn:disabled:hover, #embed-btn:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
     /* High-contrast toggle — a header control mirroring the neutral fit/wireframe
        buttons (icon-collapsible on narrow screens). aria-pressed reflects whether
        high contrast is active; when pressed it borrows the same accent on-state
@@ -235,6 +268,34 @@
       padding: .6rem .9rem; box-shadow: 0 6px 20px #0008; pointer-events: none;
       opacity: 0; transition: opacity .2s ease; }
     #toast.active { opacity: 1; pointer-events: auto; }
+    /* Success variant — the share "Link copied!" confirmation reuses the toast
+       channel (role=alert announces it to AT) but must not read as an error, so
+       swap the soft-red palette for a calm accent-green. */
+    #toast.toast-ok { color: #d6ffe4; background: #12321fee; border-color: #2f6b45; }
+    /* Manual-copy fallback panel — shown when the Clipboard API is unavailable or
+       rejected. Sits where the toast does (top-center) but is interactive: the
+       read-only field is selectable so the user can copy the link by hand. Tokens
+       mirror the help dialog / HUD (translucent fill, blur) so it reads as one
+       system. */
+    #share-fallback { position: fixed; top: 3.4rem; left: 50%; transform: translateX(-50%);
+      z-index: 31; width: min(92vw, 460px); color: #e6edf3;
+      background: var(--hc-dialog-bg, #12161df2); border: 1px solid var(--hc-border, #2a2f3a);
+      border-radius: 10px; padding: .6rem .75rem; box-shadow: 0 8px 24px #000a;
+      backdrop-filter: blur(6px); }
+    #share-fallback[hidden] { display: none; }
+    #share-fallback label { display: block; font-size: .78rem; color: var(--hc-muted, #8b949e);
+      margin: 0 0 .35rem; }
+    #share-fallback .sf-row { display: flex; align-items: center; gap: .4rem; }
+    #share-fallback-url { flex: 1; min-width: 0; font: inherit; font-size: .8rem;
+      color: #e6edf3; background: #0a0d12; border: 1px solid var(--hc-border, #2a2f3a);
+      border-radius: 6px; padding: .35rem .5rem; }
+    #share-fallback-url:focus-visible { outline: 2px solid #4f9dff; outline-offset: 1px;
+      border-color: #4f9dff; }
+    #share-fallback-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
+      color: var(--hc-muted, #8b949e); background: transparent; border: 1px solid transparent;
+      border-radius: 6px; width: 1.9rem; height: 1.9rem; flex: none; display: inline-flex;
+      align-items: center; justify-content: center; }
+    #share-fallback-close:hover { color: #e6edf3; background: #232a35; border-color: #3a4150; }
     /* Persistent engine-load failure panel. Distinct from the transient parse
        toast above: an occt/WASM engine failure (offline / CDN down) is not
        self-clearing, so this stays put — with a friendly line and a Retry button
@@ -316,7 +377,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn, #contrast-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -336,10 +397,12 @@
     @media (max-width: 600px) {
       header { gap: .5rem; padding: .5rem .75rem; }
       #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
-      #contrast-btn .btn-label { display: none; }
+      #contrast-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
+      #share-btn .btn-label, #embed-btn .btn-label { display: none; }
       #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
-      #contrast-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn, #contrast-btn { min-width: 44px; padding: .4rem;
+      #contrast-btn .btn-icon, #save-btn .btn-icon, #export-btn .btn-icon,
+      #share-btn .btn-icon, #embed-btn .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
     }
@@ -367,6 +430,38 @@
          the module script on load from the persisted / OS preference); the ◑ glyph
          shows on narrow screens where the label collapses (see max-width:600px). -->
     <button id="contrast-btn" type="button" title="Toggle high contrast (C)" aria-label="High contrast" aria-pressed="false" data-i18n-attr="title:contrastTitle;aria-label:contrastAria"><span class="btn-icon" aria-hidden="true">◑</span><span class="btn-label" data-i18n="contrastLabel">Contrast</span></button>
+    <!-- Save-image control. Captures the current framed render (scene + gizmo) as
+         a downloadable PNG (see saveImage). Neutral tokens like the fit/contrast
+         buttons; collapses to the ⤓ glyph under the same 600px / coarse-pointer
+         rules as the other header buttons. -->
+    <button id="save-btn" type="button" title="Save the current view as a PNG (S)" aria-label="Save image (PNG)" data-i18n-attr="title:saveTitle;aria-label:saveAria"><span class="btn-icon" aria-hidden="true">⤓</span><span class="btn-label" data-i18n="saveLabel">Save image</span></button>
+    <!-- Export-GLB control. Exports currentModel (the shaded MeshStandardMaterial
+         meshes with their normals) as a binary .glb via three's GLTFExporter,
+         excluding the decorative scene chrome (ground grid, contact-shadow quad,
+         deferred feature-edge LineSegments overlay). Starts disabled — enabled by
+         updateExportState once a real STEP model (not the placeholder) is loaded,
+         for both gallery samples and user-opened files. Collapses to the 📦 glyph
+         under the same 600px / coarse-pointer rules as the other header buttons. -->
+    <button id="export-btn" type="button" disabled title="Load a model first, then export it as a .glb" aria-label="Export model as GLB" data-i18n-attr="title:exportTitleDisabled;aria-label:exportAria"><span class="btn-icon" aria-hidden="true">📦</span><span class="btn-label" data-i18n="exportLabel">Export GLB</span></button>
+    <!-- Copy-share-link control. Composes the full absolute URL (including the
+         up-to-date view hash written by writeHash) and copies it via
+         navigator.clipboard. Only bundled gallery samples encode a restorable
+         hash, so the button is disabled while a user-opened file is on screen
+         (see updateShareState); the disabled title explains why. Collapses to the
+         🔗 glyph under the same 600px / coarse-pointer rules as the other header
+         buttons. Starts disabled — no model is loaded at first paint. -->
+    <button id="share-btn" type="button" disabled title="Copy a shareable link to this view (gallery samples only)" aria-label="Copy shareable link" data-i18n-attr="title:shareTitle;aria-label:shareAria"><span class="btn-icon" aria-hidden="true">🔗</span><span class="btn-label" data-i18n="shareLabel">Copy link</span></button>
+    <!-- Copy-embed-code control. Composes a ready-to-paste <iframe> snippet whose
+         src is the ABSOLUTE public GitHub Pages viewer URL (canonical og:url
+         origin) plus the current view state and the `embed` flag, with sensible
+         default width/height, loading="lazy", style="border:0", and a per-model
+         title for accessibility (see copyEmbedCode / buildEmbedSnippet). Like
+         Copy link it only works for restorable bundled samples — a user-opened
+         local blob can't be reconstructed remotely — so it's disabled while such
+         a file is on screen (updateEmbedState). Collapses to the <> glyph under
+         the same 600px / coarse-pointer rules as the other header buttons.
+         Starts disabled — no model is loaded at first paint. -->
+    <button id="embed-btn" type="button" disabled title="Only gallery samples can be embedded — open a sample to get embed code" aria-label="Copy embed code" data-i18n-attr="title:embedTitleDisabled;aria-label:embedAria"><span class="btn-icon" aria-hidden="true">&lt;&gt;</span><span class="btn-label" data-i18n="embedLabel">Copy embed code</span></button>
     <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file" data-i18n-attr="title:openTitle;aria-label:openAria"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label" data-i18n="openLabel">Open STEP file…</span></button>
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
@@ -392,6 +487,8 @@
       <li><span class="k" data-i18n="kHome">Home</span><span class="d" data-i18n="descHome">Re-fit / reset view</span></li>
       <li><span class="k">W</span><span class="d" data-i18n="descWireframe">Toggle wireframe</span></li>
       <li><span class="k">C</span><span class="d" data-i18n="descContrast">Toggle high contrast</span></li>
+      <li><span class="k">S</span><span class="d" data-i18n="descSave">Save image (PNG)</span></li>
+      <li><span class="k">E</span><span class="d" data-i18n="descExport">Export model as GLB</span></li>
       <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
       <li><span class="k">1</span><span class="k">4</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
       <li><span class="k" data-i18n="kDrop">Drop</span><span class="d" data-i18n="descOpen">Open a .step / .stp file</span></li>
@@ -429,6 +526,19 @@
        it on first render. Only shown for the initial auto-load. -->
   <p id="load-status" class="active" role="status" aria-live="polite" data-i18n="loadStatusEngine">Loading 3D engine…</p>
   <div id="toast" role="alert"></div>
+  <!-- Manual-copy fallback for the share button. Shown by copyShareLink() only
+       when navigator.clipboard is unavailable (e.g. a non-secure context) or the
+       write is rejected, so the link is never lost silently: the read-only field
+       is auto-selected + focused so the user can Ctrl/Cmd-C it. role=group with a
+       label ties the field to its instruction for assistive tech. Hidden until a
+       fallback is needed. -->
+  <div id="share-fallback" hidden role="group" aria-labelledby="share-fallback-label">
+    <label id="share-fallback-label" for="share-fallback-url" data-i18n="shareFallbackLabel">Copy this link:</label>
+    <div class="sf-row">
+      <input id="share-fallback-url" type="text" readonly aria-labelledby="share-fallback-label" />
+      <button id="share-fallback-close" type="button" aria-label="Dismiss" data-i18n-attr="aria-label:shareFallbackDismiss">×</button>
+    </div>
+  </div>
   <!-- Persistent engine-load failure state. Shown by showEngineError() on an
        'init'-kind failure (occt/WASM engine / CDN download) or when the stall
        watchdog fires, so a broken/slow engine download surfaces a real, friendly
@@ -454,6 +564,7 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
     import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
+    import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
     import { loadStepFromArrayBuffer, resetOcct } from './src/step.js';
     import { t, applyStaticI18n } from './src/i18n.js';
 
@@ -464,6 +575,11 @@
     applyStaticI18n();
 
     const app = document.getElementById('app');
+    // Embed mode was resolved pre-paint by the head script (it added .embed to
+    // <html> when the `embed` flag is present in the hash/query). Read it back
+    // here so JS paths — the hash writer (keep the flag) and the copy-embed
+    // action — can branch on it. The chrome hiding itself is pure CSS.
+    const EMBED_MODE = document.documentElement.classList.contains('embed');
     // alpha:true so the canvas clears transparent — the page's radial-vignette
     // backdrop (CSS on html/body) shows through behind the model instead of a
     // flat opaque scene color, giving the scene depth.
@@ -644,6 +760,13 @@
     const toast = document.getElementById('toast');
     let spin = placeholder; // object the render loop rotates (null once static model loads)
     let currentModel = null; // the loaded STEP Group currently in the scene, if any
+    let currentModelLabel = null; // label of the on-screen model (for the PNG filename)
+    // File key of the bundled sample currently on screen, or null when a
+    // user-opened/dropped file is shown. Drives the deep-link hash: only bundled
+    // samples are encodable (a local blob can't be restored without a backend),
+    // so a null here clears the sample part of the URL hash. Set by loadSample,
+    // cleared by loadFile.
+    let currentSampleFile = null;
     let wireframe = false; // wireframe render state, applied to loaded meshes
     // prefers-reduced-motion query. Declared here (used by both the model swap-in
     // transition below and the placeholder-spin gate in the render loop). Live, so
@@ -793,6 +916,7 @@
       miA11y.textContent = '';
       miName.textContent = '';
       miStats.textContent = '';
+      currentModelLabel = null; // no valid model on screen → no capture name
       modelInfo.hidden = true;
     }
 
@@ -845,10 +969,14 @@
       }
     }
 
-    // Non-blocking error toast; auto-dismisses. A new message resets the timer.
+    // Non-blocking toast; auto-dismisses. A new message resets the timer. Defaults
+    // to the soft-red error palette; pass ok=true for the calm-green success
+    // variant (used by the share "Link copied!" confirmation). role=alert on the
+    // element means either variant is announced to assistive tech.
     let toastTimer = null;
-    function showToast(msg) {
+    function showToast(msg, ok) {
       toast.textContent = msg;
+      toast.classList.toggle('toast-ok', !!ok);
       toast.classList.add('active');
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => toast.classList.remove('active'), 5000);
@@ -959,7 +1087,7 @@
 
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
-    async function showStepFromArrayBuffer(buf, label, onPhase) {
+    async function showStepFromArrayBuffer(buf, label, onPhase, camState) {
       // Pass the active feature-edge style so a fresh load in high contrast builds
       // its (idle-deferred) edge overlay crisp from the start, not faint-then-fixed.
       const model = await loadStepFromArrayBuffer(buf, onPhase, currentEdgeStyle());
@@ -975,10 +1103,17 @@
       }
       spin = null;
       currentModel = model;
+      currentModelLabel = label; // remember for the Save-image PNG filename
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
       frameObject(model); // frame at scale 1 before the transition shrinks it
+      // Deep-link restore: if a saved camera state came with the load (from the
+      // URL hash), override frameObject's default placement with it, then let
+      // controls.update() settle (and clamp to the just-set min/maxDistance). A
+      // link with only a sample key (no camera) leaves the auto-fit framing.
+      if (camState) applyCameraState(camState);
       updateModelInfo(model, label); // refresh the name/tris/dims HUD for the swap
+      updateExportState(); // a real model is now loaded — enable the Export GLB button
       startSwapIn(model); // ease the new model in (scale + fade) instead of popping
       markFirstRender(); // first successful render clears the loader + stall watch
       hideEngineError(); // a successful load supersedes any engine-failure panel
@@ -994,6 +1129,12 @@
       try {
         const buf = await file.arrayBuffer();
         await showStepFromArrayBuffer(buf, file.name);
+        // A user file is a local blob with no restorable URL — clear the sample
+        // part of the hash so a stale sample link can't be shared for this view.
+        currentSampleFile = null;
+        writeHash();
+        updateShareState(); // a user file isn't shareable — disable the copy-link button
+        updateEmbedState(); // …nor embeddable — disable the copy-embed-code button
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = t('couldNotLoadConsole', { label: file.name });
@@ -1024,10 +1165,102 @@
 
     const gallery = document.getElementById('gallery');
 
+    // --- Deep-link / shareable-view hash --------------------------------------
+    // The only durable state channel on a static GitHub Pages site is the URL, so
+    // encode a compact restorable view in location.hash: the bundled sample key
+    // (stable file name, locale-independent — never the localized label) plus the
+    // camera position + orbit target needed to reproduce the shot. Coordinates are
+    // rounded to a few significant digits to keep the hash short. Only bundled
+    // samples are encoded; user-opened blobs can't be restored without a backend.
+
+    // Round to ~4 significant digits so a long float like 4.7320508 shortens to
+    // 4.732 without exploding the hash. Non-finite guards to 0.
+    function roundSig(n) {
+      if (!isFinite(n)) return 0;
+      if (n === 0) return 0;
+      return Number(n.toPrecision(4));
+    }
+
+    // Apply a restored camera state (arrays of 3 numbers): set the camera position
+    // and orbit target, refresh the projection, and let OrbitControls settle. Runs
+    // after frameObject, so it overrides the default auto-fit placement.
+    function applyCameraState(cam) {
+      camera.position.set(cam.pos[0], cam.pos[1], cam.pos[2]);
+      controls.target.set(cam.target[0], cam.target[1], cam.target[2]);
+      camera.updateProjectionMatrix();
+      controls.update();
+    }
+
+    // Serialize the current view into location.hash via replaceState (so it never
+    // spams the back-stack). With no bundled sample on screen (a user file, or
+    // nothing) the sample part is cleared: strip the hash entirely. Encodes as
+    // `#m=<file>&c=x,y,z,tx,ty,tz`.
+    function writeHash() {
+      if (!currentSampleFile) {
+        if (location.hash) {
+          history.replaceState(null, '', location.pathname + location.search);
+        }
+        return;
+      }
+      const p = camera.position;
+      const tg = controls.target;
+      const c = [p.x, p.y, p.z, tg.x, tg.y, tg.z].map(roundSig).join(',');
+      // Preserve the `embed` flag across camera-settle rewrites so an embedded
+      // frame's own URL stays a valid embed link (this replaceState would
+      // otherwise drop the flag the head script read at startup). Detecting
+      // embed mode from the <html> class avoids re-parsing the hash each write.
+      const embedSuffix = EMBED_MODE ? '&embed=1' : '';
+      const hash = `#m=${encodeURIComponent(currentSampleFile)}&c=${c}${embedSuffix}`;
+      history.replaceState(null, '', hash);
+    }
+
+    // Parse location.hash into a restore descriptor, or null to fall back to the
+    // normal default auto-load. Returns { sample, cam } where cam is null when the
+    // link carries only a sample key (→ normal auto-fit framing) or when the camera
+    // values are malformed. An unknown/garbage sample key returns null (graceful
+    // fallback). Never throws.
+    function parseHash() {
+      try {
+        const h = location.hash.replace(/^#/, '');
+        if (!h) return null;
+        const params = new URLSearchParams(h);
+        const key = params.get('m');
+        if (!key) return null;
+        const sample = SAMPLES.find((s) => s.file === key);
+        if (!sample) return null; // unknown/garbage sample key → default auto-load
+        let cam = null;
+        const c = params.get('c');
+        if (c) {
+          const nums = c.split(',').map(Number);
+          // Only accept a complete, all-finite 6-tuple; anything malformed falls
+          // through as cam=null so the sample still loads at auto-fit framing.
+          if (nums.length === 6 && nums.every((n) => Number.isFinite(n))) {
+            cam = { pos: nums.slice(0, 3), target: nums.slice(3, 6) };
+          }
+        }
+        return { sample, cam };
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Debounced hash refresh on camera settle. OrbitControls fires 'change' on
+    // every mutated frame (pointer orbit/zoom/pan, wheel, damping tail, the
+    // keyboard camera keys, and gizmo snaps — all of which call controls.update()),
+    // so coalesce with a timer and write once the view has settled instead of
+    // thrashing history every frame. writeHash uses replaceState, so no back-stack
+    // spam. No-op while no bundled sample is on screen (writeHash guards on it).
+    let hashWriteTimer = null;
+    function scheduleHashWrite() {
+      clearTimeout(hashWriteTimer);
+      hashWriteTimer = setTimeout(writeHash, 500);
+    }
+    controls.addEventListener('change', scheduleHashWrite);
+
     // Fetch + parse + render a bundled sample, reusing the model-swap path so the
     // placeholder / previous model is disposed exactly as with user files.
-    async function loadSample(sample) {
-      retryAction = () => loadSample(sample); // Retry re-fetches + re-loads this sample
+    async function loadSample(sample, camState) {
+      retryAction = () => loadSample(sample, camState); // Retry re-fetches + re-loads this sample
       const buttons = gallery.querySelectorAll('.sample');
       buttons.forEach((b) => { b.disabled = true; });
       // Keep the first-paint guidance visible during the initial auto-load; only
@@ -1054,7 +1287,14 @@
           throw e;
         }
         const buf = await res.arrayBuffer();
-        await showStepFromArrayBuffer(buf, sample.label, onPhase);
+        await showStepFromArrayBuffer(buf, sample.label, onPhase, camState);
+        // This bundled sample is now on screen and restorable — record its key and
+        // update the shareable hash (auto-fit camera, or the restored one if this
+        // load came from a deep link).
+        currentSampleFile = sample.file;
+        writeHash();
+        updateShareState(); // a bundled sample is shareable — enable the copy-link button
+        updateEmbedState(); // …and embeddable — enable the copy-embed-code button
         // Highlight the pill for the model now on screen.
         buttons.forEach((b) => {
           const active = b.dataset.file === sample.file;
@@ -1110,11 +1350,15 @@
       setLoadStatus(null);
       hint.textContent = coarsePointer ? t('reducedDataCoarse') : t('reducedDataFine');
     } else {
-      // Show the first bundled sample on page load. Arm the stall watchdog for
-      // this initial engine + model download so a slow/broken CDN doesn't hang
-      // forever.
+      // Show a bundled sample on page load. Arm the stall watchdog for this
+      // initial engine + model download so a slow/broken CDN doesn't hang forever.
+      // Parse a deep-link hash FIRST: a valid sample key loads that sample (with
+      // its saved camera, if any) instead of SAMPLES[0]; an unknown key or a
+      // malformed hash falls through to the normal default auto-load.
       startStallWatch();
-      loadSample(SAMPLES[0]);
+      const restore = parseHash();
+      if (restore) loadSample(restore.sample, restore.cam);
+      else loadSample(SAMPLES[0]);
     }
 
     // In reduced-data mode the boot-time stall watchdog is deferred, so the
@@ -1188,6 +1432,356 @@
       if (stored !== 'high' && stored !== 'normal') applyContrast(e.matches, false);
     });
 
+    // --- Save image / PNG capture (header ⤓ button + `S` key) -----------------
+    // Export the current framed render (scene + orientation gizmo) as a PNG the
+    // user can drop into a doc or ticket. The live renderer is alpha:true with no
+    // preserveDrawingBuffer, and setAnimationLoop clears every frame, so a bare
+    // renderer.domElement.toDataURL() reads back blank/transparent. Instead we
+    // render synchronously here and read the pixels back in the SAME tick — JS is
+    // single-threaded, so no rAF/compositor pass can clear the drawing buffer
+    // between the render and the toDataURL. This keeps the continuous loop cheap
+    // (no permanently-on preserveDrawingBuffer). Because the canvas clears
+    // transparent, we composite an opaque #0e1116 backdrop (the CSS radial-
+    // vignette mid-tone) behind the model for the capture so the PNG matches what
+    // the user sees instead of a floating model on black/transparent, then
+    // restore the transparent clear immediately. The captured buffer is already
+    // sized at the live setPixelRatio(min(devicePixelRatio, 2)), so the PNG is
+    // crisp at the current DPR without any resize. Wireframe / camera orientation
+    // / framing are whatever's live at capture time, since we draw the real scene.
+    const saveBtn = document.getElementById('save-btn');
+    const CAPTURE_BG = 0x0e1116; // CSS radial-vignette mid-tone (opaque backdrop)
+
+    // Turn a model label into a safe PNG basename: drop a trailing .step/.stp so
+    // an opened "MyPart.step" becomes "MyPart" (matching the sample's bare
+    // "Gear"), then replace filename-hostile characters. Falls back to "model".
+    function captureBasename(label) {
+      const base = String(label || 'model').replace(/\.(step|stp)$/i, '').trim();
+      const safe = base.replace(/[^\w.-]+/g, '_').replace(/^[_.]+|_+$/g, '');
+      return safe || 'model';
+    }
+
+    function saveImage() {
+      // Nothing meaningful to capture before a real model is on screen (the
+      // spinning placeholder isn't a model) — nudge instead of saving a torus.
+      if (!currentModel) { showToast(t('captureNothing')); return; }
+      let url;
+      // Snapshot the live clear color/alpha so we can restore the transparent
+      // clear the render loop depends on, even if toDataURL throws.
+      const prevAlpha = renderer.getClearAlpha();
+      const prevColor = new THREE.Color();
+      renderer.getClearColor(prevColor);
+      try {
+        renderer.setClearColor(CAPTURE_BG, 1); // opaque backdrop for the capture
+        // Redraw scene + gizmo (autoClear is off, so clear once up front) exactly
+        // as the render loop does, then read back before yielding to the browser.
+        renderer.clear();
+        renderer.render(scene, camera);
+        viewHelper.render(renderer);
+        url = renderer.domElement.toDataURL('image/png');
+      } finally {
+        renderer.setClearColor(prevColor, prevAlpha); // restore the live transparent clear
+      }
+      // A lost WebGL context yields a blank data URI ('data:,') rather than throwing.
+      if (!url || url === 'data:,') throw new Error('empty capture (context lost?)');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `step-viewer-${captureBasename(currentModelLabel)}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    // Wrapper: any capture failure (context lost, blank read-back, blocked
+    // download) surfaces the existing non-blocking toast rather than downloading
+    // a broken file.
+    function saveImageSafe() {
+      try {
+        saveImage();
+      } catch (err) {
+        console.error('Image capture failed:', err);
+        showToast(t('captureFailed'));
+      }
+    }
+    saveBtn.addEventListener('click', saveImageSafe);
+
+    // --- Export GLB (header 📦 button + `E` key) -------------------------------
+    // Export the loaded model — the shaded MeshStandardMaterial meshes with their
+    // normals — as a binary glTF (.glb) so users can drop the tessellated result
+    // into Blender, a game engine, model-viewer, or another three.js scene.
+    // three's GLTFExporter is reachable through the existing three/addons/
+    // importmap entry, so this stays zero-build.
+    //
+    // We export currentModel only (never the scene), which already excludes the
+    // scene-level chrome (the ground grid and the contact-shadow quad are scene
+    // siblings, not children of currentModel). The one piece of decorative chrome
+    // that DOES live inside currentModel is the deferred feature-edge overlay —
+    // a LineSegments child added to each mesh by step.js — so we temporarily
+    // detach those before the export and re-attach them after, leaving the file
+    // with the actual part geometry and none of the viewer's line overlay.
+    const exportBtn = document.getElementById('export-btn');
+
+    // Enable the Export button only once a real STEP model is on screen (the
+    // spinning placeholder is not currentModel). Applies to both bundled samples
+    // and user-opened files — unlike Share, an export needs no restorable URL.
+    // The disabled title/aria-label explains that a model must be loaded first.
+    function updateExportState() {
+      const ready = !!currentModel;
+      exportBtn.disabled = !ready;
+      exportBtn.title = ready ? t('exportTitle') : t('exportTitleDisabled');
+      exportBtn.setAttribute('aria-label', ready ? t('exportAria') : t('exportTitleDisabled'));
+    }
+
+    function exportGLB() {
+      // Nothing meaningful to export before a real model is on screen.
+      if (!currentModel) { showToast(t('exportNothing')); return; }
+
+      // Temporarily lift the decorative feature-edge overlays out of the model so
+      // they don't land in the exported file. They're LineSegments children whose
+      // raycast was neutered (see step.js); collect them with their parents so we
+      // can restore the exact graph afterward.
+      const detached = [];
+      currentModel.traverse((obj) => {
+        if (obj.isLineSegments && obj.parent) {
+          detached.push({ node: obj, parent: obj.parent });
+        }
+      });
+      detached.forEach(({ node, parent }) => parent.remove(node));
+      let restored = false;
+      const restore = () => {
+        if (restored) return;
+        restored = true;
+        detached.forEach(({ node, parent }) => parent.add(node));
+      };
+
+      const finishFailure = (err) => {
+        restore();
+        console.error('GLB export failed:', err);
+        showToast(t('exportFailed'));
+      };
+
+      try {
+        const exporter = new GLTFExporter();
+        exporter.parse(
+          currentModel,
+          (result) => {
+            // Re-attach the edge overlay before touching the download so the live
+            // scene is whole again regardless of what happens next.
+            restore();
+            try {
+              // binary:true → result is an ArrayBuffer of GLB bytes.
+              const blob = new Blob([result], { type: 'model/gltf-binary' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${captureBasename(currentModelLabel)}.glb`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              // Revoke on the next tick: revoking synchronously can cancel the
+              // just-started download in some browsers, and never revoking leaks
+              // the object URL. A macrotask clears it after the download begins.
+              setTimeout(() => URL.revokeObjectURL(url), 0);
+            } catch (err) {
+              console.error('GLB export failed:', err);
+              showToast(t('exportFailed'));
+            }
+          },
+          finishFailure, // onError (GLTFExporter can reject asynchronously)
+          { binary: true }
+        );
+      } catch (err) {
+        // exporter.parse threw synchronously.
+        finishFailure(err);
+      }
+    }
+
+    exportBtn.addEventListener('click', exportGLB);
+    updateExportState(); // reflect the initial (no-model) disabled state
+
+    // --- Copy shareable link (header 🔗 button) --------------------------------
+    // Compose the full absolute URL for the current view and copy it to the
+    // clipboard so users don't have to hunt the address bar (which can show a
+    // stale/truncated hash). Only bundled gallery samples encode a restorable
+    // hash — a user-opened local blob can't be reconstructed without a backend —
+    // so the button is disabled while such a file is on screen (updateShareState),
+    // with a title that says why.
+    const shareBtn = document.getElementById('share-btn');
+    const embedBtn = document.getElementById('embed-btn');
+    const shareFallback = document.getElementById('share-fallback');
+    const shareFallbackUrl = document.getElementById('share-fallback-url');
+    const shareFallbackLabel = document.getElementById('share-fallback-label');
+    const shareFallbackClose = document.getElementById('share-fallback-close');
+
+    // Reflect whether the on-screen model is a shareable bundled sample. Called
+    // whenever currentSampleFile changes (loadSample success / loadFile) and once
+    // at init. The disabled title/aria-label explains that only gallery samples
+    // produce shareable links.
+    function updateShareState() {
+      const shareable = !!currentSampleFile;
+      shareBtn.disabled = !shareable;
+      const label = shareable ? t('shareAria') : t('shareTitleDisabled');
+      shareBtn.title = shareable ? t('shareTitle') : t('shareTitleDisabled');
+      shareBtn.setAttribute('aria-label', label);
+    }
+
+    // Manual-copy fallback: surface the text in a selectable, auto-focused field
+    // so a non-secure context (no navigator.clipboard) or a rejected write never
+    // loses it silently. Shared by both the copy-link and copy-embed-code paths;
+    // labelKey swaps the field's instruction ("Copy this link:" vs "Copy this
+    // embed code:") so the panel reads correctly for whichever action opened it.
+    function showShareFallback(text, labelKey) {
+      shareFallbackLabel.textContent = t(labelKey || 'shareFallbackLabel');
+      shareFallbackUrl.value = text;
+      shareFallback.hidden = false;
+      shareFallbackUrl.focus();
+      shareFallbackUrl.select();
+    }
+    function hideShareFallback() {
+      shareFallback.hidden = true;
+      shareFallbackUrl.value = '';
+    }
+    shareFallbackClose.addEventListener('click', () => {
+      hideShareFallback();
+      shareBtn.focus(); // return focus to the trigger
+    });
+    // Escape dismisses the fallback while it's focused within.
+    shareFallback.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { hideShareFallback(); shareBtn.focus(); }
+    });
+
+    async function copyShareLink() {
+      // Guard: only shareable while a bundled sample is on screen (button is
+      // disabled otherwise, but keep the guard defensive).
+      if (!currentSampleFile) return;
+      // Force the hash to reflect the CURRENT camera before reading the URL, so the
+      // copied link is never a stale debounced value.
+      writeHash();
+      const url = location.href;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(url);
+          // Success: announce via the toast (role=alert) and briefly swap the
+          // visible button label so the confirmation reads at every width.
+          showToast(t('shareCopied'), true);
+          flashCopied();
+          return;
+        }
+      } catch (err) {
+        // Fall through to the manual-copy fallback below.
+        console.warn('Clipboard write failed:', err);
+      }
+      // No Clipboard API, or the write was rejected (e.g. non-secure context).
+      showShareFallback(url);
+    }
+    shareBtn.addEventListener('click', copyShareLink);
+
+    // Transient "Copied!" swap on the button's visible label. The label is hidden
+    // at narrow widths (icon-only), so this is a progressive nicety — the toast
+    // above is the primary, width-independent confirmation. Restores the original
+    // label after a short delay.
+    const shareLabelEl = shareBtn.querySelector('.btn-label');
+    let copiedTimer = null;
+    function flashCopied() {
+      if (!shareLabelEl) return;
+      const original = t('shareLabel');
+      shareLabelEl.textContent = t('shareCopiedShort');
+      clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => { shareLabelEl.textContent = original; }, 1800);
+    }
+
+    // --- Copy embed code (header <> button) ------------------------------------
+    // Compose a ready-to-paste <iframe> snippet so people writing docs / blogs /
+    // wikis can drop the live viewer inline. The snippet is fully self-contained
+    // and points ONLY at the public GitHub Pages origin (canonical og:url) — no
+    // backend, no build step — so pasting it into any plain HTML page renders a
+    // working embedded viewer. Like Copy link it's only offered for restorable
+    // bundled samples (a user-opened local blob can't be reconstructed remotely),
+    // so the button is disabled while such a file is on screen (updateEmbedState).
+
+    // Escape a string for safe use inside a double-quoted HTML attribute in the
+    // generated snippet (the model label flows into the title attribute).
+    const escapeAttr = (s) => String(s)
+      .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Canonical public base URL for the embed src: prefer the og:url meta (the
+    // published GitHub Pages URL) so a snippet copied from a local/dev checkout
+    // still points at the public origin; fall back to the live origin+path if the
+    // meta is missing. Any existing hash on the meta value is stripped — the
+    // current view hash is appended by buildEmbedUrl.
+    function canonicalBase() {
+      try {
+        const meta = document.querySelector('meta[property="og:url"]');
+        if (meta && meta.content) return meta.content.replace(/#.*$/, '');
+      } catch (e) {}
+      return location.origin + location.pathname;
+    }
+
+    // Absolute viewer URL for the embed src: the canonical public base + the
+    // current view hash (sample key + camera, refreshed from the live camera) +
+    // the `embed` flag so the framed viewer opens chrome-less at the intended
+    // view. writeHash first syncs the hash to the CURRENT camera so the embed
+    // link is never a stale debounced value.
+    function buildEmbedUrl() {
+      writeHash();
+      let hash = location.hash; // '#m=<file>&c=<coords>' (+ '&embed=1' if already embedded)
+      if (!/(^|[#&])embed(=|&|$)/.test(hash)) hash += '&embed=1';
+      return canonicalBase() + hash;
+    }
+
+    // The pasteable <iframe> snippet: absolute public src, sensible default
+    // dimensions, lazy loading, no border, and a per-model title for a11y.
+    function buildEmbedSnippet() {
+      const url = buildEmbedUrl();
+      const title = t('embedIframeTitle', { label: currentModelLabel || t('appName') });
+      return `<iframe src="${escapeAttr(url)}" width="640" height="480" `
+        + `loading="lazy" style="border:0" title="${escapeAttr(title)}"></iframe>`;
+    }
+
+    // Reflect whether the on-screen model is an embeddable bundled sample. Mirrors
+    // updateShareState (called from the same load/init sites): disable + retitle
+    // the button while a non-restorable user file is on screen.
+    function updateEmbedState() {
+      const embeddable = !!currentSampleFile;
+      embedBtn.disabled = !embeddable;
+      embedBtn.title = embeddable ? t('embedTitle') : t('embedTitleDisabled');
+      embedBtn.setAttribute('aria-label', embeddable ? t('embedAria') : t('embedTitleDisabled'));
+    }
+
+    async function copyEmbedCode() {
+      if (!currentSampleFile) return; // guard: only bundled samples are embeddable
+      const snippet = buildEmbedSnippet();
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(snippet);
+          showToast(t('embedCopied'), true); // role=alert announces success to AT
+          flashEmbedCopied();
+          return;
+        }
+      } catch (err) {
+        console.warn('Clipboard write failed:', err);
+      }
+      // No Clipboard API, or the write was rejected — surface the snippet in the
+      // selectable manual-copy fallback (same channel as Copy link).
+      showShareFallback(snippet, 'embedFallbackLabel');
+    }
+    embedBtn.addEventListener('click', copyEmbedCode);
+
+    // Transient "Copied!" swap on the embed button's visible label (hidden at
+    // narrow widths, so the toast above is the primary confirmation).
+    const embedLabelEl = embedBtn.querySelector('.btn-label');
+    let embedCopiedTimer = null;
+    function flashEmbedCopied() {
+      if (!embedLabelEl) return;
+      const original = t('embedLabel');
+      embedLabelEl.textContent = t('shareCopiedShort');
+      clearTimeout(embedCopiedTimer);
+      embedCopiedTimer = setTimeout(() => { embedLabelEl.textContent = original; }, 1800);
+    }
+
+    updateShareState(); // reflect the initial (no-model) disabled state
+    updateEmbedState();
+
     // --- Shortcuts help dialog (header "?" button + `?` key) ---
     // Native <dialog>.showModal() gives Escape-to-close and focus trapping for
     // free; the × button and a backdrop click also dismiss it.
@@ -1219,6 +1813,10 @@
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
       // C toggles the high-contrast theme (mirrors the header toggle).
       if (e.key === 'c' || e.key === 'C') toggleContrast();
+      // S saves the current view as a PNG (mirrors the header ⤓ button).
+      if (e.key === 's' || e.key === 'S') saveImageSafe();
+      // E exports the loaded model as a binary GLB (mirrors the header 📦 button).
+      if (e.key === 'e' || e.key === 'E') exportGLB();
       // R and F both re-fit/reset the view (same as the Fit button).
       if (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R') fitView();
       // Number keys 1–4 load the matching gallery sample (Gear/Block/Tetra/
