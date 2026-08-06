@@ -231,6 +231,13 @@
       color: #cfe0ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #model-info .mi-stats { font-size: .7rem; color: #8b949e;
       font-variant-numeric: tabular-nums; }
+    /* Screen-reader-only utility: visually removed but present in the a11y tree.
+       Used for the natural-language model summary announced via #model-info's
+       polite live region (the visible name/stats are aria-hidden so the summary
+       is announced once, not twice). */
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0;
+      margin: -1px; overflow: hidden; clip: rect(0 0 0 0);
+      clip-path: inset(50%); white-space: nowrap; border: 0; }
     /* Sample gallery strip — one button per bundled model. Positioning is owned by
        #bottom-cluster; here it only lays the pills out (wrap + centered). */
     #gallery { width: 100%; display: flex; justify-content: center; flex-wrap: wrap;
@@ -346,8 +353,12 @@
        model, populated on every load/swap (see updateModelInfo). Hidden until the
        first model renders. aria-live=polite announces stat changes to AT users. -->
   <div id="model-info" hidden aria-live="polite">
-    <span class="mi-name"></span>
-    <span class="mi-stats"></span>
+    <!-- Visible HUD text is aria-hidden: the live-region announcement comes from
+         the .mi-a11y summary below, so the model is described once (a natural
+         sentence) rather than twice (name + terse stats). -->
+    <span class="mi-name" aria-hidden="true"></span>
+    <span class="mi-stats" aria-hidden="true"></span>
+    <span class="mi-a11y sr-only"></span>
   </div>
   <!-- The visual spinner is decorative (aria-hidden); the staged status line
        below it is the accessible status channel (role=status / aria-live=polite)
@@ -620,6 +631,15 @@
     const modelInfo = document.getElementById('model-info');
     const miName = modelInfo.querySelector('.mi-name');
     const miStats = modelInfo.querySelector('.mi-stats');
+    const miA11y = modelInfo.querySelector('.mi-a11y');
+
+    // The canvas (#app, role=img) accessible name becomes a live per-model
+    // summary after a load (updateModelInfo); on a failure with nothing on
+    // screen it reverts to this non-model description rather than lying about a
+    // stale model. (The markup default covers the pre-first-load window.)
+    const APP_ARIA_EMPTY =
+      'No 3D model loaded. Pick a model from the gallery or open a STEP file. ' +
+      'When focused: Arrow keys orbit, plus and minus keys zoom, Shift plus Arrow keys pan, and Home re-fits the view.';
 
     // Compact dimension formatting: whole numbers past 100, one decimal past 10,
     // two below — keeps a tiny 0.80 gear and a 250 block both legible.
@@ -656,6 +676,29 @@
       miStats.textContent =
         `${tris.toLocaleString()} tris · ${fmtDim(size.x)} × ${fmtDim(size.y)} × ${fmtDim(size.z)}`;
       modelInfo.hidden = false;
+
+      // Compose a natural-language summary that reuses the same number/dimension
+      // formatting as the visible HUD, then (a) make it the canvas accessible
+      // name so AT users querying the view hear what's on screen, and (b) push it
+      // into the polite #model-info live region (.mi-a11y) so it's announced once
+      // per load. The visible .mi-name/.mi-stats are aria-hidden, so no duplicate.
+      const summary =
+        `3D view of ${label}: ${tris.toLocaleString()} triangles, ` +
+        `bounding box ${fmtDim(size.x)} by ${fmtDim(size.y)} by ${fmtDim(size.z)}. ` +
+        `Use arrow keys to orbit.`;
+      app.setAttribute('aria-label', summary);
+      miA11y.textContent = summary;
+    }
+
+    // Revert the canvas accessible name + live summary to a non-model state.
+    // Called on a load failure when nothing valid is on screen, so AT users are
+    // told the view is empty instead of hearing a stale successful summary.
+    function resetModelInfo() {
+      app.setAttribute('aria-label', APP_ARIA_EMPTY);
+      miA11y.textContent = '';
+      miName.textContent = '';
+      miStats.textContent = '';
+      modelInfo.hidden = true;
     }
 
     // --- Model swap-in transition ---------------------------------------------
@@ -747,6 +790,9 @@
         // 'init' error path uses (Retry resets the pending occt attempt), rather
         // than an eternal spinner plus a toast that self-dismisses.
         hint.textContent = "Couldn't load the 3D engine — check your connection.";
+        // No model ever rendered — keep the canvas accessible name in its
+        // non-model state instead of the generic "loaded model" markup default.
+        if (!currentModel) resetModelInfo();
         showEngineError('Loading the 3D engine is taking too long — check your connection and retry.');
       }, STALL_MS);
     }
@@ -856,6 +902,10 @@
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = `Could not load ${file.name} — see console`;
+        // Nothing valid rendered (a prior model, if any, is still on screen and
+        // keeps its accurate summary) — reset the accessible name so AT users
+        // aren't told a stale successful model is loaded.
+        if (!currentModel) resetModelInfo();
         // An engine/CDN failure isn't self-clearing — surface the persistent
         // Retry panel. Per-file parse/http errors stay on the lighter toast.
         if (err && err.kind === 'init') showEngineError();
@@ -916,6 +966,9 @@
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = `Could not load ${sample.label} — see console`;
+        // Revert the accessible name only when nothing valid is on screen; a
+        // previously loaded model keeps its own (still-accurate) summary.
+        if (!currentModel) resetModelInfo();
         // Engine/CDN failure → persistent Retry panel; parse/http → light toast.
         if (err && err.kind === 'init') showEngineError();
         else showToast(describeError(err, sample.label));
