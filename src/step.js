@@ -19,6 +19,34 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 const OCCT_VERSION = '0.0.23';
 const OCCT_BASE = `https://cdn.jsdelivr.net/npm/occt-import-js@${OCCT_VERSION}/dist/`;
 
+// occt-import-js already bundles readers for three CAD formats — the engine reads
+// IGES and BREP "for free" alongside STEP. Map a normalized file extension to the
+// occt reader method so one shared parse/mesh-build path serves all three; only
+// the read call differs. All three return the same `{ success, meshes }` shape, so
+// everything downstream (worker repack, buildGroup) is format-agnostic.
+const READER_BY_EXT = {
+  stp: 'ReadStepFile',
+  step: 'ReadStepFile',
+  igs: 'ReadIgesFile',
+  iges: 'ReadIgesFile',
+  brp: 'ReadBrepFile',
+  brep: 'ReadBrepFile',
+};
+
+// The set of extensions the loader accepts, in canonical lower-case. Exported so
+// the UI can build its <input accept>, drop-guard, and mismatch copy from the same
+// source of truth this module dispatches on (no drift between guard and dispatch).
+export const SUPPORTED_CAD_EXTENSIONS = Object.keys(READER_BY_EXT);
+
+// Normalize a file name or bare extension to the occt reader method, or null when
+// the extension isn't one occt reads. Accepts 'foo.IGES', '.iges', or 'iges'.
+export function readerForExtension(nameOrExt) {
+  const s = String(nameOrExt || '').toLowerCase();
+  const dot = s.lastIndexOf('.');
+  const ext = dot >= 0 ? s.slice(dot + 1) : s;
+  return READER_BY_EXT[ext] || null;
+}
+
 // Run a low-priority task off the first-paint critical path. Prefer
 // requestIdleCallback so edge-line generation waits for an idle slot after the
 // mesh is on screen; fall back to a macrotask where it isn't available.
@@ -83,7 +111,7 @@ function handleWorkerMessage(ev) {
       const p = pending.get(msg.id);
       if (p) {
         pending.delete(msg.id);
-        const e = new Error(msg.message || 'occt ReadStepFile failed to parse the STEP data');
+        const e = new Error(msg.message || 'occt failed to parse the CAD data');
         e.kind = 'parse';
         p.reject(e);
       }
@@ -158,7 +186,7 @@ function getWorkerReady() {
 
 // Send the STEP bytes to the worker and await the parsed per-mesh typed arrays.
 // Rejects with `kind: 'parse'` on bad bytes.
-function postParse(arrayBuffer) {
+function postParse(arrayBuffer, reader) {
   return new Promise((resolve, reject) => {
     const id = ++msgSeq;
     pending.set(id, { resolve, reject });
@@ -167,7 +195,7 @@ function postParse(arrayBuffer) {
     // crashes mid-parse. STEP input is text — small next to the decoded geometry —
     // so the structured-clone copy into the worker is cheap; the wins that matter
     // (off-thread ReadStepFile and the zero-copy RESULT transfer back) both stay.
-    worker.postMessage({ type: 'parse', id, buffer: arrayBuffer });
+    worker.postMessage({ type: 'parse', id, reader, buffer: arrayBuffer });
   });
 }
 
@@ -222,8 +250,19 @@ export function resetOcct() {
 // render-on-demand loop, which would otherwise be parked when the deferred edges
 // finally attach a beat after first render (so the edges would only appear on the
 // next camera move). No-op when omitted.
-export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
+export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
   if (onPhase) onPhase('engine');
+
+  // Resolve the reader up front from the extension so an unknown format fails fast
+  // (kind:'parse' — it's a bad-input problem, not an engine one) before the engine
+  // is even touched. The UI guards on extension before calling in, so this is a
+  // belt-and-suspenders check for a stray unsupported call.
+  const reader = readerForExtension(ext);
+  if (!reader) {
+    const e = new Error(`Unsupported CAD file extension: ${ext}`);
+    e.kind = 'parse';
+    throw e;
+  }
 
   // Normalize to a standalone ArrayBuffer once, up front — both the worker and the
   // main-thread fallback consume it, and it must be handed off without detaching a
@@ -240,9 +279,16 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
 
   // Parse to per-mesh typed arrays — off-thread via the worker when it's healthy,
   // otherwise on the main-thread engine. Both sources yield the same mesh shape.
-  const meshes = await getMeshes(arrayBuffer, onPhase);
+  const meshes = await getMeshes(arrayBuffer, reader, onPhase);
 
   return buildGroup(meshes, edgeStyle, onEdgesReady);
+}
+
+// Back-compat thin wrapper: the original STEP-only entry point, preserved so any
+// caller (or bookmark) still works. Routes through the format-aware loader with the
+// STEP reader.
+export function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
+  return loadCadFromArrayBuffer(buf, 'step', onPhase, edgeStyle, onEdgesReady);
 }
 
 // Resolve the parsed per-mesh typed arrays, preferring the off-thread worker and
@@ -254,19 +300,19 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
 // so a model ALWAYS loads even where the worker can't. A genuine bad-bytes parse
 // failure (kind:'parse') is re-thrown untouched: the main thread would fail on the
 // same bytes identically, so retrying there would only double the work.
-async function getMeshes(arrayBuffer, onPhase) {
+async function getMeshes(arrayBuffer, reader, onPhase) {
   if (!workerDisabled) {
     try {
       await getWorkerReady();
       if (onPhase) onPhase('parse');
-      return await postParse(arrayBuffer);
+      return await postParse(arrayBuffer, reader);
     } catch (err) {
-      if (err && err.kind === 'parse') throw err; // bad STEP bytes — no fallback helps
+      if (err && err.kind === 'parse') throw err; // bad CAD bytes — no fallback helps
       disableWorker(); // engine/init failure or worker crash — degrade to main thread
     }
   }
   if (onPhase) onPhase('parse');
-  return parseOnMainThread(arrayBuffer);
+  return parseOnMainThread(arrayBuffer, reader);
 }
 
 // Build the THREE.Group from the (worker- or main-thread-produced) per-mesh typed
@@ -418,11 +464,11 @@ function initOcctMainThread() {
 // shape the worker posts back, so buildGroup consumes either engine identically.
 // Bad bytes reject with kind:'parse'; engine/CDN/WASM failures surface (via
 // initOcctMainThread) with kind:'init'.
-async function parseOnMainThread(arrayBuffer) {
+async function parseOnMainThread(arrayBuffer, reader) {
   const occt = await initOcctMainThread();
-  const result = occt.ReadStepFile(new Uint8Array(arrayBuffer), null);
+  const result = occt[reader](new Uint8Array(arrayBuffer), null);
   if (!result || !result.success) {
-    const e = new Error('occt ReadStepFile failed to parse the STEP data');
+    const e = new Error(`occt ${reader} failed to parse the CAD data`);
     e.kind = 'parse';
     throw e;
   }

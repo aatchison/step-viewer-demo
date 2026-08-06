@@ -55,16 +55,29 @@ self.onmessage = async (ev) => {
   }
 
   if (msg.type === 'parse') {
+    // `reader` is the occt method the main thread chose from the file extension
+    // (ReadStepFile / ReadIgesFile / ReadBrepFile). Default to STEP so an older
+    // main-thread build that doesn't send one still works. Guard that the engine
+    // actually exposes it before calling.
     const { id, buffer } = msg;
+    const reader = msg.reader || 'ReadStepFile';
     try {
-      const fileBuffer = new Uint8Array(buffer);
-      const result = occt.ReadStepFile(fileBuffer, null);
-      if (!result || !result.success) {
-        // Engine loaded fine but the bytes weren't valid/parseable STEP.
+      if (typeof occt[reader] !== 'function') {
         self.postMessage({
           type: 'parse-error',
           id,
-          message: 'occt ReadStepFile failed to parse the STEP data',
+          message: `occt engine has no reader ${reader}`,
+        });
+        return;
+      }
+      const fileBuffer = new Uint8Array(buffer);
+      const result = occt[reader](fileBuffer, null);
+      if (!result || !result.success) {
+        // Engine loaded fine but the bytes weren't valid/parseable for this format.
+        self.postMessage({
+          type: 'parse-error',
+          id,
+          message: `occt ${reader} failed to parse the CAD data`,
         });
         return;
       }

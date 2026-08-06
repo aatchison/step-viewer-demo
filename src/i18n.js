@@ -44,7 +44,7 @@ const messages = {
     themeTitle: 'Toggle light / dark theme (T)',
     openLabel: 'Open STEP file…',
     openAria: 'Open STEP file',
-    openTitle: 'Open a STEP / STP file (or drag & drop onto the view)',
+    openTitle: 'Open a STEP / IGES / BREP file (or drag & drop onto the view)',
     saveLabel: 'Save image',
     saveAria: 'Save image (PNG)',
     saveTitle: 'Save the current view as a PNG (S)',
@@ -150,7 +150,7 @@ const messages = {
     descFit: 'Fit / reset view',
     descSamples: 'Load gallery samples',
     descViews: 'Standard views (Front/Back/Top/Bottom/Right/Left/Iso)',
-    descOpen: 'Open a .step / .stp file',
+    descOpen: 'Open a .step / .iges / .brep file',
 
     // --- 3D view accessible names ---
     appAriaDefault:
@@ -165,7 +165,7 @@ const messages = {
     engineErrorStall:
       'Loading the 3D engine is taking too long — check your connection and retry.',
     retry: 'Retry',
-    dropOverlay: 'Drop a .step / .stp file to load',
+    dropOverlay: 'Drop a .step / .iges / .brep file to load',
 
     // --- Gallery ---
     galleryAria: 'Sample models',
@@ -173,23 +173,24 @@ const messages = {
     sampleBlock: 'Block',
     sampleTetra: 'Tetrahedron',
     samplePyramid: 'Pyramid',
+    sampleCube: 'Cube (IGES)',
     sampleTitle: '{label} (press {n})',
 
     // --- Hint (composed from pieces; separators live in the caller) ---
-    hintPickModel: 'pick a model from the gallery below, or drag & drop a .step / .stp file',
+    hintPickModel: 'pick a model from the gallery below, or drag & drop a .step / .iges / .brep file',
     hintTapModel: 'tap a model in the gallery below',
     zoomScroll: 'drag to orbit · scroll to zoom',
     zoomPinch: 'drag to orbit · pinch to zoom',
-    keyHint: ' · keys: 1–4 samples, R reset, W wireframe',
+    keyHint: ' · keys: 1–5 samples, R reset, W wireframe',
     reducedDataFine:
-      'Data saver is on — pick a model from the gallery below, open a file, or drop a .step / .stp file to load it.',
+      'Data saver is on — pick a model from the gallery below, open a file, or drop a .step / .iges / .brep file to load it.',
     reducedDataCoarse: 'Data saver is on — tap a model in the gallery below to load it.',
 
     // --- Load lifecycle messages ---
     loadedHint: '{label} · {zoom}',
     loading: 'Loading {label}…',
     couldNotLoadConsole: 'Could not load {label} — see console',
-    notStepFile: '{name} is not a .step/.stp file',
+    notStepFile: '{name} is not a supported CAD file (.step, .stp, .iges, .igs, .brep, .brp)',
 
     // --- Large-file size guard ---
     sizeSoftWarn: '{label} is large ({size}) — parsing may be slow.',
@@ -209,7 +210,7 @@ const messages = {
       'Could not load {label} — the 3D engine (occt/WASM) failed to download. Check your connection and reload.',
     errHttp: 'Could not load {label} — the file could not be fetched ({message}).',
     errParse:
-      'Could not load {label} — the file could not be parsed; it may be invalid or an unsupported STEP variant.',
+      'Could not load {label} — the file could not be parsed; it may be invalid or an unsupported CAD variant.',
     errGeneric: 'Could not load {label} — the file may be invalid or unsupported.',
 
     // --- Model-info HUD ---
@@ -251,7 +252,7 @@ const messages = {
     themeTitle: 'Alternar tema claro / oscuro (T)',
     openLabel: 'Abrir archivo STEP…',
     openAria: 'Abrir archivo STEP',
-    openTitle: 'Abrir un archivo STEP / STP (o arrástralo y suéltalo sobre la vista)',
+    openTitle: 'Abrir un archivo STEP / IGES / BREP (o arrástralo y suéltalo sobre la vista)',
     saveLabel: 'Guardar imagen',
     saveAria: 'Guardar imagen (PNG)',
     saveTitle: 'Guardar la vista actual como PNG (S)',
@@ -354,25 +355,26 @@ const messages = {
     descSave: 'Guardar imagen (PNG)',
     descFit: 'Encuadrar / restablecer vista',
     descSamples: 'Cargar ejemplos de la galería',
-    descOpen: 'Abrir un archivo .step / .stp',
+    descOpen: 'Abrir un archivo .step / .iges / .brep',
     loadStatusEngine: 'Cargando motor 3D…',
     loadStatusParse: 'Analizando modelo STEP…',
     engineErrorDefault: 'No se pudo cargar el motor 3D: comprueba tu conexión.',
     captureFailed: 'No se pudo guardar la imagen: no se pudo capturar la vista 3D.',
     captureNothing: 'Carga un modelo primero y luego guarda la vista como imagen.',
     retry: 'Reintentar',
-    dropOverlay: 'Suelta un archivo .step / .stp para cargarlo',
+    dropOverlay: 'Suelta un archivo .step / .iges / .brep para cargarlo',
     galleryAria: 'Modelos de ejemplo',
     sampleGear: 'Engranaje',
     sampleBlock: 'Bloque',
     sampleTetra: 'Tetraedro',
     samplePyramid: 'Pirámide',
+    sampleCube: 'Cubo (IGES)',
     sampleTitle: '{label} (pulsa {n})',
-    hintPickModel: 'elige un modelo de la galería, o arrastra y suelta un archivo .step / .stp',
+    hintPickModel: 'elige un modelo de la galería, o arrastra y suelta un archivo .step / .iges / .brep',
     hintTapModel: 'toca un modelo de la galería',
     zoomScroll: 'arrastra para orbitar · rueda para hacer zoom',
     zoomPinch: 'arrastra para orbitar · pellizca para hacer zoom',
-    keyHint: ' · teclas: 1–4 ejemplos, R restablecer, W malla',
+    keyHint: ' · teclas: 1–5 ejemplos, R restablecer, W malla',
     loading: 'Cargando {label}…',
     loadedHint: '{label} · {zoom}',
     sizeSoftWarn: '{label} es grande ({size}) — el análisis puede ser lento.',

@@ -10,15 +10,15 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%234f9dff'/%3E%3Cpath%20d='M16%206%20L25%2011%20L25%2021%20L16%2026%20L7%2021%20L7%2011%20Z%20M16%206%20L16%2016%20M16%2016%20L25%2011%20M16%2016%20L7%2011'%20fill='none'%20stroke='%230b1220'%20stroke-width='1.8'%20stroke-linejoin='round'%20stroke-linecap='round'/%3E%3C/svg%3E" />
   <!-- Social / SEO meta. og:url + og:image point at the published GitHub Pages
        site and the docs screenshot so shared links render a summary card. -->
-  <meta name="description" content="A zero-build, in-browser STEP (ISO 10303) CAD file viewer — drag in a .step/.stp file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
+  <meta name="description" content="A zero-build, in-browser CAD file viewer for STEP, IGES, and BREP — drag in a .step/.stp/.iges/.brep file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
   <meta property="og:title" content="STEP Viewer Demo" />
-  <meta property="og:description" content="A zero-build, in-browser STEP (ISO 10303) CAD file viewer — drag in a .step/.stp file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
+  <meta property="og:description" content="A zero-build, in-browser CAD file viewer for STEP, IGES, and BREP — drag in a .step/.stp/.iges/.brep file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://aatchison.github.io/step-viewer-demo/" />
   <meta property="og:image" content="https://aatchison.github.io/step-viewer-demo/docs/screenshot.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="STEP Viewer Demo" />
-  <meta name="twitter:description" content="A zero-build, in-browser STEP (ISO 10303) CAD file viewer — drag in a .step/.stp file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
+  <meta name="twitter:description" content="A zero-build, in-browser CAD file viewer for STEP, IGES, and BREP — drag in a .step/.stp/.iges/.brep file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
   <meta name="twitter:image" content="https://aatchison.github.io/step-viewer-demo/docs/screenshot.png" />
   <!-- Apply the persisted high-contrast choice BEFORE first paint so the page
        never flashes the default palette and then re-themes. A classic (non-
@@ -69,37 +69,37 @@
        on-* = the accent "on/active" pill language, scrim* = header/overlay fade. */
     :root {
       color-scheme: dark;
-      --fg: #e6edf3;              /* primary text */
-      --muted: #8b949e;          /* hints / subtitles / stats */
-      --panel: #1b2029;          /* solid control fill (buttons) */
-      --panel-tr: #1b2029cc;     /* translucent pill / HUD / dialog-adjacent fill */
-      --panel-hover: #232a35;    /* control hover fill */
-      --border: #2a2f3a;         /* control / pill / dialog borders */
-      --border-hover: #3a4150;   /* control hover border */
-      --accent: #4f9dff;         /* brand blue — buttons, focus rings, active */
-      --accent-hover: #6fb0ff;   /* accent hover */
-      --accent-ink: #0b1220;     /* text/glyph sitting on an accent fill */
-      --ctrl-fg: #cfe0ff;        /* neutral control text (lifts off dark panels) */
-      --ctrl-fg-2: #c2ccd6;      /* secondary control text (help descriptions) */
-      --on-fg: #eaf2ff;          /* text on an active/pressed pill */
-      --on-fill: #1f3350cc;      /* active/pressed pill fill */
-      --on-fill-strong: #1f3350ee; /* opaque-ish variant (measure label) */
-      --on-fill-hover: #244071cc; /* active pill hover fill */
-      --dialog-bg: #12161df2;    /* modal dialog / floating-panel fill */
+      --fg: var(--fg);              /* primary text */
+      --muted: var(--muted);          /* hints / subtitles / stats */
+      --panel: var(--panel);          /* solid control fill (buttons) */
+      --panel-tr: var(--panel-tr);     /* translucent pill / HUD / dialog-adjacent fill */
+      --panel-hover: var(--panel-hover);    /* control hover fill */
+      --border: var(--border);         /* control / pill / dialog borders */
+      --border-hover: var(--border-hover);   /* control hover border */
+      --accent: var(--accent);         /* brand blue — buttons, focus rings, active */
+      --accent-hover: var(--accent-hover);   /* accent hover */
+      --accent-ink: var(--accent-ink);     /* text/glyph sitting on an accent fill */
+      --ctrl-fg: var(--ctrl-fg);        /* neutral control text (lifts off dark panels) */
+      --ctrl-fg-2: var(--ctrl-fg-2);      /* secondary control text (help descriptions) */
+      --on-fg: var(--on-fg);          /* text on an active/pressed pill */
+      --on-fill: var(--on-fill);      /* active/pressed pill fill */
+      --on-fill-strong: var(--on-fill-strong); /* opaque-ish variant (measure label) */
+      --on-fill-hover: var(--on-fill-hover); /* active pill hover fill */
+      --dialog-bg: var(--dialog-bg);    /* modal dialog / floating-panel fill */
       --field-bg: #0a0d12;       /* text input (share-fallback) fill */
-      --scrim: #0e1116;          /* header gradient / capture / overlay base tone */
-      --scrim-90: #0e1116cc;     /* header top / drop overlay (translucent) */
-      --scrim-0: #0e111600;      /* header gradient tail (fully transparent) */
-      --bg-0: #1a212b;           /* radial backdrop: center (lifted) */
-      --bg-1: #12161d;           /* radial backdrop: near-mid */
-      --bg-2: #0d1015;           /* radial backdrop: outer-mid */
-      --bg-3: #090b0d;           /* radial backdrop: edge (darkest) */
-      --toast-fg: #ffddd8;       /* error toast text */
-      --toast-bg: #3a1f1fee;     /* error toast fill */
-      --toast-border: #7a3b3b;   /* error toast border */
-      --toast-ok-fg: #d6ffe4;    /* success toast text */
-      --toast-ok-bg: #12321fee;  /* success toast fill */
-      --toast-ok-border: #2f6b45;/* success toast border */
+      --scrim: var(--scrim);          /* header gradient / capture / overlay base tone */
+      --scrim-90: var(--scrim-90);     /* header top / drop overlay (translucent) */
+      --scrim-0: var(--scrim-0);      /* header gradient tail (fully transparent) */
+      --bg-0: var(--bg-0);           /* radial backdrop: center (lifted) */
+      --bg-1: var(--bg-1);           /* radial backdrop: near-mid */
+      --bg-2: var(--bg-2);           /* radial backdrop: outer-mid */
+      --bg-3: var(--bg-3);           /* radial backdrop: edge (darkest) */
+      --toast-fg: var(--toast-fg);       /* error toast text */
+      --toast-bg: var(--toast-bg);     /* error toast fill */
+      --toast-border: var(--toast-border);   /* error toast border */
+      --toast-ok-fg: var(--toast-ok-fg);    /* success toast text */
+      --toast-ok-bg: var(--toast-ok-bg);  /* success toast fill */
+      --toast-ok-border: var(--toast-ok-border);/* success toast border */
     }
     /* Light theme — legible on bright monitors / in light embedding contexts. A
        near-white radial backdrop, dark text, light panels, and a slightly darker
@@ -888,7 +888,7 @@
          preference by the module script). Bound to the `T` key. -->
     <button id="theme-btn" type="button" title="Toggle light / dark theme (T)" aria-label="Toggle light and dark theme" aria-pressed="false" data-i18n-attr="title:themeTitle;aria-label:themeAria"><span class="tb-glyph" aria-hidden="true">🌙</span></button>
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
-    <input id="file-input" type="file" accept=".step,.stp" hidden />
+    <input id="file-input" type="file" accept=".step,.stp,.igs,.iges,.brp,.brep" hidden />
   </header>
   <!-- Standard-view preset cluster: one-click canonical camera viewpoints
        (Front/Back/Top/Bottom/Right/Left/Iso) for CAD-style inspection. A fixed
@@ -945,7 +945,7 @@
            alongside the other inspection tools. -->
       <li><span class="k" data-i18n="kDrag">Drag</span><span class="d" data-i18n="descExplode">Explode multi-part assemblies</span></li>
       <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
-      <li><span class="k">1</span><span class="k">4</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
+      <li><span class="k">1</span><span class="k">5</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
       <!-- Standard-view presets — numpad keys (NumLock-independent via e.code)
            snap to canonical viewpoints; distinct from the top-row 1–4 sample
            keys above. -->
@@ -959,7 +959,7 @@
     <nav id="gallery" aria-label="Sample models" data-i18n-attr="aria-label:galleryAria"></nav>
     <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
          load start / success / error text set here is read out to AT users. -->
-    <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · keys: 1–4 samples, R reset, W wireframe</div>
+    <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp / .iges / .brep file · drag to orbit, scroll or pinch to zoom · keys: 1–5 samples, R reset, W wireframe</div>
   </div>
   <!-- Loader is `active` in static markup so it paints immediately on first load,
        before the ES module (and the multi-MB three.js + occt/WASM download) run.
@@ -1060,7 +1060,7 @@
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
     import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
     import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-    import { loadStepFromArrayBuffer, resetOcct } from './src/step.js';
+    import { loadCadFromArrayBuffer, readerForExtension, resetOcct } from './src/step.js';
     import { t, applyStaticI18n } from './src/i18n.js';
 
     // Populate all static markup strings from the localized table (and write the
@@ -1068,6 +1068,17 @@
     // message builder below reads t(), and before the hint is composed, so the
     // whole UI renders in the chosen locale from first module execution.
     applyStaticI18n();
+
+    // Accepted CAD file extensions, shared by the drop guard and the file-picker
+    // reject path so both stay in lockstep with what src/step.js can actually
+    // dispatch (STEP + the IGES/BREP readers occt already bundles). readerForExtension
+    // is the authoritative dispatch check; this regex is the fast UI-side gate.
+    const CAD_EXT_RE = /\.(step|stp|iges|igs|brep|brp)$/i;
+    // Lower-case extension (no dot) of a file name, or '' when it has none.
+    const extOf = (name) => {
+      const m = /\.([^.]+)$/.exec(String(name || ''));
+      return m ? m[1].toLowerCase() : '';
+    };
 
     const app = document.getElementById('app');
     // Embed mode was resolved pre-paint by the head script (it added .embed to
@@ -2267,13 +2278,15 @@
 
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
-    async function showStepFromArrayBuffer(buf, label, onPhase, camState) {
+    async function showStepFromArrayBuffer(buf, label, ext, onPhase, camState) {
       // Pass the active feature-edge style so a fresh load in high contrast builds
       // its (idle-deferred) edge overlay crisp from the start, not faint-then-fixed.
       // Pass invalidate as onEdgesReady so the idle-deferred edge overlay triggers
       // a redraw when it attaches — the render-on-demand loop may have parked after
       // first render, so the edges would otherwise wait for the next camera move.
-      const model = await loadStepFromArrayBuffer(buf, onPhase, currentEdgeStyle(), invalidate);
+      // `ext` selects the occt reader (STEP / IGES / BREP) inside the loader; the
+      // rest of the swap path is format-agnostic (all three yield the same meshes).
+      const model = await loadCadFromArrayBuffer(buf, ext, onPhase, currentEdgeStyle(), invalidate);
       // Only tear down the old scene contents once the new parse succeeds.
       if (placeholder.parent) {
         scene.remove(placeholder);
@@ -2360,6 +2373,15 @@
     // Read a user-supplied File and load it, reporting failures via the hint.
     async function loadFile(file) {
       retryAction = () => loadFile(file); // Retry re-reads + re-loads this file
+      // Reject a file whose extension isn't a CAD format occt can read BEFORE
+      // reading bytes or touching the engine — the file picker's `accept` filter
+      // isn't enforced (a user can still choose "All files"), so surface the same
+      // not-a-CAD-file hint the drag-drop guard uses instead of a doomed parse.
+      const ext = extOf(file.name);
+      if (!readerForExtension(ext)) {
+        hint.textContent = t('notStepFile', { name: file.name });
+        return;
+      }
       // Guard on File.size before reading the blob into memory or parsing. A
       // hard-limit cancel returns immediately — the current model, hint, and
       // loader are all left untouched (the loader was never armed for this load).
@@ -2369,7 +2391,7 @@
       setLoading(true);
       try {
         const buf = await file.arrayBuffer();
-        await showStepFromArrayBuffer(buf, file.name);
+        await showStepFromArrayBuffer(buf, file.name, ext);
         // A user file is a local blob with no restorable URL — clear the sample
         // part of the hash so a stale sample link can't be shared for this view.
         currentSampleFile = null;
@@ -2402,6 +2424,9 @@
       { file: 'block.step',   label: t('sampleBlock') },
       { file: 'tetra.step',   label: t('sampleTetra') },
       { file: 'pyramid.step', label: t('samplePyramid') },
+      // IGES sample — exercises the ReadIgesFile path (occt reads it for free) from
+      // the gallery, so the new multi-format loader is covered end-to-end from the UI.
+      { file: 'cube.iges',    label: t('sampleCube') },
     ];
 
     const gallery = document.getElementById('gallery');
@@ -2541,7 +2566,9 @@
           if (currentModel) hint.textContent = t('loadedHint', { label: currentModelLabel, zoom: zoomHint });
           return;
         }
-        await showStepFromArrayBuffer(buf, sample.label, onPhase, camState);
+        // Derive the reader from the bundled file name (the label is localized and
+        // has no extension) so an .iges/.brep sample routes to the right occt reader.
+        await showStepFromArrayBuffer(buf, sample.label, extOf(sample.file), onPhase, camState);
         // This bundled sample is now on screen and restorable — record its key and
         // update the shareable hash (auto-fit camera, or the restored one if this
         // load came from a deep link).
@@ -3071,11 +3098,12 @@
     // taken in light theme isn't a model floating on near-black.
     const captureBg = () => sceneTheme().captureBg;
 
-    // Turn a model label into a safe PNG basename: drop a trailing .step/.stp so
-    // an opened "MyPart.step" becomes "MyPart" (matching the sample's bare
-    // "Gear"), then replace filename-hostile characters. Falls back to "model".
+    // Turn a model label into a safe PNG basename: drop a trailing CAD extension
+    // (.step/.stp/.iges/.igs/.brep/.brp) so an opened "MyPart.iges" becomes
+    // "MyPart" (matching the sample's bare "Gear"), then replace filename-hostile
+    // characters. Falls back to "model".
     function captureBasename(label) {
-      const base = String(label || 'model').replace(/\.(step|stp)$/i, '').trim();
+      const base = String(label || 'model').replace(CAD_EXT_RE, '').trim();
       const safe = base.replace(/[^\w.-]+/g, '_').replace(/^[_.]+|_+$/g, '');
       return safe || 'model';
     }
@@ -3465,11 +3493,11 @@
       // Left/Iso). Keyed on e.code so NumLock state is irrelevant and this never
       // collides with the top-row 1–4 sample keys below (which match e.key).
       if (NUMPAD_VIEWS[e.code]) { applyView(NUMPAD_VIEWS[e.code]); return; }
-      // Number keys 1–4 load the matching gallery sample (Gear/Block/Tetra/
-      // Pyramid) and update the active pill via loadSample. Skip while a load is
+      // Number keys 1–5 load the matching gallery sample (Gear/Block/Tetra/
+      // Pyramid/Cube) and update the active pill via loadSample. Skip while a load is
       // already in flight (pills are disabled during a fetch) so rapid key
       // presses don't stack concurrent loads — mirrors the disabled-click guard.
-      if (e.key >= '1' && e.key <= '4') {
+      if (e.key >= '1' && e.key <= '5') {
         const sample = SAMPLES[Number(e.key) - 1];
         const loading = gallery.querySelector('.sample:disabled');
         if (sample && !loading) loadSample(sample);
@@ -3641,7 +3669,7 @@
       overlay.classList.remove('active');
       const file = e.dataTransfer && e.dataTransfer.files[0];
       if (!file) return;
-      if (!/\.(step|stp)$/i.test(file.name)) {
+      if (!CAD_EXT_RE.test(file.name)) {
         hint.textContent = t('notStepFile', { name: file.name });
         return;
       }
