@@ -30,6 +30,9 @@ const messages = {
     openLabel: 'Open STEP file…',
     openAria: 'Open STEP file',
     openTitle: 'Open a STEP / STP file (or drag & drop onto the view)',
+    saveLabel: 'Save image',
+    saveAria: 'Save image (PNG)',
+    saveTitle: 'Save the current view as a PNG (S)',
     helpAria: 'Keyboard shortcuts and controls',
     helpTitle: 'Keyboard shortcuts & controls (press ?)',
 
@@ -48,6 +51,7 @@ const messages = {
     descHome: 'Re-fit / reset view',
     descWireframe: 'Toggle wireframe',
     descContrast: 'Toggle high contrast',
+    descSave: 'Save image (PNG)',
     descFit: 'Fit / reset view',
     descSamples: 'Load gallery samples',
     descOpen: 'Open a .step / .stp file',
@@ -91,6 +95,10 @@ const messages = {
     couldNotLoadConsole: 'Could not load {label} — see console',
     notStepFile: '{name} is not a .step/.stp file',
 
+    // --- Save image (PNG capture) ---
+    captureFailed: "Couldn't save the image — the 3D view could not be captured.",
+    captureNothing: 'Load a model first, then save the view as an image.',
+
     // --- describeError, keyed by failure kind ---
     errInit:
       'Could not load {label} — the 3D engine (occt/WASM) failed to download. Check your connection and reload.',
@@ -122,6 +130,9 @@ const messages = {
     openLabel: 'Abrir archivo STEP…',
     openAria: 'Abrir archivo STEP',
     openTitle: 'Abrir un archivo STEP / STP (o arrástralo y suéltalo sobre la vista)',
+    saveLabel: 'Guardar imagen',
+    saveAria: 'Guardar imagen (PNG)',
+    saveTitle: 'Guardar la vista actual como PNG (S)',
     helpAria: 'Atajos de teclado y controles',
     helpTitle: 'Atajos de teclado y controles (pulsa ?)',
     helpHeading: 'Atajos y controles',
@@ -137,12 +148,15 @@ const messages = {
     descHome: 'Reencuadrar / restablecer vista',
     descWireframe: 'Alternar malla',
     descContrast: 'Alternar alto contraste',
+    descSave: 'Guardar imagen (PNG)',
     descFit: 'Encuadrar / restablecer vista',
     descSamples: 'Cargar ejemplos de la galería',
     descOpen: 'Abrir un archivo .step / .stp',
     loadStatusEngine: 'Cargando motor 3D…',
     loadStatusParse: 'Analizando modelo STEP…',
     engineErrorDefault: 'No se pudo cargar el motor 3D: comprueba tu conexión.',
+    captureFailed: 'No se pudo guardar la imagen: no se pudo capturar la vista 3D.',
+    captureNothing: 'Carga un modelo primero y luego guarda la vista como imagen.',
     retry: 'Reintentar',
     dropOverlay: 'Suelta un archivo .step / .stp para cargarlo',
     galleryAria: 'Modelos de ejemplo',

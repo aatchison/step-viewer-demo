@@ -104,8 +104,8 @@
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
-    #contrast-btn:focus-visible, #help-btn:focus-visible, #help-close:focus-visible,
-    #gallery .sample:focus-visible {
+    #contrast-btn:focus-visible, #save-btn:focus-visible, #help-btn:focus-visible,
+    #help-close:focus-visible, #gallery .sample:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
     /* Secondary control — neutral text/fill so it sits below the accent primary
@@ -127,10 +127,11 @@
     #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
-    #fit-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+    #fit-btn, #save-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
       color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .35rem .7rem; }
-    #fit-btn:hover { background: #232a35; border-color: #3a4150; }
+    #save-btn { display: inline-flex; align-items: center; gap: .35rem; }
+    #fit-btn:hover, #save-btn:hover { background: #232a35; border-color: #3a4150; }
     /* High-contrast toggle — a header control mirroring the neutral fit/wireframe
        buttons (icon-collapsible on narrow screens). aria-pressed reflects whether
        high contrast is active; when pressed it borrows the same accent on-state
@@ -316,7 +317,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn, #contrast-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn, #save-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -336,10 +337,10 @@
     @media (max-width: 600px) {
       header { gap: .5rem; padding: .5rem .75rem; }
       #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
-      #contrast-btn .btn-label { display: none; }
+      #contrast-btn .btn-label, #save-btn .btn-label { display: none; }
       #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
-      #contrast-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn, #contrast-btn { min-width: 44px; padding: .4rem;
+      #contrast-btn .btn-icon, #save-btn .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn, #contrast-btn, #save-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
     }
@@ -367,6 +368,11 @@
          the module script on load from the persisted / OS preference); the ◑ glyph
          shows on narrow screens where the label collapses (see max-width:600px). -->
     <button id="contrast-btn" type="button" title="Toggle high contrast (C)" aria-label="High contrast" aria-pressed="false" data-i18n-attr="title:contrastTitle;aria-label:contrastAria"><span class="btn-icon" aria-hidden="true">◑</span><span class="btn-label" data-i18n="contrastLabel">Contrast</span></button>
+    <!-- Save-image control. Captures the current framed render (scene + gizmo) as
+         a downloadable PNG (see saveImage). Neutral tokens like the fit/contrast
+         buttons; collapses to the ⤓ glyph under the same 600px / coarse-pointer
+         rules as the other header buttons. -->
+    <button id="save-btn" type="button" title="Save the current view as a PNG (S)" aria-label="Save image (PNG)" data-i18n-attr="title:saveTitle;aria-label:saveAria"><span class="btn-icon" aria-hidden="true">⤓</span><span class="btn-label" data-i18n="saveLabel">Save image</span></button>
     <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file" data-i18n-attr="title:openTitle;aria-label:openAria"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label" data-i18n="openLabel">Open STEP file…</span></button>
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
@@ -392,6 +398,7 @@
       <li><span class="k" data-i18n="kHome">Home</span><span class="d" data-i18n="descHome">Re-fit / reset view</span></li>
       <li><span class="k">W</span><span class="d" data-i18n="descWireframe">Toggle wireframe</span></li>
       <li><span class="k">C</span><span class="d" data-i18n="descContrast">Toggle high contrast</span></li>
+      <li><span class="k">S</span><span class="d" data-i18n="descSave">Save image (PNG)</span></li>
       <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
       <li><span class="k">1</span><span class="k">4</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
       <li><span class="k" data-i18n="kDrop">Drop</span><span class="d" data-i18n="descOpen">Open a .step / .stp file</span></li>
@@ -644,6 +651,7 @@
     const toast = document.getElementById('toast');
     let spin = placeholder; // object the render loop rotates (null once static model loads)
     let currentModel = null; // the loaded STEP Group currently in the scene, if any
+    let currentModelLabel = null; // label of the on-screen model (for the PNG filename)
     let wireframe = false; // wireframe render state, applied to loaded meshes
     // prefers-reduced-motion query. Declared here (used by both the model swap-in
     // transition below and the placeholder-spin gate in the render loop). Live, so
@@ -793,6 +801,7 @@
       miA11y.textContent = '';
       miName.textContent = '';
       miStats.textContent = '';
+      currentModelLabel = null; // no valid model on screen → no capture name
       modelInfo.hidden = true;
     }
 
@@ -975,6 +984,7 @@
       }
       spin = null;
       currentModel = model;
+      currentModelLabel = label; // remember for the Save-image PNG filename
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
       frameObject(model); // frame at scale 1 before the transition shrinks it
@@ -1188,6 +1198,78 @@
       if (stored !== 'high' && stored !== 'normal') applyContrast(e.matches, false);
     });
 
+    // --- Save image / PNG capture (header ⤓ button + `S` key) -----------------
+    // Export the current framed render (scene + orientation gizmo) as a PNG the
+    // user can drop into a doc or ticket. The live renderer is alpha:true with no
+    // preserveDrawingBuffer, and setAnimationLoop clears every frame, so a bare
+    // renderer.domElement.toDataURL() reads back blank/transparent. Instead we
+    // render synchronously here and read the pixels back in the SAME tick — JS is
+    // single-threaded, so no rAF/compositor pass can clear the drawing buffer
+    // between the render and the toDataURL. This keeps the continuous loop cheap
+    // (no permanently-on preserveDrawingBuffer). Because the canvas clears
+    // transparent, we composite an opaque #0e1116 backdrop (the CSS radial-
+    // vignette mid-tone) behind the model for the capture so the PNG matches what
+    // the user sees instead of a floating model on black/transparent, then
+    // restore the transparent clear immediately. The captured buffer is already
+    // sized at the live setPixelRatio(min(devicePixelRatio, 2)), so the PNG is
+    // crisp at the current DPR without any resize. Wireframe / camera orientation
+    // / framing are whatever's live at capture time, since we draw the real scene.
+    const saveBtn = document.getElementById('save-btn');
+    const CAPTURE_BG = 0x0e1116; // CSS radial-vignette mid-tone (opaque backdrop)
+
+    // Turn a model label into a safe PNG basename: drop a trailing .step/.stp so
+    // an opened "MyPart.step" becomes "MyPart" (matching the sample's bare
+    // "Gear"), then replace filename-hostile characters. Falls back to "model".
+    function captureBasename(label) {
+      const base = String(label || 'model').replace(/\.(step|stp)$/i, '').trim();
+      const safe = base.replace(/[^\w.-]+/g, '_').replace(/^[_.]+|_+$/g, '');
+      return safe || 'model';
+    }
+
+    function saveImage() {
+      // Nothing meaningful to capture before a real model is on screen (the
+      // spinning placeholder isn't a model) — nudge instead of saving a torus.
+      if (!currentModel) { showToast(t('captureNothing')); return; }
+      let url;
+      // Snapshot the live clear color/alpha so we can restore the transparent
+      // clear the render loop depends on, even if toDataURL throws.
+      const prevAlpha = renderer.getClearAlpha();
+      const prevColor = new THREE.Color();
+      renderer.getClearColor(prevColor);
+      try {
+        renderer.setClearColor(CAPTURE_BG, 1); // opaque backdrop for the capture
+        // Redraw scene + gizmo (autoClear is off, so clear once up front) exactly
+        // as the render loop does, then read back before yielding to the browser.
+        renderer.clear();
+        renderer.render(scene, camera);
+        viewHelper.render(renderer);
+        url = renderer.domElement.toDataURL('image/png');
+      } finally {
+        renderer.setClearColor(prevColor, prevAlpha); // restore the live transparent clear
+      }
+      // A lost WebGL context yields a blank data URI ('data:,') rather than throwing.
+      if (!url || url === 'data:,') throw new Error('empty capture (context lost?)');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `step-viewer-${captureBasename(currentModelLabel)}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    // Wrapper: any capture failure (context lost, blank read-back, blocked
+    // download) surfaces the existing non-blocking toast rather than downloading
+    // a broken file.
+    function saveImageSafe() {
+      try {
+        saveImage();
+      } catch (err) {
+        console.error('Image capture failed:', err);
+        showToast(t('captureFailed'));
+      }
+    }
+    saveBtn.addEventListener('click', saveImageSafe);
+
     // --- Shortcuts help dialog (header "?" button + `?` key) ---
     // Native <dialog>.showModal() gives Escape-to-close and focus trapping for
     // free; the × button and a backdrop click also dismiss it.
@@ -1219,6 +1301,8 @@
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
       // C toggles the high-contrast theme (mirrors the header toggle).
       if (e.key === 'c' || e.key === 'C') toggleContrast();
+      // S saves the current view as a PNG (mirrors the header ⤓ button).
+      if (e.key === 's' || e.key === 'S') saveImageSafe();
       // R and F both re-fit/reset the view (same as the Fit button).
       if (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R') fitView();
       // Number keys 1–4 load the matching gallery sample (Gear/Block/Tetra/
