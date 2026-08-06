@@ -2719,22 +2719,38 @@
       hint.textContent = t('loadedHint', { label, zoom: zoomHint });
     }
 
-    // --- Large-file guard ------------------------------------------------------
-    // Byte-size thresholds checked on EVERY load entry point before the buffer is
-    // handed to the parser (File.size for open/drag-drop, ArrayBuffer.byteLength
-    // for the fetched sample). occt-import-js parses against the tab's memory
-    // budget, so a multi-hundred-MB drop can exhaust memory or lock the tab with
-    // no warning. These constants are the single source of truth so open,
-    // drag-drop, and gallery-sample loads behave identically. Pure length checks
-    // against the buffer already in hand — no backend, no streaming.
-    const SOFT_LIMIT_BYTES = 40 * 1024 * 1024;   // 40 MB — non-blocking warn, then parse
-    const HARD_LIMIT_BYTES = 150 * 1024 * 1024;  // 150 MB — explicit confirm before parsing
+    // --- Large-file guard (issues #90, #100) -----------------------------------
+    // occt-import-js reads a whole file into memory and tessellates it against the
+    // tab's memory budget, so a multi-hundred-MB STEP (common for full assemblies)
+    // can spike memory and freeze the tab for tens of seconds behind the spinner —
+    // indistinguishable from a hang — or OOM the WASM heap outright. Guard on the
+    // user-supplied byte size BEFORE the blob is read/parsed. This is a pure,
+    // client-side length check (File.size needs no read) — no backend, no streaming,
+    // zero-build.
+    //
+    // Applies ONLY to user File objects (open / drag-drop / the switchable pills of
+    // a multi-file drop, all of which read through loadFile). The bundled gallery
+    // samples are deliberately NOT gated (issue #100): they are known-small, shipped
+    // fetches, not user Files, so prompting on them would be pure noise.
+    //
+    // Two tiers so the feedback is proportionate:
+    //   • SOFT (≥ 40 MB): a non-blocking toast — "getting large, may be slow" — then
+    //     parse anyway. Purely informational.
+    //   • HARD (≥ 50 MB): a blocking confirm() naming the file + size in MB; parse
+    //     ONLY on confirm. This is the LARGE_FILE threshold issue #100 calls out —
+    //     50 MB is where a synchronous main-thread parse starts risking multi-second
+    //     freezes / OOM on modest devices, so it's the defensible line to make the
+    //     user reconsider. A cancel returns false and the caller must be a true
+    //     no-op (no read, no spinner, current model untouched — see loadFile).
+    const SOFT_LIMIT_BYTES = 40 * 1024 * 1024;  // 40 MB — non-blocking warn, then parse
+    const HARD_LIMIT_BYTES = 50 * 1024 * 1024;  // 50 MB — explicit confirm before parsing
     const fmtMB = (bytes) => `${Math.round(bytes / (1024 * 1024))} MB`;
 
     // Gate a load by byte size. Returns true to proceed, false to abort (the
-    // caller must leave the current model untouched). Soft-over: surface a
-    // non-blocking toast via the existing channel, then proceed. Hard-over:
-    // require an explicit confirm(); a cancel returns false so nothing is parsed.
+    // caller must leave the current model, hint, and spinner untouched). Soft-over:
+    // surface a non-blocking toast via the existing channel, then proceed.
+    // Hard-over: require an explicit confirm(); a cancel returns false so nothing
+    // is read or parsed.
     function guardFileSize(bytes, label) {
       if (bytes >= HARD_LIMIT_BYTES) {
         return window.confirm(t('sizeHardConfirm', { label, size: fmtMB(bytes) }));
@@ -2933,14 +2949,10 @@
           throw e;
         }
         const buf = await res.arrayBuffer();
-        // Guard on the fetched buffer's byteLength before parsing. A hard-limit
-        // cancel returns; the finally block clears the loader/spinner and
-        // re-enables the gallery, leaving the current model untouched. Restore the
-        // prior hint so a stale "Loading…" line can't linger past the cancel.
-        if (!guardFileSize(buf.byteLength, sample.label)) {
-          if (currentModel) hint.textContent = t('loadedHint', { label: currentModelLabel, zoom: zoomHint });
-          return;
-        }
+        // NOTE (issue #100): bundled gallery samples are intentionally NOT run
+        // through guardFileSize. They are known-small assets we ship and fetch (not
+        // user-supplied File objects), so a size prompt here would only be noise —
+        // the guard exists to protect the tab from arbitrarily large USER files.
         // Derive the reader from the bundled file name (the label is localized and
         // has no extension) so an .iges/.brep sample routes to the right occt reader.
         await showStepFromArrayBuffer(buf, sample.label, extOf(sample.file), onPhase, camState);
