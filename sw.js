@@ -15,7 +15,7 @@
 // match the current CACHE_NAME (otherwise a version bump would keep serving old
 // WASM / an old app shell). CACHE_NAME is derived from it so there is a single
 // knob to turn. Bumped to v2 with the PWA manifest + maskable icons (#102).
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `step-viewer-cache-${CACHE_VERSION}`;
 
 // Keep these pins in lockstep with the importmap in index.html and OCCT_VERSION
@@ -40,6 +40,9 @@ const PRECACHE_URLS = [
   // App shell (same-origin, relative to the SW scope).
   './',
   './index.html',
+  './src/main.js',
+  './src/scene.js',
+  './src/ui.js',
   './src/step.js',
   './src/step.worker.js',
   './src/i18n.js',
