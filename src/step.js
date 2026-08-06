@@ -177,7 +177,12 @@ export function resetOcct() {
 // `edgeStyle` sets the deferred feature-edge overlay's stroke — { color, opacity }
 // — so callers can render crisper/darker edges in a high-contrast theme. Defaults
 // to the original faint line, so an omitted argument is byte-for-byte unchanged.
-export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }) {
+// `onEdgesReady` (optional) is invoked after each mesh's feature-edge overlay is
+// built in its idle slot. The app uses it to request a redraw under its
+// render-on-demand loop, which would otherwise be parked when the deferred edges
+// finally attach a beat after first render (so the edges would only appear on the
+// next camera move). No-op when omitted.
+export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
   if (onPhase) onPhase('engine');
   await getWorkerReady();
 
@@ -265,7 +270,7 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
     // pop in a beat later as non-essential polish. Guard on the parent still
     // being attached so a model swapped out before the idle callback fires
     // doesn't attach edges to (or leak geometry for) a discarded group.
-    scheduleEdges(mesh, geometry, edgeStyle);
+    scheduleEdges(mesh, geometry, edgeStyle, onEdgesReady);
 
     group.add(mesh);
   }
@@ -288,7 +293,7 @@ function isInScene(obj) {
 // Build the decorative feature-edge overlay for a mesh during an idle slot,
 // after the shaded mesh is already on screen. Kept off the parse/first-render
 // path so first display isn't blocked on it (see call site).
-function scheduleEdges(mesh, geometry, edgeStyle) {
+function scheduleEdges(mesh, geometry, edgeStyle, onEdgesReady) {
   runWhenIdle(() => {
     // The group may have been swapped out before this idle slot ran; if it's no
     // longer in the scene, skip so we don't build edges on a discarded model.
@@ -305,5 +310,9 @@ function scheduleEdges(mesh, geometry, edgeStyle) {
     );
     edges.raycast = () => {}; // decorative overlay — never a pick/hit target
     mesh.add(edges);
+    // Ask the app to redraw: under render-on-demand the loop may have parked
+    // after first render, so without this the deferred edges wouldn't show until
+    // the next camera move.
+    if (typeof onEdgesReady === 'function') onEdgesReady();
   });
 }

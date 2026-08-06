@@ -1265,6 +1265,10 @@
     const spinner = document.getElementById('spinner');
     const toast = document.getElementById('toast');
     let spin = placeholder; // object the render loop rotates (null once static model loads)
+    // Render-on-demand latch: true while a frame is already queued via rAF, so the
+    // many invalidate() call sites coalesce to a single draw per tick. Read/written
+    // only by invalidate()/renderFrame() at the bottom of the module.
+    let renderRequested = false;
     let currentModel = null; // the loaded STEP Group currently in the scene, if any
     let currentModelLabel = null; // label of the on-screen model (for the PNG filename)
     // File key of the bundled sample currently on screen, or null when a
@@ -1507,6 +1511,7 @@
       });
       group.scale.setScalar(SWAP_FROM);
       swapAnim = { group, mats, start: performance.now() };
+      invalidate(); // render-on-demand: drive the fade until updateSwapIn clears it
     }
 
     // Advance the in-flight swap-in transition; called once per frame from the
@@ -1646,6 +1651,7 @@
       controls.maxDistance = dist * 6;
       controls.screenSpacePanning = false; // pan in the ground plane, keeps it sane
       controls.update();
+      invalidate(); // render-on-demand: framing moved the camera / grid / shadow
     }
 
     // Re-frame whatever object is currently on screen (loaded STEP model, or the
@@ -1712,6 +1718,7 @@
         controls.target.copy(toTarget);
         controls.update();
         presetAnim = null;
+        invalidate(); // render-on-demand: draw the instant jump
         return;
       }
       presetAnim = {
@@ -1721,6 +1728,7 @@
         toTarget,
         start: performance.now(),
       };
+      invalidate(); // render-on-demand: drive the ease until presetAnim clears
     }
 
     // Wire the preset toolbar buttons to their view. The debounced hash writer on
@@ -1798,6 +1806,7 @@
       measurePoints.length = 0;
       measureLabel.hidden = true;
       updateMeasureClearState();
+      invalidate(); // render-on-demand: redraw with the markers/line removed
     }
 
     // Drop a marker sphere at a world-space hit point. depthTest:false + a high
@@ -1842,6 +1851,7 @@
       measurePoints.push(p);
       addMeasureMarker(p);
       updateMeasureClearState();
+      invalidate(); // render-on-demand: draw the new marker (and line/label below)
       if (measurePoints.length === 1) {
         hint.textContent = t('measureFirst');
       } else {
@@ -1948,6 +1958,7 @@
       if (miSel) { miSel.hidden = true; miSel.textContent = ''; }
       if (selectFitBtn) selectFitBtn.hidden = true;
       if (announce) hint.textContent = t('selectCleared');
+      invalidate(); // render-on-demand: redraw with the highlight emissive cleared
     }
 
     // Highlight `mesh` and surface its name. Clears any prior selection first so
@@ -1965,6 +1976,7 @@
       if (miSel) { miSel.textContent = t('selectReadout', { name }); miSel.hidden = false; }
       if (selectFitBtn) selectFitBtn.hidden = false;
       hint.textContent = t('selectHint', { name });
+      invalidate(); // render-on-demand: draw the selection highlight emissive
     }
 
     // Raycast currentModel at NDC coords: a hit selects that mesh; a miss clears
@@ -2085,6 +2097,7 @@
       sectionPlane.normal.copy(SECTION_AXES[sectionAxis]).multiplyScalar(sign);
       const c = parseFloat(sectionSlider.value);
       sectionPlane.constant = -c * sign;
+      invalidate(); // render-on-demand: redraw the moved cut plane (live drag)
     }
 
     // Re-derive the slider min/max from the current model's bounding box along the
@@ -2126,6 +2139,7 @@
         applyClipping(currentModel);   // planes = [] → restore normal rendering
         hint.textContent = t('sectionOff');
       }
+      invalidate(); // render-on-demand: redraw with clipping on/off
     }
     function toggleSection() { setSectionMode(!sectionMode); }
     sectionBtn.addEventListener('click', toggleSection);
@@ -2222,6 +2236,7 @@
       for (const e of explodeEntries) {
         e.mesh.position.copy(e.base).addScaledVector(e.dir, amt);
       }
+      invalidate(); // render-on-demand: redraw the spread/collapsed parts
     }
 
     // Reset the slider to 0, collapse the parts, and set the control's enabled/hint
@@ -2255,7 +2270,10 @@
     async function showStepFromArrayBuffer(buf, label, onPhase, camState) {
       // Pass the active feature-edge style so a fresh load in high contrast builds
       // its (idle-deferred) edge overlay crisp from the start, not faint-then-fixed.
-      const model = await loadStepFromArrayBuffer(buf, onPhase, currentEdgeStyle());
+      // Pass invalidate as onEdgesReady so the idle-deferred edge overlay triggers
+      // a redraw when it attaches — the render-on-demand loop may have parked after
+      // first render, so the edges would otherwise wait for the next camera move.
+      const model = await loadStepFromArrayBuffer(buf, onPhase, currentEdgeStyle(), invalidate);
       // Only tear down the old scene contents once the new parse succeeds.
       if (placeholder.parent) {
         scene.remove(placeholder);
@@ -2449,6 +2467,11 @@
       hashWriteTimer = setTimeout(writeHash, 500);
     }
     controls.addEventListener('change', scheduleHashWrite);
+    // Render-on-demand: every camera mutation (orbit/zoom/pan, wheel, keyboard
+    // camera keys, gizmo/preset snaps) and the damping tail fire 'change', so this
+    // single wiring both draws the change and keeps the loop alive until the
+    // OrbitControls damping settles — then it goes quiet on its own.
+    controls.addEventListener('change', invalidate);
 
     // Fetch + parse + render a bundled sample, reusing the model-swap path so the
     // placeholder / previous model is disposed exactly as with user files.
@@ -2573,6 +2596,7 @@
       // the state reads beyond the checkbox tick.
       wireToggle.classList.toggle('is-active', on);
       applyWireframe(currentModel);
+      invalidate(); // render-on-demand: redraw the toggled wireframe
     }
     wireCheck.addEventListener('change', () => setWireframe(wireCheck.checked));
 
@@ -2669,6 +2693,7 @@
       // color-by-part hues on top when the mode is active (preset owns the finish,
       // color-by-part owns the hue). No-op when the mode is off.
       applyColorByPart(currentModel);
+      invalidate(); // render-on-demand: redraw the re-shaded materials
     }
     // Sync the control to the resolved initial preset (no persist, no model yet).
     materialSelect.value = materialPreset;
@@ -2753,6 +2778,7 @@
       else applyMaterialPreset(currentModel);
       // Refresh the HUD so the part-count note appears/disappears with the mode.
       if (currentModel && currentModelLabel != null) updateModelInfo(currentModel, currentModelLabel);
+      invalidate(); // render-on-demand: redraw with/without per-part hues
     }
     // Sync the control to the resolved initial state (no persist, no model yet).
     colorPartBtn.setAttribute('aria-pressed', colorByPart ? 'true' : 'false');
@@ -2796,6 +2822,7 @@
       }
       if (lastGroundSize) groundTo(lastGroundSize);
       refreshEdgeStyling();
+      invalidate(); // render-on-demand: redraw the recolored grid + edges
     }
 
     contrastBtn.setAttribute('aria-pressed', highContrast ? 'true' : 'false');
@@ -2827,6 +2854,7 @@
       renderer.toneMappingExposure = sceneTheme().exposure;
       if (lastGroundSize) groundTo(lastGroundSize);
       refreshEdgeStyling();
+      invalidate(); // render-on-demand: redraw the re-themed scene
     }
 
     // Show the glyph of the theme the button switches TO... actually of the ACTIVE
@@ -2976,6 +3004,7 @@
         if (groundGrid) groundGrid.visible = true;
         if (groundShadow) groundShadow.visible = true;
       }
+      invalidate(); // render-on-demand: redraw entering/leaving blueprint
     }
 
     function toggleBlueprint() { applyBlueprint(!blueprint); }
@@ -2984,12 +3013,12 @@
     // --- Save image / PNG capture (header ⤓ button + `S` key) -----------------
     // Export the current framed render (scene + orientation gizmo) as a PNG the
     // user can drop into a doc or ticket. The live renderer is alpha:true with no
-    // preserveDrawingBuffer, and setAnimationLoop clears every frame, so a bare
-    // renderer.domElement.toDataURL() reads back blank/transparent. Instead we
-    // render synchronously here and read the pixels back in the SAME tick — JS is
-    // single-threaded, so no rAF/compositor pass can clear the drawing buffer
-    // between the render and the toDataURL. This keeps the continuous loop cheap
-    // (no permanently-on preserveDrawingBuffer). Because the canvas clears
+    // preserveDrawingBuffer, so the drawing buffer is cleared between rAF frames
+    // and a bare renderer.domElement.toDataURL() reads back blank/transparent.
+    // Instead we render synchronously here and read the pixels back in the SAME
+    // tick — JS is single-threaded, so no rAF/compositor pass can clear the
+    // drawing buffer between the render and the toDataURL. This keeps the loop
+    // cheap (no permanently-on preserveDrawingBuffer). Because the canvas clears
     // transparent, we composite an opaque #0e1116 backdrop (the CSS radial-
     // vignette mid-tone) behind the model for the capture so the PNG matches what
     // the user sees instead of a floating model on black/transparent, then
@@ -3033,6 +3062,10 @@
         url = renderer.domElement.toDataURL('image/png');
       } finally {
         renderer.setClearColor(prevColor, prevAlpha); // restore the live transparent clear
+        // The capture left an opaque-backdrop frame in the buffer; under render-on-
+        // demand the loop won't repaint on its own, so redraw the live transparent
+        // scene now instead of leaving the capture backdrop on screen until input.
+        invalidate();
       }
       // A lost WebGL context yields a blank data URI ('data:,') rather than throwing.
       if (!url || url === 'data:,') throw new Error('empty capture (context lost?)');
@@ -3529,6 +3562,9 @@
         clientX: e.clientX,
         clientY: e.clientY + (innerHeight - GIZMO_DIM - GIZMO_TOP),
       });
+      // Render-on-demand: arm the loop so the gizmo's snap animation
+      // (viewHelper.animating) plays; renderFrame self-sustains it until it lands.
+      invalidate();
     });
 
     // --- File picker ---
@@ -3581,13 +3617,47 @@
       // otherwise an orientation change (landscape->portrait) leaves the model
       // overflowing horizontally even though the projection was updated.
       fitView();
+      invalidate(); // render-on-demand: a resize changes the picture
     });
 
-    // Respect prefers-reduced-motion: skip the perpetual placeholder rotation so
-    // the loading state stays static for users who opt out of motion (reduceMotion
-    // is declared above, near the other render-state flags).
+    // --- Render on demand -----------------------------------------------------
+    // A loaded model is a static scene, so redrawing every display frame forever
+    // (the old setAnimationLoop) pins the GPU and drains battery for nothing. We
+    // draw only when something actually changed: invalidate() queues a single
+    // frame (deduped), renderFrame() draws it, and — while any motion is still in
+    // flight — re-queues the next one, then goes quiet. The drivers:
+    //   • OrbitControls 'change' → invalidate (wired below): covers every camera
+    //     mutation (pointer orbit/zoom/pan, wheel, the keyboard camera keys, the
+    //     gizmo/preset snaps) AND the damping tail — controls.update() keeps
+    //     firing 'change' each frame until damping settles, so the loop naturally
+    //     keeps drawing through the settle and stops the frame it goes still.
+    //   • animationsActive(): the placeholder idle spin, an in-flight swap-in
+    //     fade, a gizmo snap, or a named-view snap — these drive the loop
+    //     frame-to-frame on their own, so renderFrame re-queues while any is live.
+    //   • explicit invalidate() from the load / fit / resize / scene-mutation
+    //     paths (wireframe, material, section, explode, contrast, theme, etc.),
+    //     which change the picture without touching the camera.
+    // Steady state (static model, no input) issues zero render calls.
     const clock = new THREE.Clock();
-    renderer.setAnimationLoop(() => {
+    // True while any self-driving animation needs another frame. The placeholder
+    // spin only counts while the placeholder is the active object (spin ===
+    // placeholder) and motion isn't reduced — once a static model loads (spin =
+    // null), or reduced-motion parks the spin, this drops the loop to idle.
+    function animationsActive() {
+      return (!!spin && !reduceMotion.matches) ||
+             !!swapAnim ||
+             viewHelper.animating ||
+             !!presetAnim;
+    }
+    // Request exactly one frame. Deduped via renderRequested (declared up with the
+    // render-state flags) so N callers in a tick still schedule a single rAF.
+    function invalidate() {
+      if (renderRequested) return;
+      renderRequested = true;
+      requestAnimationFrame(renderFrame);
+    }
+    function renderFrame() {
+      renderRequested = false;
       const delta = clock.getDelta();
       if (spin && !reduceMotion.matches) spin.rotation.y += 0.005;
       updateSwapIn(performance.now()); // advance any in-flight model swap-in ease
@@ -3605,6 +3675,9 @@
         controls.target.lerpVectors(presetAnim.fromTarget, presetAnim.toTarget, e);
         if (p >= 1) presetAnim = null;
       }
+      // Applies damping and, while the camera is still moving, fires 'change' →
+      // invalidate, so the damping tail re-queues itself until it settles. Once
+      // settled it fires nothing and, absent an active animation, the loop parks.
       controls.update();
       // Track the measurement label to the segment midpoint: project the world-
       // space midpoint to normalized device coords, then to screen px. Runs after
@@ -3625,7 +3698,18 @@
       renderer.clear();
       renderer.render(scene, camera);
       viewHelper.render(renderer);
-    });
+      // Keep drawing while a self-driving animation is still running. The damping
+      // tail is re-queued by the 'change' listener above, so it isn't checked here.
+      if (animationsActive()) invalidate();
+    }
+    // Draw the first frame (the spinning placeholder / initial scene). Every later
+    // frame is pulled by invalidate() from a camera 'change', an animation, a
+    // resize, a load/fit, or a scene-mutating control.
+    invalidate();
+    // Resume the loop if the OS reduced-motion setting is turned OFF while the
+    // placeholder is parked (spin still points at it), so the idle spin comes back
+    // to life; turning it ON simply lets the loop park on its next quiet frame.
+    reduceMotion.addEventListener('change', invalidate);
   </script>
 </body>
 </html>
