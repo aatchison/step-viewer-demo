@@ -104,8 +104,9 @@
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
-    #contrast-btn:focus-visible, #save-btn:focus-visible, #help-btn:focus-visible,
-    #help-close:focus-visible, #gallery .sample:focus-visible {
+    #contrast-btn:focus-visible, #save-btn:focus-visible, #share-btn:focus-visible,
+    #help-btn:focus-visible, #help-close:focus-visible, #gallery .sample:focus-visible,
+    #share-fallback-close:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
     /* Secondary control — neutral text/fill so it sits below the accent primary
@@ -127,11 +128,15 @@
     #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
-    #fit-btn, #save-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+    #fit-btn, #save-btn, #share-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
       color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .35rem .7rem; }
-    #save-btn { display: inline-flex; align-items: center; gap: .35rem; }
-    #fit-btn:hover, #save-btn:hover { background: #232a35; border-color: #3a4150; }
+    #save-btn, #share-btn { display: inline-flex; align-items: center; gap: .35rem; }
+    #fit-btn:hover, #save-btn:hover, #share-btn:hover { background: #232a35; border-color: #3a4150; }
+    /* Non-shareable state: a user-opened file has no restorable link, so the
+       button is disabled (updateShareState) — dim it and drop the pointer. */
+    #share-btn:disabled { opacity: .5; cursor: not-allowed; }
+    #share-btn:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
     /* High-contrast toggle — a header control mirroring the neutral fit/wireframe
        buttons (icon-collapsible on narrow screens). aria-pressed reflects whether
        high contrast is active; when pressed it borrows the same accent on-state
@@ -236,6 +241,34 @@
       padding: .6rem .9rem; box-shadow: 0 6px 20px #0008; pointer-events: none;
       opacity: 0; transition: opacity .2s ease; }
     #toast.active { opacity: 1; pointer-events: auto; }
+    /* Success variant — the share "Link copied!" confirmation reuses the toast
+       channel (role=alert announces it to AT) but must not read as an error, so
+       swap the soft-red palette for a calm accent-green. */
+    #toast.toast-ok { color: #d6ffe4; background: #12321fee; border-color: #2f6b45; }
+    /* Manual-copy fallback panel — shown when the Clipboard API is unavailable or
+       rejected. Sits where the toast does (top-center) but is interactive: the
+       read-only field is selectable so the user can copy the link by hand. Tokens
+       mirror the help dialog / HUD (translucent fill, blur) so it reads as one
+       system. */
+    #share-fallback { position: fixed; top: 3.4rem; left: 50%; transform: translateX(-50%);
+      z-index: 31; width: min(92vw, 460px); color: #e6edf3;
+      background: var(--hc-dialog-bg, #12161df2); border: 1px solid var(--hc-border, #2a2f3a);
+      border-radius: 10px; padding: .6rem .75rem; box-shadow: 0 8px 24px #000a;
+      backdrop-filter: blur(6px); }
+    #share-fallback[hidden] { display: none; }
+    #share-fallback label { display: block; font-size: .78rem; color: var(--hc-muted, #8b949e);
+      margin: 0 0 .35rem; }
+    #share-fallback .sf-row { display: flex; align-items: center; gap: .4rem; }
+    #share-fallback-url { flex: 1; min-width: 0; font: inherit; font-size: .8rem;
+      color: #e6edf3; background: #0a0d12; border: 1px solid var(--hc-border, #2a2f3a);
+      border-radius: 6px; padding: .35rem .5rem; }
+    #share-fallback-url:focus-visible { outline: 2px solid #4f9dff; outline-offset: 1px;
+      border-color: #4f9dff; }
+    #share-fallback-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
+      color: var(--hc-muted, #8b949e); background: transparent; border: 1px solid transparent;
+      border-radius: 6px; width: 1.9rem; height: 1.9rem; flex: none; display: inline-flex;
+      align-items: center; justify-content: center; }
+    #share-fallback-close:hover { color: #e6edf3; background: #232a35; border-color: #3a4150; }
     /* Persistent engine-load failure panel. Distinct from the transient parse
        toast above: an occt/WASM engine failure (offline / CDN down) is not
        self-clearing, so this stays put — with a friendly line and a Retry button
@@ -317,7 +350,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn, #contrast-btn, #save-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn, #save-btn, #share-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -337,10 +370,10 @@
     @media (max-width: 600px) {
       header { gap: .5rem; padding: .5rem .75rem; }
       #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
-      #contrast-btn .btn-label, #save-btn .btn-label { display: none; }
+      #contrast-btn .btn-label, #save-btn .btn-label, #share-btn .btn-label { display: none; }
       #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
-      #contrast-btn .btn-icon, #save-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn, #contrast-btn, #save-btn { min-width: 44px; padding: .4rem;
+      #contrast-btn .btn-icon, #save-btn .btn-icon, #share-btn .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn, #contrast-btn, #save-btn, #share-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
     }
@@ -373,6 +406,14 @@
          buttons; collapses to the ⤓ glyph under the same 600px / coarse-pointer
          rules as the other header buttons. -->
     <button id="save-btn" type="button" title="Save the current view as a PNG (S)" aria-label="Save image (PNG)" data-i18n-attr="title:saveTitle;aria-label:saveAria"><span class="btn-icon" aria-hidden="true">⤓</span><span class="btn-label" data-i18n="saveLabel">Save image</span></button>
+    <!-- Copy-share-link control. Composes the full absolute URL (including the
+         up-to-date view hash written by writeHash) and copies it via
+         navigator.clipboard. Only bundled gallery samples encode a restorable
+         hash, so the button is disabled while a user-opened file is on screen
+         (see updateShareState); the disabled title explains why. Collapses to the
+         🔗 glyph under the same 600px / coarse-pointer rules as the other header
+         buttons. Starts disabled — no model is loaded at first paint. -->
+    <button id="share-btn" type="button" disabled title="Copy a shareable link to this view (gallery samples only)" aria-label="Copy shareable link" data-i18n-attr="title:shareTitle;aria-label:shareAria"><span class="btn-icon" aria-hidden="true">🔗</span><span class="btn-label" data-i18n="shareLabel">Copy link</span></button>
     <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file" data-i18n-attr="title:openTitle;aria-label:openAria"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label" data-i18n="openLabel">Open STEP file…</span></button>
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
@@ -436,6 +477,19 @@
        it on first render. Only shown for the initial auto-load. -->
   <p id="load-status" class="active" role="status" aria-live="polite" data-i18n="loadStatusEngine">Loading 3D engine…</p>
   <div id="toast" role="alert"></div>
+  <!-- Manual-copy fallback for the share button. Shown by copyShareLink() only
+       when navigator.clipboard is unavailable (e.g. a non-secure context) or the
+       write is rejected, so the link is never lost silently: the read-only field
+       is auto-selected + focused so the user can Ctrl/Cmd-C it. role=group with a
+       label ties the field to its instruction for assistive tech. Hidden until a
+       fallback is needed. -->
+  <div id="share-fallback" hidden role="group" aria-labelledby="share-fallback-label">
+    <label id="share-fallback-label" for="share-fallback-url" data-i18n="shareFallbackLabel">Copy this link:</label>
+    <div class="sf-row">
+      <input id="share-fallback-url" type="text" readonly aria-labelledby="share-fallback-label" />
+      <button id="share-fallback-close" type="button" aria-label="Dismiss" data-i18n-attr="aria-label:shareFallbackDismiss">×</button>
+    </div>
+  </div>
   <!-- Persistent engine-load failure state. Shown by showEngineError() on an
        'init'-kind failure (occt/WASM engine / CDN download) or when the stall
        watchdog fires, so a broken/slow engine download surfaces a real, friendly
@@ -860,10 +914,14 @@
       }
     }
 
-    // Non-blocking error toast; auto-dismisses. A new message resets the timer.
+    // Non-blocking toast; auto-dismisses. A new message resets the timer. Defaults
+    // to the soft-red error palette; pass ok=true for the calm-green success
+    // variant (used by the share "Link copied!" confirmation). role=alert on the
+    // element means either variant is announced to assistive tech.
     let toastTimer = null;
-    function showToast(msg) {
+    function showToast(msg, ok) {
       toast.textContent = msg;
+      toast.classList.toggle('toast-ok', !!ok);
       toast.classList.add('active');
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => toast.classList.remove('active'), 5000);
@@ -1019,6 +1077,7 @@
         // part of the hash so a stale sample link can't be shared for this view.
         currentSampleFile = null;
         writeHash();
+        updateShareState(); // a user file isn't shareable — disable the copy-link button
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = t('couldNotLoadConsole', { label: file.name });
@@ -1172,6 +1231,7 @@
         // load came from a deep link).
         currentSampleFile = sample.file;
         writeHash();
+        updateShareState(); // a bundled sample is shareable — enable the copy-link button
         // Highlight the pill for the model now on screen.
         buttons.forEach((b) => {
           const active = b.dataset.file === sample.file;
@@ -1380,6 +1440,94 @@
       }
     }
     saveBtn.addEventListener('click', saveImageSafe);
+
+    // --- Copy shareable link (header 🔗 button) --------------------------------
+    // Compose the full absolute URL for the current view and copy it to the
+    // clipboard so users don't have to hunt the address bar (which can show a
+    // stale/truncated hash). Only bundled gallery samples encode a restorable
+    // hash — a user-opened local blob can't be reconstructed without a backend —
+    // so the button is disabled while such a file is on screen (updateShareState),
+    // with a title that says why.
+    const shareBtn = document.getElementById('share-btn');
+    const shareFallback = document.getElementById('share-fallback');
+    const shareFallbackUrl = document.getElementById('share-fallback-url');
+    const shareFallbackClose = document.getElementById('share-fallback-close');
+
+    // Reflect whether the on-screen model is a shareable bundled sample. Called
+    // whenever currentSampleFile changes (loadSample success / loadFile) and once
+    // at init. The disabled title/aria-label explains that only gallery samples
+    // produce shareable links.
+    function updateShareState() {
+      const shareable = !!currentSampleFile;
+      shareBtn.disabled = !shareable;
+      const label = shareable ? t('shareAria') : t('shareTitleDisabled');
+      shareBtn.title = shareable ? t('shareTitle') : t('shareTitleDisabled');
+      shareBtn.setAttribute('aria-label', label);
+    }
+
+    // Manual-copy fallback: surface the link in a selectable, auto-focused field
+    // so a non-secure context (no navigator.clipboard) or a rejected write never
+    // loses the link silently.
+    function showShareFallback(url) {
+      shareFallbackUrl.value = url;
+      shareFallback.hidden = false;
+      shareFallbackUrl.focus();
+      shareFallbackUrl.select();
+    }
+    function hideShareFallback() {
+      shareFallback.hidden = true;
+      shareFallbackUrl.value = '';
+    }
+    shareFallbackClose.addEventListener('click', () => {
+      hideShareFallback();
+      shareBtn.focus(); // return focus to the trigger
+    });
+    // Escape dismisses the fallback while it's focused within.
+    shareFallback.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { hideShareFallback(); shareBtn.focus(); }
+    });
+
+    async function copyShareLink() {
+      // Guard: only shareable while a bundled sample is on screen (button is
+      // disabled otherwise, but keep the guard defensive).
+      if (!currentSampleFile) return;
+      // Force the hash to reflect the CURRENT camera before reading the URL, so the
+      // copied link is never a stale debounced value.
+      writeHash();
+      const url = location.href;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(url);
+          // Success: announce via the toast (role=alert) and briefly swap the
+          // visible button label so the confirmation reads at every width.
+          showToast(t('shareCopied'), true);
+          flashCopied();
+          return;
+        }
+      } catch (err) {
+        // Fall through to the manual-copy fallback below.
+        console.warn('Clipboard write failed:', err);
+      }
+      // No Clipboard API, or the write was rejected (e.g. non-secure context).
+      showShareFallback(url);
+    }
+    shareBtn.addEventListener('click', copyShareLink);
+
+    // Transient "Copied!" swap on the button's visible label. The label is hidden
+    // at narrow widths (icon-only), so this is a progressive nicety — the toast
+    // above is the primary, width-independent confirmation. Restores the original
+    // label after a short delay.
+    const shareLabelEl = shareBtn.querySelector('.btn-label');
+    let copiedTimer = null;
+    function flashCopied() {
+      if (!shareLabelEl) return;
+      const original = t('shareLabel');
+      shareLabelEl.textContent = t('shareCopiedShort');
+      clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => { shareLabelEl.textContent = original; }, 1800);
+    }
+
+    updateShareState(); // reflect the initial (no-model) disabled state
 
     // --- Shortcuts help dialog (header "?" button + `?` key) ---
     // Native <dialog>.showModal() gives Escape-to-close and focus trapping for
