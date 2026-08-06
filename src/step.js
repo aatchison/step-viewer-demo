@@ -123,6 +123,209 @@ export function detectStepLengthUnit(buffer) {
   }
 }
 
+// Cap for the STEP HEADER scan (issue #96). The ISO-10303-21 HEADER section
+// (FILE_DESCRIPTION / FILE_NAME / FILE_SCHEMA) is the very first block of the
+// file and is tiny — a few hundred bytes to a couple KB — so decode only this
+// leading window and never touch the (potentially many-MB) DATA section. If the
+// header somehow doesn't appear inside the window, we simply report no metadata.
+const HEADER_SCAN_CAP = 64 * 1024;
+
+// Return the argument text inside the FIRST `NAME(...)` call in `text`, matched
+// with balanced parentheses and string-literal awareness (so a `)` or `(` inside
+// a quoted value doesn't end the call early). Returns null when the call isn't
+// found. Case-insensitive on the keyword — STEP keywords are conventionally
+// upper-case, but we don't rely on it.
+function stepCallArgs(text, name) {
+  const re = new RegExp(name + '\\s*\\(', 'gi');
+  const m = re.exec(text);
+  if (!m) return null;
+  const start = m.index + m[0].length; // just past the opening '('
+  let depth = 1;
+  let inStr = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      // '' is an escaped single quote inside a STEP string, not a terminator.
+      if (c === "'") {
+        if (text[i + 1] === "'") { i++; continue; }
+        inStr = false;
+      }
+      continue;
+    }
+    if (c === "'") { inStr = true; continue; }
+    else if (c === '(') depth++;
+    else if (c === ')') { depth--; if (depth === 0) return text.slice(start, i); }
+  }
+  return text.slice(start); // unterminated call — best-effort tail
+}
+
+// Split a call's argument text into top-level comma-separated arguments,
+// respecting nested parens and string literals (so `('a,b'),'c'` → two args, not
+// three). Returns trimmed argument strings.
+function stepTopLevelArgs(inner) {
+  const args = [];
+  let depth = 0;
+  let inStr = false;
+  let cur = '';
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if (inStr) {
+      cur += c;
+      if (c === "'") {
+        if (inner[i + 1] === "'") { cur += "'"; i++; continue; }
+        inStr = false;
+      }
+      continue;
+    }
+    if (c === "'") { inStr = true; cur += c; continue; }
+    if (c === '(') { depth++; cur += c; continue; }
+    if (c === ')') { depth--; cur += c; continue; }
+    if (c === ',' && depth === 0) { args.push(cur.trim()); cur = ''; continue; }
+    cur += c;
+  }
+  args.push(cur.trim());
+  return args;
+}
+
+// Decode the ISO-10303-21 string escapes that show up in header fields:
+// `\X2\HHHH…\X0\` (UTF-16BE code units) and `\X\HH` (a single ISO-8859 byte).
+// Anything else is left as-is — this is best-effort display cleanup, never a
+// correctness dependency.
+function decodeStepEscapes(s) {
+  return s
+    .replace(/\\X2\\([0-9A-Fa-f]+)\\X0\\/g, (_, hex) => {
+      let out = '';
+      for (let i = 0; i + 4 <= hex.length; i += 4) {
+        out += String.fromCharCode(parseInt(hex.slice(i, i + 4), 16));
+      }
+      return out;
+    })
+    .replace(/\\X\\([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+// Pull every quoted string literal out of one argument (handling the '' escape),
+// decoded for display. `$` (STEP's "unset") and unquoted tokens yield []. Used for
+// both scalar fields (take [0]) and STEP's parenthesized author/organization lists.
+function stepStrings(arg) {
+  if (arg == null) return [];
+  const out = [];
+  let inStr = false;
+  let cur = '';
+  for (let i = 0; i < arg.length; i++) {
+    const c = arg[i];
+    if (inStr) {
+      if (c === "'") {
+        if (arg[i + 1] === "'") { cur += "'"; i++; continue; }
+        inStr = false;
+        out.push(decodeStepEscapes(cur));
+        cur = '';
+        continue;
+      }
+      cur += c;
+    } else if (c === "'") {
+      inStr = true;
+      cur = '';
+    }
+  }
+  return out;
+}
+
+// First quoted string of an argument, or '' when there is none (e.g. `$`).
+function stepFirstString(arg) {
+  const all = stepStrings(arg);
+  return all.length ? all[0].trim() : '';
+}
+
+// The bare schema name from a FILE_SCHEMA entry like
+// `AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }` — everything before the `{`/`(`.
+function stepSchemaName(s) {
+  const t = String(s).trim();
+  const cut = t.search(/[{(]/);
+  return (cut >= 0 ? t.slice(0, cut) : t).trim();
+}
+
+// Map a FILE_SCHEMA identifier to its familiar Application Protocol short name.
+// Recognized by schema keyword first (AUTOMOTIVE_DESIGN⇒AP214,
+// CONFIG_CONTROL_DESIGN⇒AP203, the AP242 managed-model schema⇒AP242), then by the
+// `10303 <n>` protocol number embedded in the schema identifier braces. Returns ''
+// when nothing recognizable is present rather than guessing.
+function stepApName(schemaText) {
+  const u = String(schemaText).toUpperCase();
+  if (u.includes('AP242') || u.includes('MANAGED_MODEL_BASED_3D_ENGINEERING')) return 'AP242';
+  if (u.includes('AUTOMOTIVE_DESIGN')) return 'AP214';
+  if (u.includes('CONFIG_CONTROL_DESIGN')) return 'AP203';
+  const m = u.match(/10303\s+(\d+)/);
+  if (m && (m[1] === '203' || m[1] === '214' || m[1] === '242')) return 'AP' + m[1];
+  return '';
+}
+
+// Decode ONLY the leading HEADER;…ENDSEC; block of a STEP file as text and extract,
+// best-effort, its provenance metadata (issue #96): the FILE_SCHEMA schema name +
+// Application Protocol (AP203/AP214/AP242), and from FILE_NAME the timestamp, author
+// list, organization list, preprocessor version, and originating system.
+//
+// Bounded (only HEADER_SCAN_CAP leading bytes are decoded, and only the text
+// between the first `HEADER;` and the following `ENDSEC;` is scanned) and it NEVER
+// throws: any decode/parse miss degrades to empty fields. Returns null when the
+// header isn't found in the window (non-STEP formats, or a header past the cap) or
+// when nothing usable was extracted, so callers can treat "no metadata" uniformly.
+export function parseStepHeader(buffer) {
+  try {
+    let bytes;
+    if (buffer instanceof ArrayBuffer) {
+      bytes = new Uint8Array(buffer);
+    } else if (ArrayBuffer.isView(buffer)) {
+      bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    } else {
+      return null;
+    }
+
+    const dec = new TextDecoder('utf-8', { fatal: false });
+    const head = dec.decode(bytes.subarray(0, Math.min(bytes.length, HEADER_SCAN_CAP)));
+
+    // Bound the scan to the HEADER;…ENDSEC; block. No `HEADER;` in the window ⇒
+    // not a STEP header we can read — report nothing rather than scanning DATA.
+    const hIdx = head.indexOf('HEADER;');
+    if (hIdx < 0) return null;
+    const eIdx = head.indexOf('ENDSEC;', hIdx);
+    const header = eIdx >= 0 ? head.slice(hIdx + 'HEADER;'.length, eIdx) : head.slice(hIdx + 'HEADER;'.length);
+
+    const out = {
+      schema: '', ap: '', author: '', organization: '',
+      originatingSystem: '', preprocessor: '', timestamp: '',
+    };
+
+    // FILE_NAME(name, time_stamp, (author…), (organization…), preprocessor_version,
+    // originating_system, authorization) — index the positional args after a
+    // paren/string-aware split so a comma inside a quoted value never shifts them.
+    const fnRaw = stepCallArgs(header, 'FILE_NAME');
+    if (fnRaw != null) {
+      const a = stepTopLevelArgs(fnRaw);
+      out.timestamp = stepFirstString(a[1]);
+      out.author = stepStrings(a[2]).map((s) => s.trim()).filter(Boolean).join(', ');
+      out.organization = stepStrings(a[3]).map((s) => s.trim()).filter(Boolean).join(', ');
+      out.preprocessor = stepFirstString(a[4]);
+      out.originatingSystem = stepFirstString(a[5]);
+    }
+
+    // FILE_SCHEMA((‘AUTOMOTIVE_DESIGN { … }’)) — one or more schema identifier
+    // strings; the first names the flavor and its AP.
+    const fsRaw = stepCallArgs(header, 'FILE_SCHEMA');
+    if (fsRaw != null) {
+      const schemas = stepStrings(fsRaw);
+      if (schemas.length) {
+        out.schema = stepSchemaName(schemas[0]);
+        out.ap = stepApName(schemas.join(' '));
+      }
+    }
+
+    // Only surface a header when we actually recovered something.
+    return Object.keys(out).some((k) => out[k]) ? out : null;
+  } catch (e) {
+    return null; // never let a header-parse failure affect the render
+  }
+}
+
 // Run a low-priority task off the first-paint critical path. Prefer
 // requestIdleCallback so edge-line generation waits for an idle slot after the
 // mesh is on screen; fall back to a macrotask where it isn't available.
@@ -372,6 +575,15 @@ export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { co
   if (reader === 'ReadStepFile') {
     const unit = detectStepLengthUnit(arrayBuffer);
     if (unit) group.userData.unit = unit;
+
+    // Header provenance (issue #96): the ISO-10303-21 HEADER carries schema/AP,
+    // author, originating system, and a timestamp that the geometry parse throws
+    // away. Decode the leading header block here (STEP-only — IGES/BREP have no
+    // equivalent) and stash the best-effort fields on the group for the UI's
+    // "Details" disclosure. Bounded and never throws; a miss leaves stepHeader
+    // unset, which the UI reads as "no details to show".
+    const stepHeader = parseStepHeader(arrayBuffer);
+    if (stepHeader) group.userData.stepHeader = stepHeader;
   }
 
   return group;

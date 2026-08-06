@@ -220,6 +220,18 @@ const messages = {
     modelSummary:
       '3D view of {label}: {tris} triangles, bounding box {x} by {y} by {z}{unit}. Use arrow keys to orbit.',
 
+    // --- STEP header metadata ("Details" disclosure, issue #96) ---
+    metaDetails: 'Details',
+    metaDetailsAria: 'Show STEP file details',
+    metaHeading: 'STEP file details',
+    metaCloseAria: 'Close details',
+    metaSchema: 'Schema',
+    metaAuthor: 'Author',
+    metaOrg: 'Organization',
+    metaSystem: 'Originating system',
+    metaPreprocessor: 'Preprocessor',
+    metaTimestamp: 'Timestamp',
+
     // --- Parts panel (assembly / multi-solid part list) ---
     partsPanelAria: 'Assembly parts',
     partsTitle: 'Parts',
@@ -393,6 +405,16 @@ const messages = {
     sizeSoftWarn: '{label} es grande ({size}) — el análisis puede ser lento.',
     sizeHardConfirm:
       '{label} es muy grande ({size}). Analizarlo puede agotar la memoria o bloquear la pestaña. ¿Cargarlo de todos modos?',
+    metaDetails: 'Detalles',
+    metaDetailsAria: 'Mostrar detalles del archivo STEP',
+    metaHeading: 'Detalles del archivo STEP',
+    metaCloseAria: 'Cerrar detalles',
+    metaSchema: 'Esquema',
+    metaAuthor: 'Autor',
+    metaOrg: 'Organización',
+    metaSystem: 'Sistema de origen',
+    metaPreprocessor: 'Preprocesador',
+    metaTimestamp: 'Fecha',
   },
 };
 

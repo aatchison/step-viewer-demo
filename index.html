@@ -666,6 +666,39 @@
     #model-info .mi-sel { max-width: 100%; font-size: .7rem; font-weight: 600;
       color: #4fe0b0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #model-info .mi-sel[hidden] { display: none; }
+    /* "Details" trigger for the STEP header metadata (issue #96). The HUD is
+       click-through (pointer-events:none), so this control re-enables pointer
+       events for itself. A small bordered pill matching the gallery/pill tokens so
+       it reads as one system. Hidden until a model with parsed header metadata
+       loads. */
+    #model-info .mi-details { pointer-events: auto; cursor: pointer; font: inherit;
+      font-size: .68rem; font-weight: 600; color: var(--ctrl-fg-2);
+      background: var(--panel-hover); border: 1px solid var(--hc-border, var(--border));
+      border-radius: 5px; padding: .12rem .45rem; margin-top: .2rem; }
+    #model-info .mi-details:hover { color: var(--fg); border-color: var(--border-hover); }
+    #model-info .mi-details:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #model-info .mi-details[hidden] { display: none; }
+    /* STEP header metadata dialog (issue #96). Mirrors #help-dialog tokens
+       (translucent dialog fill, muted border, blur) so it reads as one system; the
+       shared .help-head handles the title bar. */
+    #meta-dialog { margin: auto; max-width: min(92vw, 380px); width: 100%;
+      color: var(--fg); background: var(--hc-dialog-bg, var(--dialog-bg)); border: 1px solid var(--hc-border, var(--border));
+      border-radius: 12px; padding: 0; box-shadow: 0 10px 30px #000a;
+      backdrop-filter: blur(6px); }
+    #meta-dialog::backdrop { background: #05070acc; }
+    #meta-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
+      color: var(--hc-muted, var(--muted)); background: transparent; border: 1px solid transparent;
+      border-radius: 6px; width: 1.9rem; height: 1.9rem; display: inline-flex;
+      align-items: center; justify-content: center; flex: none; }
+    #meta-close:hover { color: var(--fg); background: var(--panel-hover); border-color: var(--border-hover); }
+    #meta-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #meta-dialog .meta-list { margin: 0; padding: .6rem 1rem .9rem; display: grid; gap: .55rem; }
+    #meta-dialog .meta-row { display: grid; grid-template-columns: minmax(6rem, auto) 1fr;
+      gap: .1rem .9rem; align-items: baseline; }
+    #meta-dialog .meta-row dt { margin: 0; font-size: .68rem; font-weight: 700;
+      letter-spacing: .3px; text-transform: uppercase; color: var(--hc-muted, var(--muted)); }
+    #meta-dialog .meta-row dd { margin: 0; font-size: .82rem; color: var(--ctrl-fg);
+      overflow-wrap: anywhere; }
     /* Parts panel — a collapsible list of the assembly's solids, one row each,
        with a per-part visibility checkbox and show/hide-all actions (issue #94).
        Shown only for multi-part models. Parked on the right edge just below the
@@ -1036,8 +1069,28 @@
          through the #hint live region so it isn't read out twice. Shown only while a
          face is selected. -->
     <span class="mi-sel" aria-hidden="true" hidden></span>
+    <!-- STEP header provenance (issue #96): a compact "Details" trigger that opens
+         the #meta-dialog with the file's schema/AP, author, originating system, and
+         timestamp. Shown only when the loaded model carries parsed header metadata
+         (STEP files); the HUD itself is click-through (pointer-events:none), so this
+         control re-enables pointer events for itself. -->
+    <button class="mi-details" type="button" hidden aria-haspopup="dialog"
+            data-i18n="metaDetails" data-i18n-attr="aria-label:metaDetailsAria">Details</button>
     <span class="mi-a11y sr-only"></span>
   </div>
+  <!-- STEP header metadata disclosure (issue #96). Native <dialog> (opened via
+       showModal from the HUD's "Details" button) so Escape-to-close, focus
+       trapping, and backdrop dismissal come from the platform, mirroring
+       #help-dialog. The row list is rebuilt from group.userData.stepHeader on every
+       model swap (updateMetaDetails) with text-only values, so a hostile
+       filename/author can't inject markup; empty fields are omitted. -->
+  <dialog id="meta-dialog" aria-labelledby="meta-title">
+    <div class="help-head">
+      <h2 id="meta-title" data-i18n="metaHeading">STEP file details</h2>
+      <button id="meta-close" type="button" aria-label="Close details" data-i18n-attr="aria-label:metaCloseAria">×</button>
+    </div>
+    <dl class="meta-list" id="meta-list"></dl>
+  </dialog>
   <!-- Parts panel: a collapsible per-solid list for multi-body assemblies (issue
        #94). Hidden until a model with >1 part loads; rebuilt from scratch on every
        swap (buildPartsPanel) so a previous model's rows never leak. Each row's
@@ -1502,6 +1555,63 @@
     const miStats = modelInfo.querySelector('.mi-stats');
     const miA11y = modelInfo.querySelector('.mi-a11y');
 
+    // STEP header metadata "Details" disclosure (issue #96). The trigger lives in
+    // the HUD; the dialog is a native <dialog> opened via showModal (Escape /
+    // backdrop / × all dismiss, mirroring the help dialog).
+    const miDetails = modelInfo.querySelector('.mi-details');
+    const metaDialog = document.getElementById('meta-dialog');
+    const metaList = document.getElementById('meta-list');
+    const metaClose = document.getElementById('meta-close');
+    miDetails.addEventListener('click', () => {
+      if (!metaDialog.open && typeof metaDialog.showModal === 'function') metaDialog.showModal();
+    });
+    metaClose.addEventListener('click', () => metaDialog.close());
+    // Backdrop click: showModal centers the panel, so a click whose target is the
+    // <dialog> element itself (not its content) landed on the backdrop.
+    metaDialog.addEventListener('click', (e) => { if (e.target === metaDialog) metaDialog.close(); });
+
+    // Rebuild the "Details" disclosure from the freshly loaded model's parsed STEP
+    // header (group.userData.stepHeader), reusing the dialog styling. Called on the
+    // single load/swap path so it's cleared/replaced on every model swap. Values
+    // are set via textContent (never HTML) so a hostile filename/author string in a
+    // dropped file can't inject markup. Fields that are empty are omitted; when
+    // there's no metadata at all (non-STEP formats, or a header miss) the trigger
+    // is hidden and any open dialog is closed.
+    function updateMetaDetails(group) {
+      const h = group && group.userData && group.userData.stepHeader;
+      metaList.replaceChildren(); // drop the previous model's rows
+      const rows = [];
+      if (h) {
+        // Schema + AP read as one line: "AUTOMOTIVE_DESIGN (AP214)", or whichever
+        // half is present.
+        let schemaVal = '';
+        if (h.schema && h.ap) schemaVal = h.schema === h.ap ? h.schema : h.schema + ' (' + h.ap + ')';
+        else schemaVal = h.schema || h.ap || '';
+        if (schemaVal) rows.push([t('metaSchema'), schemaVal]);
+        if (h.author) rows.push([t('metaAuthor'), h.author]);
+        if (h.organization) rows.push([t('metaOrg'), h.organization]);
+        if (h.originatingSystem) rows.push([t('metaSystem'), h.originatingSystem]);
+        if (h.preprocessor) rows.push([t('metaPreprocessor'), h.preprocessor]);
+        if (h.timestamp) rows.push([t('metaTimestamp'), h.timestamp]);
+      }
+      if (!rows.length) {
+        miDetails.hidden = true;
+        if (metaDialog.open) metaDialog.close();
+        return;
+      }
+      for (const [label, value] of rows) {
+        const row = document.createElement('div');
+        row.className = 'meta-row';
+        const dt = document.createElement('dt');
+        dt.textContent = label;
+        const dd = document.createElement('dd');
+        dd.textContent = value; // text content only — never innerHTML (XSS-safe)
+        row.append(dt, dd);
+        metaList.append(row);
+      }
+      miDetails.hidden = false;
+    }
+
     // The canvas (#app, role=img) accessible name becomes a live per-model
     // summary after a load (updateModelInfo); on a failure with nothing on
     // screen it reverts to this non-model description rather than lying about a
@@ -1572,6 +1682,11 @@
       });
       app.setAttribute('aria-label', summary);
       miA11y.textContent = summary;
+
+      // Refresh the STEP header "Details" disclosure for this model (issue #96):
+      // rebuilds/reveals it when the model carries parsed header metadata, hides it
+      // otherwise. Threaded through the same load/swap entry as the rest of the HUD.
+      updateMetaDetails(group);
     }
 
     // Revert the canvas accessible name + live summary to a non-model state.
@@ -1584,6 +1699,10 @@
       miStats.textContent = '';
       currentModelLabel = null; // no valid model on screen → no capture name
       modelInfo.hidden = true;
+      // No valid model → drop any STEP header details and close the disclosure.
+      miDetails.hidden = true;
+      metaList.replaceChildren();
+      if (metaDialog.open) metaDialog.close();
       disposePartsPanel(); // no valid model → drop any stale parts list
     }
 
@@ -3670,6 +3789,8 @@
       // While the modal help is open, let the platform own the keys (Escape
       // closes it, Tab cycles its focus) instead of firing viewer shortcuts.
       if (helpDialog.open) return;
+      // Same for the STEP-details modal — let the platform own its keys.
+      if (metaDialog.open) return;
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
       // C toggles the high-contrast theme (mirrors the header toggle).
       if (e.key === 'c' || e.key === 'C') toggleContrast();
@@ -3798,6 +3919,7 @@
       // pan) and the modal help state.
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (helpDialog.open) return;
+      if (metaDialog.open) return;
       // Numpad view-preset keys are owned by the global handler (applyView). With
       // NumLock OFF they also carry Arrow/Home e.key values, so defer them here to
       // avoid a double-fire (orbit + snap) when the 3D view is focused.
