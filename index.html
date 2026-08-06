@@ -20,8 +20,46 @@
   <meta name="twitter:title" content="STEP Viewer Demo" />
   <meta name="twitter:description" content="A zero-build, in-browser STEP (ISO 10303) CAD file viewer — drag in a .step/.stp file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
   <meta name="twitter:image" content="https://aatchison.github.io/step-viewer-demo/docs/screenshot.png" />
+  <!-- Apply the persisted high-contrast choice BEFORE first paint so the page
+       never flashes the default palette and then re-themes. A classic (non-
+       deferred) inline script runs synchronously here in <head>, ahead of body
+       render. A stored 'high'/'normal' is authoritative; with nothing stored we
+       leave the attribute off so CSS's @media (prefers-contrast: more) follows
+       the OS setting. Wrapped in try/catch for private-mode/blocked storage. -->
+  <script>
+    try {
+      var c = localStorage.getItem('step-viewer-contrast');
+      if (c === 'high' || c === 'normal') {
+        document.documentElement.setAttribute('data-contrast', c);
+      }
+    } catch (e) {}
+  </script>
   <style>
     :root { color-scheme: dark; }
+    /* --- High-contrast theme ---------------------------------------------------
+       Opt-in accessible-contrast palette. Activated when the user turns on the
+       header toggle (:root[data-contrast="high"]) OR their OS requests more
+       contrast via @media (prefers-contrast: more) — unless the toggle has been
+       explicitly switched OFF (data-contrast="normal"), which wins over the OS
+       query. Only CSS variables are set here; every themed token below reads
+       var(--hc-*, <today's value>), so with no high-contrast active the fallback
+       renders exactly as before (default is byte-for-byte unchanged). */
+    :root[data-contrast="high"] {
+      --hc-fg: #f4f8fc;      /* primary themed text */
+      --hc-muted: #d7dfe8;   /* hint / subtitle / stats — was #8b949e */
+      --hc-border: #9aa6b4;  /* control / pill / dialog borders — was #2a2f3a */
+      --hc-panel-bg: #0a0d12; /* opaque pill / HUD fill — was translucent #1b2029cc */
+      --hc-dialog-bg: #05070b; /* dialog fill — was #12161df2 */
+    }
+    @media (prefers-contrast: more) {
+      :root:not([data-contrast="normal"]) {
+        --hc-fg: #f4f8fc;
+        --hc-muted: #d7dfe8;
+        --hc-border: #9aa6b4;
+        --hc-panel-bg: #0a0d12;
+        --hc-dialog-bg: #05070b;
+      }
+    }
     * { box-sizing: border-box; }
     /* Depth backdrop: a subtle radial vignette (slightly lifted center, darker
        edges) sits behind the now-transparent WebGL canvas to give the scene
@@ -54,7 +92,7 @@
     header h1 .glyph { font-size: 1.1rem; line-height: 1; }
     /* Muted tech subtitle — solid token instead of an opacity fade so it stays
        legible while still reading as secondary to the wordmark. */
-    header .tag { font-size: .72rem; font-weight: 400; color: #8b949e; }
+    header .tag { font-size: .72rem; font-weight: 400; color: var(--hc-muted, #8b949e); }
     header .spacer { flex: 1; }
     /* Primary action — accent-filled so "Open STEP file…" reads as the main call
        to action above the neutral wireframe/fit controls. Re-enable pointer events
@@ -66,7 +104,7 @@
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
-    #help-btn:focus-visible, #help-close:focus-visible,
+    #contrast-btn:focus-visible, #help-btn:focus-visible, #help-close:focus-visible,
     #gallery .sample:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
@@ -74,7 +112,7 @@
        action in the visual hierarchy. */
     #wire-toggle { pointer-events: auto; cursor: pointer; user-select: none;
       display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem;
-      color: #e6edf3; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
+      color: #e6edf3; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .3rem .6rem; }
     #wire-toggle:hover { background: #232a35; border-color: #3a4150; }
     #wire-toggle input { accent-color: #4f9dff; margin: 0; cursor: pointer; }
@@ -90,9 +128,22 @@
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
     #fit-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
-      color: #cfe0ff; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
+      color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .35rem .7rem; }
     #fit-btn:hover { background: #232a35; border-color: #3a4150; }
+    /* High-contrast toggle — a header control mirroring the neutral fit/wireframe
+       buttons (icon-collapsible on narrow screens). aria-pressed reflects whether
+       high contrast is active; when pressed it borrows the same accent on-state
+       language as the wireframe toggle / gallery pills so "high contrast is on"
+       reads at a glance. */
+    #contrast-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+      color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a);
+      border-radius: 6px; padding: .35rem .7rem; display: inline-flex; align-items: center;
+      gap: .35rem; }
+    #contrast-btn:hover { background: #232a35; border-color: #3a4150; }
+    #contrast-btn[aria-pressed="true"] { color: #eaf2ff; background: #1f3350cc;
+      border-color: #4f9dff; }
+    #contrast-btn[aria-pressed="true"]:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Help affordance — a compact circular "?" button in the header that opens the
        keyboard-shortcuts panel. Neutral tokens like the fit/wireframe controls so
        it sits below the accent primary action; header is click-through so re-enable
@@ -100,7 +151,7 @@
        circle at every width. */
     #help-btn { pointer-events: auto; cursor: pointer; font: inherit;
       font-size: .9rem; font-weight: 700; line-height: 1; color: #cfe0ff;
-      background: #1b2029; border: 1px solid #2a2f3a; border-radius: 999px;
+      background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 999px;
       width: 1.9rem; height: 1.9rem; display: inline-flex; align-items: center;
       justify-content: center; flex: none; }
     #help-btn:hover { background: #232a35; border-color: #3a4150; }
@@ -111,16 +162,16 @@
        system. Centered by the native modal positioning; width caps below the
        narrowest phone so it never overflows. */
     #help-dialog { margin: auto; max-width: min(92vw, 340px); width: 100%;
-      color: #e6edf3; background: #12161df2; border: 1px solid #2a2f3a;
+      color: #e6edf3; background: var(--hc-dialog-bg, #12161df2); border: 1px solid var(--hc-border, #2a2f3a);
       border-radius: 12px; padding: 0; box-shadow: 0 10px 30px #000a;
       backdrop-filter: blur(6px); }
     #help-dialog::backdrop { background: #05070acc; }
     .help-head { display: flex; align-items: center; justify-content: space-between;
-      gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid #2a2f3a; }
+      gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid var(--hc-border, #2a2f3a); }
     .help-head h2 { margin: 0; font-size: .95rem; font-weight: 700;
       letter-spacing: .2px; }
     #help-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
-      color: #8b949e; background: transparent; border: 1px solid transparent;
+      color: var(--hc-muted, #8b949e); background: transparent; border: 1px solid transparent;
       border-radius: 6px; width: 1.9rem; height: 1.9rem; display: inline-flex;
       align-items: center; justify-content: center; flex: none; }
     #help-close:hover { color: #e6edf3; background: #232a35; border-color: #3a4150; }
@@ -150,7 +201,7 @@
       padding: 0 1rem; pointer-events: none; }
     /* Solid muted token instead of an opacity fade so the first-paint guidance and
        interaction hints stay readable against the dark canvas. */
-    #hint { font-size: .8rem; color: #8b949e; max-width: min(92vw, 640px);
+    #hint { font-size: .8rem; color: var(--hc-muted, #8b949e); max-width: min(92vw, 640px);
       text-align: center; }
     /* Loading spinner — centered, shown while a STEP file parses. */
     #spinner { position: fixed; top: 50%; left: 50%; z-index: 15;
@@ -169,7 +220,7 @@
     #load-status { position: fixed; top: 50%; left: 50%; z-index: 15;
       transform: translateX(-50%); margin: 34px 0 0; display: none;
       max-width: min(90vw, 320px); text-align: center; font-size: .82rem;
-      color: #8b949e; pointer-events: none; }
+      color: var(--hc-muted, #8b949e); pointer-events: none; }
     #load-status.active { display: block; }
     /* Reduced-motion: stop the perpetual spinner rotation and show a static
        loading indicator instead (the JS render loop also halts the placeholder
@@ -222,14 +273,14 @@
     #model-info { position: fixed; top: 13rem; right: 1rem; z-index: 10;
       display: flex; flex-direction: column; align-items: flex-end; gap: .1rem;
       max-width: min(60vw, 220px); text-align: right; pointer-events: none;
-      background: #1b2029cc; border: 1px solid #2a2f3a; border-radius: 8px;
+      background: var(--hc-panel-bg, #1b2029cc); border: 1px solid var(--hc-border, #2a2f3a); border-radius: 8px;
       padding: .35rem .55rem; backdrop-filter: blur(4px); }
     /* display:flex above overrides the hidden attribute's default display:none —
        restore it so the panel stays invisible until the first model renders. */
     #model-info[hidden] { display: none; }
     #model-info .mi-name { max-width: 100%; font-size: .78rem; font-weight: 600;
       color: #cfe0ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #model-info .mi-stats { font-size: .7rem; color: #8b949e;
+    #model-info .mi-stats { font-size: .7rem; color: var(--hc-muted, #8b949e);
       font-variant-numeric: tabular-nums; }
     /* Screen-reader-only utility: visually removed but present in the a11y tree.
        Used for the natural-language model summary announced via #model-info's
@@ -243,7 +294,7 @@
     #gallery { width: 100%; display: flex; justify-content: center; flex-wrap: wrap;
       gap: .5rem; pointer-events: none; }
     #gallery .sample { pointer-events: auto; cursor: pointer; font: inherit;
-      font-size: .78rem; color: #cfe0ff; background: #1b2029cc; border: 1px solid #2a2f3a;
+      font-size: .78rem; color: #cfe0ff; background: var(--hc-panel-bg, #1b2029cc); border: 1px solid var(--hc-border, #2a2f3a);
       border-radius: 999px; padding: .3rem .8rem; backdrop-filter: blur(4px); }
     #gallery .sample:hover { background: #232a35; border-color: #3a4150; }
     #gallery .sample.is-active { color: #eaf2ff; background: #1f3350cc;
@@ -265,7 +316,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -284,9 +335,11 @@
        coarse block so these paddings win on equal specificity. */
     @media (max-width: 600px) {
       header { gap: .5rem; padding: .5rem .75rem; }
-      #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label { display: none; }
-      #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn { min-width: 44px; padding: .4rem;
+      #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
+      #contrast-btn .btn-label { display: none; }
+      #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
+      #contrast-btn .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn, #contrast-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
     }
@@ -309,6 +362,10 @@
       <input id="wire-check" type="checkbox" aria-label="Wireframe" /> <span class="btn-icon" aria-hidden="true">▦</span><span class="btn-label">Wireframe</span>
     </label>
     <button id="fit-btn" type="button" title="Fit / reset view (R or F, or double-click canvas)" aria-label="Fit view"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label">Fit view</span></button>
+    <!-- High-contrast toggle. aria-pressed reflects the live state (corrected by
+         the module script on load from the persisted / OS preference); the ◑ glyph
+         shows on narrow screens where the label collapses (see max-width:600px). -->
+    <button id="contrast-btn" type="button" title="Toggle high contrast (C)" aria-label="High contrast" aria-pressed="false"><span class="btn-icon" aria-hidden="true">◑</span><span class="btn-label">Contrast</span></button>
     <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label">Open STEP file…</span></button>
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog">?</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
@@ -333,6 +390,7 @@
       <li><span class="k">⇧</span><span class="k">←→↑↓</span><span class="d">Pan the view target</span></li>
       <li><span class="k">Home</span><span class="d">Re-fit / reset view</span></li>
       <li><span class="k">W</span><span class="d">Toggle wireframe</span></li>
+      <li><span class="k">C</span><span class="d">Toggle high contrast</span></li>
       <li><span class="k">F</span><span class="k">R</span><span class="d">Fit / reset view</span></li>
       <li><span class="k">1</span><span class="k">4</span><span class="d">Load gallery samples</span></li>
       <li><span class="k">Drop</span><span class="d">Open a .step / .stp file</span></li>
@@ -445,6 +503,10 @@
     // its footprint (see groundTo), so it reads as a floor the model rests on
     // instead of a fixed 10-unit plane the model floats above or clips through.
     let groundGrid = null;
+    // Last model size passed to groundTo, kept so the contrast toggle can rebuild
+    // the grid (its line colors are baked into geometry, not the material) at the
+    // same footprint without touching the camera.
+    let lastGroundSize = null;
     // Soft contact shadow that sits under the model on the grid so it reads as
     // resting on the floor instead of floating. A radial-gradient sprite (one
     // textured quad) rather than a real shadow map: it needs no per-model shadow
@@ -507,6 +569,7 @@
     // caller has already recentered the model on the origin, so the base sits at
     // y = -size.y/2. A tiny downward nudge avoids z-fighting with a flat base.
     function groundTo(size) {
+      lastGroundSize = size.clone(); // remember for a contrast-driven rebuild
       if (groundGrid) {
         scene.remove(groundGrid);
         groundGrid.geometry.dispose();
@@ -520,7 +583,8 @@
       const footprint = Math.max(size.x, size.z) || 1;
       const extent = footprint * 2.5; // a bit wider than the model so it reads as floor
       const baseY = -size.y / 2;
-      groundGrid = new THREE.GridHelper(extent, 20, 0x2a2f3a, 0x1b1f27);
+      const [gridCenterColor, gridLineColor] = gridColors();
+      groundGrid = new THREE.GridHelper(extent, 20, gridCenterColor, gridLineColor);
       groundGrid.position.y = baseY - footprint * 0.001;
       scene.add(groundGrid);
 
@@ -579,6 +643,31 @@
     // transition below and the placeholder-spin gate in the render loop). Live, so
     // a mid-session OS setting change is honored.
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+    // --- High-contrast scene state --------------------------------------------
+    // Declared here (near the other render-state flags) because the initial load
+    // path — groundTo (grid colors) and showStepFromArrayBuffer (edge style) —
+    // reads it. The persisted / OS choice was already applied to <html
+    // data-contrast> before first paint by the inline head script; the effective
+    // state: an explicit high/normal choice wins, otherwise follow the OS query.
+    const contrastQuery = matchMedia('(prefers-contrast: more)');
+    function contrastIsHigh() {
+      const attr = document.documentElement.getAttribute('data-contrast');
+      if (attr === 'high') return true;
+      if (attr === 'normal') return false;
+      return contrastQuery.matches;
+    }
+    let highContrast = contrastIsHigh();
+    // Feature-edge line styles. High contrast uses a darker, far more opaque
+    // stroke so the overlay reads crisply against the metal surface; the default
+    // is the original faint line, so the normal theme is byte-for-byte unchanged.
+    const EDGE_NORMAL = { color: 0x0a0d12, opacity: 0.35 };
+    const EDGE_HIGH = { color: 0x000000, opacity: 0.9 };
+    const currentEdgeStyle = () => (highContrast ? EDGE_HIGH : EDGE_NORMAL);
+    // Ground-grid line colors [centerLine, gridLines]. High contrast lifts both
+    // so the floor grid reads against the dark vignette; default matches today.
+    const gridColors = () =>
+      highContrast ? [0x8b98a8, 0x5a6472] : [0x2a2f3a, 0x1b1f27];
 
     // Show/hide the centered loading spinner while a STEP file parses.
     function setLoading(on) { spinner.classList.toggle('active', on); }
@@ -868,7 +957,9 @@
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
     async function showStepFromArrayBuffer(buf, label, onPhase) {
-      const model = await loadStepFromArrayBuffer(buf, onPhase);
+      // Pass the active feature-edge style so a fresh load in high contrast builds
+      // its (idle-deferred) edge overlay crisp from the start, not faint-then-fixed.
+      const model = await loadStepFromArrayBuffer(buf, onPhase, currentEdgeStyle());
       // Only tear down the old scene contents once the new parse succeeds.
       if (placeholder.parent) {
         scene.remove(placeholder);
@@ -1012,6 +1103,55 @@
     }
     wireCheck.addEventListener('change', () => setWireframe(wireCheck.checked));
 
+    // --- High-contrast theme toggle (header button + `C` key) ---
+    // CSS themes the DOM via the data-contrast attribute (set pre-paint by the
+    // head script); here we wire the toggle, keep aria-pressed in sync, persist
+    // the choice, and push the higher-contrast colors into the WebGL scene
+    // (feature edges + ground grid) which CSS can't reach.
+    const contrastBtn = document.getElementById('contrast-btn');
+    const CONTRAST_KEY = 'step-viewer-contrast';
+
+    // Re-style the current model's feature-edge overlay in place for the active
+    // contrast mode. Edges are decorative LineSegments children of each mesh
+    // (built in an idle slot by step.js). The ground grid is a sibling in the
+    // scene, not inside currentModel, so traversing the model never touches it.
+    function applyEdgeContrast(group) {
+      if (!group) return;
+      const style = currentEdgeStyle();
+      group.traverse((obj) => {
+        if (!obj.isLineSegments || !obj.material) return;
+        obj.material.color.setHex(style.color);
+        obj.material.opacity = style.opacity;
+        obj.material.needsUpdate = true;
+      });
+    }
+
+    // Apply a high/normal choice: flip the flag, set the DOM attribute (drives the
+    // CSS palette), sync aria-pressed, optionally persist, then recolor the scene
+    // — rebuild the grid at its last framed size (no camera change; the swap-in
+    // fade is untouched and still reduced-motion aware) and recolor model edges.
+    function applyContrast(on, persist) {
+      highContrast = on;
+      document.documentElement.setAttribute('data-contrast', on ? 'high' : 'normal');
+      contrastBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      if (persist) {
+        try { localStorage.setItem(CONTRAST_KEY, on ? 'high' : 'normal'); } catch (e) {}
+      }
+      if (lastGroundSize) groundTo(lastGroundSize);
+      applyEdgeContrast(currentModel);
+    }
+
+    contrastBtn.setAttribute('aria-pressed', highContrast ? 'true' : 'false');
+    function toggleContrast() { applyContrast(!highContrast, true); }
+    contrastBtn.addEventListener('click', toggleContrast);
+    // Follow a live OS contrast change only while the user hasn't made an explicit
+    // choice (nothing stored) — an explicit toggle stays authoritative.
+    contrastQuery.addEventListener('change', (e) => {
+      let stored = null;
+      try { stored = localStorage.getItem(CONTRAST_KEY); } catch (err) {}
+      if (stored !== 'high' && stored !== 'normal') applyContrast(e.matches, false);
+    });
+
     // --- Shortcuts help dialog (header "?" button + `?` key) ---
     // Native <dialog>.showModal() gives Escape-to-close and focus trapping for
     // free; the × button and a backdrop click also dismiss it.
@@ -1041,6 +1181,8 @@
       // closes it, Tab cycles its focus) instead of firing viewer shortcuts.
       if (helpDialog.open) return;
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
+      // C toggles the high-contrast theme (mirrors the header toggle).
+      if (e.key === 'c' || e.key === 'C') toggleContrast();
       // R and F both re-fit/reset the view (same as the Fit button).
       if (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R') fitView();
       // Number keys 1–4 load the matching gallery sample (Gear/Block/Tetra/

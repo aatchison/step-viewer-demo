@@ -69,7 +69,10 @@ export function resetOcct() {
 // initializes (the ~10–15s first-load cost), then 'parse' just before the STEP
 // bytes are decoded. It fires on every call, but engine init is cached after the
 // first, so the 'engine' phase is effectively instantaneous on later loads.
-export async function loadStepFromArrayBuffer(buf, onPhase) {
+// `edgeStyle` sets the deferred feature-edge overlay's stroke — { color, opacity }
+// — so callers can render crisper/darker edges in a high-contrast theme. Defaults
+// to the original faint line, so an omitted argument is byte-for-byte unchanged.
+export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }) {
   if (onPhase) onPhase('engine');
   const occt = await initOcct();
   const fileBuffer = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
@@ -141,7 +144,7 @@ export async function loadStepFromArrayBuffer(buf, onPhase) {
     // pop in a beat later as non-essential polish. Guard on the parent still
     // being attached so a model swapped out before the idle callback fires
     // doesn't attach edges to (or leak geometry for) a discarded group.
-    scheduleEdges(mesh, geometry);
+    scheduleEdges(mesh, geometry, edgeStyle);
 
     group.add(mesh);
   }
@@ -164,7 +167,7 @@ function isInScene(obj) {
 // Build the decorative feature-edge overlay for a mesh during an idle slot,
 // after the shaded mesh is already on screen. Kept off the parse/first-render
 // path so first display isn't blocked on it (see call site).
-function scheduleEdges(mesh, geometry) {
+function scheduleEdges(mesh, geometry, edgeStyle) {
   runWhenIdle(() => {
     // The group may have been swapped out before this idle slot ran; if it's no
     // longer in the scene, skip so we don't build edges on a discarded model.
@@ -172,7 +175,7 @@ function scheduleEdges(mesh, geometry) {
     const edgeGeom = new THREE.EdgesGeometry(geometry, 30);
     const edges = new THREE.LineSegments(
       edgeGeom,
-      new THREE.LineBasicMaterial({ color: 0x0a0d12, transparent: true, opacity: 0.35 })
+      new THREE.LineBasicMaterial({ color: edgeStyle.color, transparent: true, opacity: edgeStyle.opacity })
     );
     edges.raycast = () => {}; // decorative overlay — never a pick/hit target
     mesh.add(edges);
