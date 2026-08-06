@@ -1,3 +1,4 @@
+// @ts-check
 // STEP loader core — parses STEP (ISO 10303) into three.js geometry via
 // occt-import-js (OpenCascade compiled to WebAssembly).
 //
@@ -11,7 +12,41 @@
 // message protocol, the main-thread fallback engine, and rebuilds the THREE
 // geometry from the per-mesh typed arrays either engine produces.
 
-import * as THREE from 'three';
+// The pure, node-importable geometry transform lives in step-core.js (issue #108);
+// this module is the browser-only orchestrator (worker + <script> injection + CDN)
+// that feeds it. buildGroupFromOcctResult builds the THREE.Group from either
+// engine's per-mesh arrays; it imports `three` itself, so step.js no longer needs
+// a direct three import.
+import { buildGroupFromOcctResult, repackResultMesh } from './step-core.js';
+
+/** @typedef {import('three').Group} Group */
+/** @typedef {import('./step-core.js').OcctMesh} OcctMesh */
+/** @typedef {import('./step-core.js').OcctNode} OcctNode */
+/** @typedef {import('./step-core.js').EdgeStyle} EdgeStyle */
+/** @typedef {import('./ui.js').ErrorKind} ErrorKind */
+/** @typedef {import('./ui.js').TaggedError} TaggedError */
+
+/**
+ * Provenance metadata recovered best-effort from a STEP HEADER block. Any field
+ * may be '' when it could not be read.
+ * @typedef {object} StepHeader
+ * @property {string} schema - FILE_SCHEMA identifier, e.g. AUTOMOTIVE_DESIGN.
+ * @property {string} ap - Application Protocol short name (AP203/AP214/AP242).
+ * @property {string} author - Author list, comma-joined.
+ * @property {string} organization - Organization list, comma-joined.
+ * @property {string} originatingSystem - Originating CAD system.
+ * @property {string} preprocessor - Preprocessor version string.
+ * @property {string} timestamp - FILE_NAME time_stamp.
+ */
+
+/**
+ * The `{ meshes, root }` shape both engines produce and buildGroup consumes.
+ * @typedef {object} ParseResult
+ * @property {OcctMesh[]} meshes - Per-mesh typed arrays, one per solid.
+ * @property {OcctNode | null} root - Sanitized assembly hierarchy, or null.
+ */
+
+/** A stage tag passed to the optional progress hook. @typedef {'engine' | 'parse'} LoadPhase */
 
 const OCCT_VERSION = '0.0.23';
 const OCCT_BASE = `https://cdn.jsdelivr.net/npm/occt-import-js@${OCCT_VERSION}/dist/`;
@@ -37,6 +72,11 @@ export const SUPPORTED_CAD_EXTENSIONS = Object.keys(READER_BY_EXT);
 
 // Normalize a file name or bare extension to the occt reader method, or null when
 // the extension isn't one occt reads. Accepts 'foo.IGES', '.iges', or 'iges'.
+/**
+ * @param {string} nameOrExt - A file name, dotted extension, or bare extension.
+ * @returns {string | null} The occt reader method (ReadStepFile / ReadIgesFile /
+ *   ReadBrepFile), or null when the extension isn't one occt reads.
+ */
 export function readerForExtension(nameOrExt) {
   const s = String(nameOrExt || '').toLowerCase();
   const dot = s.lastIndexOf('.');
@@ -65,6 +105,12 @@ const UNIT_SCAN_CAP = 4 * 1024 * 1024;
 // against, so CONVERSION_BASED_UNIT names are checked FIRST — otherwise an inch
 // part would be mislabelled 'm'. Non-length conversion units (DEGREE for angle,
 // etc.) simply don't match the length-name map and are ignored.
+/**
+ * Detect a STEP file's declared length unit. Pure, bounded, and never throws.
+ * @param {ArrayBuffer | ArrayBufferView} buffer - The raw STEP bytes.
+ * @returns {'mm' | 'm' | 'cm' | 'in' | 'ft' | 'mil' | null} The short unit
+ *   symbol, or null when it can't be determined.
+ */
 export function detectStepLengthUnit(buffer) {
   try {
     let bytes;
@@ -269,6 +315,12 @@ function stepApName(schemaText) {
 // throws: any decode/parse miss degrades to empty fields. Returns null when the
 // header isn't found in the window (non-STEP formats, or a header past the cap) or
 // when nothing usable was extracted, so callers can treat "no metadata" uniformly.
+/**
+ * Decode only the leading HEADER;…ENDSEC; block of a STEP file and extract, best
+ * effort, its provenance metadata. Bounded and never throws.
+ * @param {ArrayBuffer | ArrayBufferView} buffer - The raw STEP bytes.
+ * @returns {StepHeader | null} The recovered header, or null when none was found.
+ */
 export function parseStepHeader(buffer) {
   try {
     let bytes;
@@ -326,14 +378,6 @@ export function parseStepHeader(buffer) {
   }
 }
 
-// Run a low-priority task off the first-paint critical path. Prefer
-// requestIdleCallback so edge-line generation waits for an idle slot after the
-// mesh is on screen; fall back to a macrotask where it isn't available.
-const runWhenIdle =
-  typeof requestIdleCallback === 'function'
-    ? (fn) => requestIdleCallback(fn, { timeout: 1000 })
-    : (fn) => setTimeout(fn, 0);
-
 // The single reused parse worker and the promise that resolves once its WASM
 // engine has initialized ('engine' phase, cached after the first load). Both are
 // null until the first load lazily spawns the worker, and both are cleared by
@@ -368,7 +412,7 @@ function handleWorkerMessage(ev) {
       }
       break;
     case 'init-error': {
-      const e = new Error(msg.message || 'Failed to load the 3D engine in the worker');
+      const e = /** @type {TaggedError} */ (new Error(msg.message || 'Failed to load the 3D engine in the worker'));
       e.kind = 'init';
       if (readyResolvers) {
         readyResolvers.reject(e);
@@ -392,7 +436,7 @@ function handleWorkerMessage(ev) {
       const p = pending.get(msg.id);
       if (p) {
         pending.delete(msg.id);
-        const e = new Error(msg.message || 'occt failed to parse the CAD data');
+        const e = /** @type {TaggedError} */ (new Error(msg.message || 'occt failed to parse the CAD data'));
         e.kind = 'parse';
         p.reject(e);
       }
@@ -407,7 +451,7 @@ function handleWorkerMessage(ev) {
 // abort, etc.) leaves the worker unusable — classify it as an engine/init failure
 // so the UI shows the persistent Retry panel and rebuilds a fresh worker.
 function handleWorkerError(ev) {
-  const e = new Error((ev && ev.message) || 'STEP parse worker crashed');
+  const e = /** @type {TaggedError} */ (new Error((ev && ev.message) || 'STEP parse worker crashed'));
   e.kind = 'init';
   if (readyResolvers) {
     readyResolvers.reject(e);
@@ -420,6 +464,12 @@ function handleWorkerError(ev) {
 // hangs forever. `err` is the failure that prompted the teardown; a plain
 // resetOcct()/successful path passes none, and pending parses get a generic
 // init-kind rejection.
+/**
+ * Terminate the worker (if any) and reject every in-flight parse so nothing hangs.
+ * @param {TaggedError} [err] - The failure that prompted teardown; pending parses
+ *   get a generic `kind:'init'` rejection when omitted.
+ * @returns {void}
+ */
 function teardownWorker(err) {
   if (worker) {
     worker.terminate();
@@ -428,7 +478,7 @@ function teardownWorker(err) {
   workerReadyPromise = null;
   readyResolvers = null;
   for (const p of pending.values()) {
-    const e = err || new Error('STEP parse worker was terminated');
+    const e = /** @type {TaggedError} */ (err || new Error('STEP parse worker was terminated'));
     if (!e.kind) e.kind = 'init';
     p.reject(e);
   }
@@ -449,7 +499,7 @@ function getWorkerReady() {
         worker = new Worker(new URL('./step.worker.js', import.meta.url));
       } catch (err) {
         workerReadyPromise = null;
-        const e = err instanceof Error ? err : new Error(String(err));
+        const e = /** @type {TaggedError} */ (err instanceof Error ? err : new Error(String(err)));
         e.kind = 'init';
         reject(e);
         return;
@@ -487,6 +537,12 @@ function postParse(arrayBuffer, reader) {
 // the session and this resolves against the main-thread engine instead, so the
 // engine is "up" wherever either path can load. It only rejects (kind:'init') if
 // BOTH the worker and the main-thread download/init fail (e.g. truly offline).
+/**
+ * Ensure a CAD engine is up (idempotent): the parse worker + its WASM engine
+ * when possible, otherwise the main-thread engine.
+ * @returns {Promise<unknown>} Resolves once an engine is ready.
+ * @throws {TaggedError} `kind:'init'` only if BOTH engines fail to load.
+ */
 export async function initOcct() {
   if (!workerDisabled) {
     try {
@@ -505,6 +561,12 @@ export async function initOcct() {
 // self-clears on rejection, so a still-pending (hung) attempt would otherwise be
 // re-awaited forever. Terminating here also kills any in-flight parse so a retry
 // starts a genuinely new attempt.
+/**
+ * Terminate the parse worker and discard cached engine promises so the next
+ * load spawns a fresh worker / re-downloads the engine. Used by the UI's Retry.
+ * `workerDisabled` stays sticky so a proven-unusable worker isn't retried.
+ * @returns {void}
+ */
 export function resetOcct() {
   teardownWorker();
   // Also discard the cached main-thread engine so a Retry after a total (worker +
@@ -532,6 +594,20 @@ export function resetOcct() {
 // render-on-demand loop, which would otherwise be parked when the deferred edges
 // finally attach a beat after first render (so the edges would only appear on the
 // next camera move). No-op when omitted.
+/**
+ * Parse a CAD file (STEP/IGES/BREP) into a THREE.Group of shaded meshes,
+ * off-thread via the worker when healthy, otherwise on the main thread.
+ * @param {ArrayBuffer | ArrayBufferView} buf - The raw file bytes.
+ * @param {string} ext - File name or extension used to pick the occt reader.
+ * @param {(phase: LoadPhase) => void} [onPhase] - Progress hook: 'engine' then 'parse'.
+ * @param {EdgeStyle} [edgeStyle] - Deferred feature-edge overlay stroke.
+ * @param {() => void} [onEdgesReady] - Redraw hook after each edge overlay builds.
+ * @returns {Promise<Group>} The loaded model group (with `userData.unit`
+ *   and `userData.stepHeader` set for STEP when detectable).
+ * @throws {TaggedError} `kind:'parse'` on unsupported extension or bad bytes,
+ *   `kind:'empty'` when the parse yields no renderable geometry, or `kind:'init'`
+ *   when the engine can't load.
+ */
 export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
   if (onPhase) onPhase('engine');
 
@@ -541,7 +617,7 @@ export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { co
   // belt-and-suspenders check for a stray unsupported call.
   const reader = readerForExtension(ext);
   if (!reader) {
-    const e = new Error(`Unsupported CAD file extension: ${ext}`);
+    const e = /** @type {TaggedError} */ (new Error(`Unsupported CAD file extension: ${ext}`));
     e.kind = 'parse';
     throw e;
   }
@@ -577,12 +653,12 @@ export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { co
     Array.isArray(meshes) &&
     meshes.some((m) => m && m.position && m.position.length > 0);
   if (!hasRenderableGeometry) {
-    const e = new Error('parsed OK but contains no solid geometry');
+    const e = /** @type {TaggedError} */ (new Error('parsed OK but contains no solid geometry'));
     e.kind = 'empty';
     throw e;
   }
 
-  const group = buildGroup(meshes, root, edgeStyle, onEdgesReady);
+  const group = buildGroupFromOcctResult(meshes, root, edgeStyle, onEdgesReady);
 
   // Native length unit (issue #95): STEP declares its length unit as plain
   // ISO-10303-21 text, so decode + detect it here and stash the short symbol on
@@ -610,6 +686,14 @@ export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { co
 // Back-compat thin wrapper: the original STEP-only entry point, preserved so any
 // caller (or bookmark) still works. Routes through the format-aware loader with the
 // STEP reader.
+/**
+ * Back-compat STEP-only wrapper around {@link loadCadFromArrayBuffer}.
+ * @param {ArrayBuffer | ArrayBufferView} buf - The raw STEP bytes.
+ * @param {(phase: LoadPhase) => void} [onPhase] - Progress hook: 'engine' then 'parse'.
+ * @param {EdgeStyle} [edgeStyle] - Deferred feature-edge overlay stroke.
+ * @param {() => void} [onEdgesReady] - Redraw hook after each edge overlay builds.
+ * @returns {Promise<Group>} The loaded model group.
+ */
 export function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
   return loadCadFromArrayBuffer(buf, 'step', onPhase, edgeStyle, onEdgesReady);
 }
@@ -640,125 +724,10 @@ async function getMeshes(arrayBuffer, reader, onPhase) {
   return parseOnMainThread(arrayBuffer, reader);
 }
 
-// Build the THREE.Group from the (worker- or main-thread-produced) per-mesh typed
-// arrays + the occt assembly hierarchy. Shared verbatim by both engines so the
-// returned Group — geometry, materials, per-part userData, structural registry,
-// and deferred edge overlays — is byte-for-byte identical no matter which engine
-// parsed the STEP.
-//
-// PER-PART FIDELITY (issue #94): earlier this merged every result mesh into a few
-// draw calls grouped by colour, which flattened a multi-body assembly into an
-// anonymous blob — you couldn't tell how many parts it had, name them, or hide
-// one to see another. Per-part visibility is fundamentally incompatible with
-// cross-body merging (a merged geometry is ONE object; you can't hide a slice of
-// it), so we now build exactly one THREE.Mesh per occt result mesh (== one
-// solid/body) and tag it with a stable index + name on userData. This also makes
-// the explode + color-by-part tools literally correct — both already assumed
-// "one mesh per solid". The cost is draw calls (a same-colour assembly no longer
-// collapses to one mesh); this is the deliberate, criteria-required trade for
-// assembly data fidelity, and each mesh's own colour/name is now preserved too.
-function buildGroup(meshes, root, edgeStyle, onEdgesReady) {
-  const group = new THREE.Group();
-
-  // Recover a display name per result-mesh index from the assembly hierarchy
-  // (occt's result.root): every node that references mesh indices lends those
-  // meshes its STEP product/component label. Used only as a fallback when the
-  // flat per-mesh name is blank, so the more specific per-body name still wins.
-  const nameByIndex = namesFromRoot(meshes.length, root);
-
-  meshes.forEach((resultMesh, i) => {
-    const geometry = new THREE.BufferGeometry();
-
-    geometry.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(resultMesh.position, 3)
-    );
-
-    if (resultMesh.normal) {
-      geometry.setAttribute('normal', new THREE.Float32BufferAttribute(resultMesh.normal, 3));
-    }
-
-    if (resultMesh.index) {
-      geometry.setIndex(new THREE.Uint32BufferAttribute(resultMesh.index, 1));
-    }
-
-    if (!resultMesh.normal) {
-      geometry.computeVertexNormals();
-    }
-
-    let color = new THREE.Color(0x4f9dff);
-    if (resultMesh.color && resultMesh.color.length >= 3) {
-      color = new THREE.Color(resultMesh.color[0], resultMesh.color[1], resultMesh.color[2]);
-    }
-
-    const name = resultMesh.name || nameByIndex[i] || '';
-    emitMesh(group, geometry, color, name, i, edgeStyle, onEdgesReady);
-  });
-
-  // Ordered parts registry the UI reads to render the "Parts" panel: one entry
-  // per built mesh (== one occt solid). `index` is stable for the model's life so
-  // a row always addresses the same mesh; `name` may be '' (the UI supplies a
-  // localized "Part N" fallback).
-  //
-  // Attached NON-ENUMERABLY on userData: it holds live THREE.Mesh references
-  // (mesh → parent → group → userData → parts → mesh is circular), and GLTFExporter
-  // serializes each object's userData via JSON.stringify over Object.keys(userData).
-  // A non-enumerable prop is invisible to Object.keys, so export never trips on the
-  // cycle — while `group.userData.parts` / `.tree` stay directly readable by the UI.
-  Object.defineProperty(group.userData, 'parts', {
-    value: group.children
-      .filter((c) => c.isMesh)
-      .map((mesh) => ({ index: mesh.userData.partIndex, name: mesh.userData.partName, mesh })),
-    enumerable: false, writable: true, configurable: true,
-  });
-
-  // Lightweight structural tree derived from occt's root (names + mesh indices),
-  // handed to the UI alongside the group so it can render hierarchy. Null when the
-  // engine supplied no hierarchy. Non-enumerable for the same export-safety reason.
-  Object.defineProperty(group.userData, 'tree', {
-    value: liteTree(root),
-    enumerable: false, writable: true, configurable: true,
-  });
-
-  return group;
-}
-
-// Build a per-result-mesh-index name array from the occt assembly hierarchy. Walks
-// every node; a node with `meshes` (indices into the flat result array) lends its
-// `name` to those meshes. First (shallowest) name wins so a leaf keeps its own
-// component label rather than an ancestor assembly's. Returns an all-'' array when
-// there's no hierarchy, so callers can treat it uniformly.
-function namesFromRoot(count, root) {
-  const names = new Array(count).fill('');
-  const walk = (node) => {
-    if (!node || typeof node !== 'object') return;
-    const list = Array.isArray(node.meshes) ? node.meshes : [];
-    for (const mi of list) {
-      if (typeof mi === 'number' && mi >= 0 && mi < count && !names[mi] && node.name) {
-        names[mi] = node.name;
-      }
-    }
-    const kids = Array.isArray(node.children) ? node.children : [];
-    for (const c of kids) walk(c);
-  };
-  walk(root);
-  return names;
-}
-
-// Reduce the occt assembly hierarchy to a minimal, structured-clone-safe tree
-// ({ name, meshes?, children? }) for the UI to render structure from, dropping any
-// engine-specific extras. Returns null for a missing/invalid node.
-function liteTree(node) {
-  if (!node || typeof node !== 'object') return null;
-  const out = { name: node.name || '' };
-  if (Array.isArray(node.meshes)) {
-    const idx = node.meshes.filter((m) => typeof m === 'number');
-    if (idx.length) out.meshes = idx;
-  }
-  const kids = Array.isArray(node.children) ? node.children.map(liteTree).filter(Boolean) : [];
-  if (kids.length) out.children = kids;
-  return out;
-}
+// The pure THREE.Group construction (buildGroupFromOcctResult + its per-part
+// fidelity, parts/tree registries, and deferred edge overlay) moved to
+// step-core.js (issue #108) so it imports only `three` and runs headless. This
+// module's loadCadFromArrayBuffer delegates to it after either engine parses.
 
 // --- Main-thread fallback engine -------------------------------------------
 // The pre-regression path: inject occt-import-js as a classic <script>, call the
@@ -776,14 +745,15 @@ function loadOcctFactoryMainThread() {
       reject(new Error('no DOM available for the main-thread occt fallback'));
       return;
     }
-    if (window.occtimportjs) {
-      resolve(window.occtimportjs);
+    const w = /** @type {any} */ (window);
+    if (w.occtimportjs) {
+      resolve(w.occtimportjs);
       return;
     }
     const script = document.createElement('script');
     script.src = OCCT_BASE + 'occt-import-js.js';
     script.onload = () => {
-      if (window.occtimportjs) resolve(window.occtimportjs);
+      if (w.occtimportjs) resolve(w.occtimportjs);
       else reject(new Error('occt-import-js loaded but did not expose a factory'));
     };
     script.onerror = () => reject(new Error('Failed to load occt-import-js from CDN'));
@@ -800,7 +770,7 @@ function initOcctMainThread() {
       .then((factory) => factory({ locateFile: (path) => OCCT_BASE + path }))
       .catch((err) => {
         mainThreadOcctPromise = null; // allow a retry on the next attempt
-        const e = err instanceof Error ? err : new Error(String(err));
+        const e = /** @type {TaggedError} */ (err instanceof Error ? err : new Error(String(err)));
         e.kind = 'init';
         throw e;
       });
@@ -816,163 +786,19 @@ async function parseOnMainThread(arrayBuffer, reader) {
   const occt = await initOcctMainThread();
   const result = occt[reader](new Uint8Array(arrayBuffer), null);
   if (!result || !result.success) {
-    const e = new Error(`occt ${reader} failed to parse the CAD data`);
+    const e = /** @type {TaggedError} */ (new Error(`occt ${reader} failed to parse the CAD data`));
     e.kind = 'parse';
     throw e;
   }
   return { meshes: result.meshes.map(repackResultMesh), root: result.root || null };
 }
 
-// Repack one occt result mesh into the { position, normal, index, color, name }
-// typed-array shape the worker transfers back (see step.worker.js), so buildGroup
-// is fed byte-for-byte the same structure from either engine.
-function repackResultMesh(rm) {
-  const position = Float32Array.from(rm.attributes.position.array);
-
-  let normal = null;
-  if (rm.attributes.normal && rm.attributes.normal.array) {
-    normal = Float32Array.from(rm.attributes.normal.array);
-  }
-
-  let index = null;
-  if (rm.index && rm.index.array) {
-    index = Uint32Array.from(rm.index.array);
-  }
-
-  let color = null;
-  if (rm.color && rm.color.length >= 3) {
-    color = Float32Array.from([rm.color[0], rm.color[1], rm.color[2]]);
-  }
-
-  return { position, normal, index, color, name: rm.name || '' };
-}
+// repackResultMesh now lives in ./step-core.js (issue #109) so the browser loader
+// and the headless parse test share ONE repack and can't drift; imported above.
 
 // Permanently route to the main-thread engine for the rest of the session and tear
 // down the (broken) worker so nothing keeps awaiting it.
 function disableWorker() {
   workerDisabled = true;
   teardownWorker();
-}
-
-// Build the shaded Mesh for one geometry+color, stash the base color + STEP name
-// + stable part index, schedule its deferred edge overlay, and add it to the
-// group. One call per occt result mesh, so material, userData, and edge behaviour
-// are identical for every part.
-function emitMesh(group, geometry, color, name, partIndex, edgeStyle, onEdgesReady) {
-  // Machined-metal PBR: near-full metalness with a tight satin roughness so the
-  // scene's RoomEnvironment IBL yields the crisp reflections of a milled aluminum
-  // part rather than flat toy blue. The blue accent identity is kept via `color`;
-  // envMapIntensity is lifted slightly so the reflections read strongly under the
-  // filmic tone map.
-  const material = new THREE.MeshStandardMaterial({
-    color,
-    metalness: 0.85,
-    roughness: 0.3,
-    envMapIntensity: 1.15,
-    side: THREE.DoubleSide,
-  });
-
-  const mesh = new THREE.Mesh(geometry, material);
-
-  // Stash the resolved occt base color on the mesh so the app's material
-  // presets (Studio/Technical/Clay/X-ray) can recolor and restore the part's
-  // real color without re-parsing the STEP. `color` above is the same value
-  // the default Studio material starts with; clone so a later preset mutating
-  // material.color can never mutate this reference.
-  mesh.userData.baseColor = color.clone();
-
-  // Carry the STEP sub-object name through to the Mesh so the click-to-select
-  // picker can label the face it hit. occt-import-js exposes a per-mesh `name`
-  // (the STEP product/solid label); it can be empty, so the picker falls back
-  // to a child index when this is blank.
-  if (name) mesh.name = name;
-
-  // Per-part identity for the "Parts" panel (issue #94): a stable index (the occt
-  // result-mesh position, so a panel row always addresses the same mesh across
-  // re-renders) and the resolved name (may be '' — the UI supplies a localized
-  // "Part N" fallback). The panel toggles this mesh's `visible`; its deferred
-  // edge-lines child is a descendant, so hiding the mesh hides the edges too.
-  mesh.userData.partIndex = partIndex;
-  mesh.userData.partName = name || '';
-
-  // Faint edge lines for mechanical crispness. EdgesGeometry with a 30° crease
-  // threshold keeps only real feature edges (not every triangle), so smooth
-  // fillets stay clean. Added as a child so it inherits the mesh transform and
-  // is disposed with the group; the wireframe toggle leaves it untouched
-  // (LineBasicMaterial ignores `wireframe`). Built from this mesh's (possibly
-  // merged) geometry, so the overlay also collapses to one LineSegments per colour.
-  //
-  // EdgesGeometry walks every triangle of the full mesh — on a dense CAD part
-  // that's the single most expensive app-side step, and doing it inline blocks
-  // the group (and thus first render) until every edge is computed. Defer it to
-  // an idle slot so the shaded mesh appears as soon as it's parsed; the edges
-  // pop in a beat later as non-essential polish. Guard on the parent still
-  // being attached so a model swapped out before the idle callback fires
-  // doesn't attach edges to (or leak geometry for) a discarded group.
-  scheduleEdges(mesh, geometry, edgeStyle, onEdgesReady);
-
-  group.add(mesh);
-}
-
-// True while `obj` is still connected to a live Scene. After a model swap the
-// caller does `scene.remove(group)` (severing group.parent) but leaves the mesh
-// attached to the group, so `mesh.parent` alone stays truthy on a discarded
-// group — walk the ancestor chain to a Scene instead for a reliable liveness
-// check.
-function isInScene(obj) {
-  for (let o = obj; o; o = o.parent) {
-    if (o.isScene) return true;
-  }
-  return false;
-}
-
-// Triangle-count ceiling for the decorative feature-edge overlay. EdgesGeometry
-// walks EVERY triangle of the mesh (O(tris) CPU) and allocates a whole second
-// geometry's worth of GPU memory for the line set — pure polish on top of the
-// shaded mesh, which is already the deliverable. On a multi-million-triangle part
-// that idle task janks and can roughly double memory for a barely-visible gain,
-// so above this threshold we skip the overlay for that mesh entirely: no
-// EdgesGeometry, no LineSegments, no extra material is ever allocated. Models
-// under the limit are byte-for-byte unchanged.
-const EDGE_TRI_LIMIT = 500_000;
-
-// Triangle count for a geometry, matching how the app counts tris elsewhere
-// (index.count/3 when indexed, else position.count/3 — see index.html
-// countTriangles). Returns 0 for a geometry with neither attribute so it can
-// never trip the skip guard on a degenerate/empty mesh.
-function triangleCount(geometry) {
-  if (geometry.index) return geometry.index.count / 3;
-  const pos = geometry.attributes && geometry.attributes.position;
-  return pos ? pos.count / 3 : 0;
-}
-
-// Build the decorative feature-edge overlay for a mesh during an idle slot,
-// after the shaded mesh is already on screen. Kept off the parse/first-render
-// path so first display isn't blocked on it (see call site).
-function scheduleEdges(mesh, geometry, edgeStyle, onEdgesReady) {
-  // Above EDGE_TRI_LIMIT the overlay costs more than it's worth (see the constant):
-  // bail before scheduling any idle work so nothing is allocated for this mesh. The
-  // shaded mesh still renders normally; it just goes without feature edges.
-  if (triangleCount(geometry) > EDGE_TRI_LIMIT) return;
-  runWhenIdle(() => {
-    // The group may have been swapped out before this idle slot ran; if it's no
-    // longer in the scene, skip so we don't build edges on a discarded model.
-    if (!isInScene(mesh)) return;
-    // Blueprint mode force-builds any missing edge overlay synchronously when it
-    // switches on (see index.html applyBlueprint). If that already ran for this
-    // mesh, skip here so a mesh never ends up with two overlapping LineSegments
-    // children (a GPU-geometry leak surviving until the next disposeGroup).
-    if (mesh.children.some((c) => c.isLineSegments)) return;
-    const edgeGeom = new THREE.EdgesGeometry(geometry, 30);
-    const edges = new THREE.LineSegments(
-      edgeGeom,
-      new THREE.LineBasicMaterial({ color: edgeStyle.color, transparent: true, opacity: edgeStyle.opacity })
-    );
-    edges.raycast = () => {}; // decorative overlay — never a pick/hit target
-    mesh.add(edges);
-    // Ask the app to redraw: under render-on-demand the loop may have parked
-    // after first render, so without this the deferred edges wouldn't show until
-    // the next camera move.
-    if (typeof onEdgesReady === 'function') onEdgesReady();
-  });
 }

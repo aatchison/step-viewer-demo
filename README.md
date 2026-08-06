@@ -58,6 +58,43 @@ python3 -m http.server 8000
 (occt-import-js loads its WASM over the network, so a plain `file://` open won't work —
 use a server.)
 
+## Development / CI
+
+The **site stays zero-build** — `index.html` loads three.js and occt-import-js from a
+CDN via an importmap, and nothing here is bundled or shipped. Everything under
+`package.json` / `node_modules` is **dev-only**: it exists so the sample-parse tests can
+run the exact same occt-import-js engine (pinned to the CDN version) in Node.
+
+```bash
+npm ci               # install the dev-only test + typecheck dependencies
+npm test             # run the node:test sample-parse regression suite (no browser)
+npm run typecheck    # tsc --noEmit: JSDoc + checkJs across the split modules (no output)
+```
+
+`npm run typecheck` is **dev-only static type-checking** (issue #111): the ES
+modules under `src/` are annotated with JSDoc `@param`/`@returns`/`@throws` and
+topped with `// @ts-check`, and `tsc --noEmit` (config in `tsconfig.json`) catches
+parameter/shape mismatches across the split files. It **emits no JavaScript** — the
+shipped `index.html` / `src/*.js` are byte-for-byte unchanged and the site stays
+zero-build. (three@0.160.0 doesn't bundle its own `.d.ts`, so three's types come
+from the pinned `@types/three@0.160.0` devDependency — the same version as the CDN
+runtime engine.)
+
+A GitHub Actions workflow runs `npm ci`, then `npm test` and `npm run typecheck`, on
+every push / PR to `main` (Node 20, `ubuntu-latest`, read-only `GITHUB_TOKEN` via
+`permissions: contents: read`).
+
+**Note:** this commit only *proposes* the workflow. The automation token that opened the
+PR lacks GitHub's `workflow` scope — and GitHub refuses any push that touches
+`.github/workflows/` without it — so the ready-to-run file ships at
+[`.github/workflows-proposed/ci.yml`](.github/workflows-proposed/ci.yml). A **maintainer
+with `workflow` scope enables it** by moving it into place:
+
+```bash
+git mv .github/workflows-proposed/ci.yml .github/workflows/ci.yml
+git commit -m "ci: enable workflow" && git push
+```
+
 ## Supported formats
 
 occt-import-js bundles readers for three CAD formats, and the viewer dispatches on the

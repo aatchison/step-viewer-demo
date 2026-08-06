@@ -17,9 +17,15 @@
 // The base URL (CDN + OCCT_VERSION) is passed in from the main thread on 'init' so
 // the version lives in exactly one place (src/step.js), never drifting from a copy
 // duplicated here.
+//
+// @ts-check
+// This file runs in a WebWorker global scope. `importScripts` and `self` come
+// from the WebWorker lib; the occt factory it loads is an untyped UMD global.
 
+/** @type {any} */
 let occt = null;
 
+/** @param {MessageEvent} ev */
 self.onmessage = async (ev) => {
   const msg = ev.data;
 
@@ -39,9 +45,11 @@ self.onmessage = async (ev) => {
       // defensively (self property → bare global binding → globalThis) so a quirk
       // in how any engine exposes the top-level var can't strand a working factory.
       const factory =
-        self.occtimportjs ||
+        /** @type {any} */ (self).occtimportjs ||
+        // @ts-ignore — `occtimportjs` is a UMD global created by importScripts, not
+        // a declared binding; kept as a bare-identifier fallback on purpose (see above).
         (typeof occtimportjs !== 'undefined' ? occtimportjs : undefined) ||
-        (typeof globalThis !== 'undefined' ? globalThis.occtimportjs : undefined);
+        (typeof globalThis !== 'undefined' ? /** @type {any} */ (globalThis).occtimportjs : undefined);
       if (typeof factory !== 'function') {
         throw new Error('occt-import-js loaded but did not expose a factory');
       }
@@ -129,8 +137,14 @@ self.onmessage = async (ev) => {
 // Reduce occt's assembly hierarchy node to a minimal { name, meshes?, children? }
 // tree of plain primitives/arrays so it survives structured clone and stays small.
 // Returns null for a missing/invalid node.
+/**
+ * @param {any} node - A raw occt assembly-hierarchy node.
+ * @returns {{ name: string, meshes?: number[], children?: any[] } | null} A
+ *   structured-clone-safe tree, or null for a missing/invalid node.
+ */
 function sanitizeRoot(node) {
   if (!node || typeof node !== 'object') return null;
+  /** @type {{ name: string, meshes?: number[], children?: any[] }} */
   const out = { name: typeof node.name === 'string' ? node.name : '' };
   if (Array.isArray(node.meshes)) {
     const idx = node.meshes.filter((m) => typeof m === 'number');
@@ -143,6 +157,10 @@ function sanitizeRoot(node) {
   return out;
 }
 
+/**
+ * @param {unknown} err - Any thrown value.
+ * @returns {string} The Error message, or the value coerced to a string.
+ */
 function errMessage(err) {
   if (err instanceof Error) return err.message;
   return String(err);

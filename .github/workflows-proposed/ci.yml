@@ -1,0 +1,56 @@
+# CI for the STEP Viewer Demo.
+#
+# The site itself is zero-build (plain ES modules + CDN, nothing bundled). This
+# workflow only exercises the DEV-ONLY test suite (node:test) so a broken sample
+# or a regression in src/step-core.js is caught on push / PR instead of landing
+# silently. It installs the devDependencies (occt-import-js + three, plus the
+# typecheck toolchain) and runs the same `npm test` a maintainer runs locally,
+# followed by `npm run typecheck` (JSDoc + checkJs, issue #111) so a cross-module
+# parameter/shape mismatch is caught too. Neither step emits any build output —
+# the site stays zero-build.
+#
+# NOTE: this file is committed as a PROPOSAL, and lives under
+# `.github/workflows-proposed/` rather than `.github/workflows/` on purpose: the
+# automation token that opened this PR lacks GitHub's `workflow` scope, and GitHub
+# rejects any push that adds/updates a file under `.github/workflows/` without it.
+# To ENABLE CI, a maintainer with `workflow` scope moves this file into place:
+#
+#     git mv .github/workflows-proposed/ci.yml .github/workflows/ci.yml
+#     git commit -m "ci: enable workflow" && git push
+#
+# The YAML below is the final, ready-to-run workflow — only its path needs changing.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Only the default read-only token is needed — the tests read files and run Node,
+# nothing writes to the repo, deploys, or touches secrets.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: sample-parse tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dev dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Typecheck (JSDoc + checkJs, no emit)
+        run: npm run typecheck
