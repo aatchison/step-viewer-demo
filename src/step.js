@@ -131,6 +131,12 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
 
     const mesh = new THREE.Mesh(geometry, material);
 
+    // Carry the STEP sub-object name through to the Mesh so the click-to-select
+    // picker can label the face it hit. occt-import-js exposes a per-mesh `name`
+    // (the STEP product/solid label); it can be empty, so the picker falls back
+    // to a child index when this is blank.
+    if (resultMesh.name) mesh.name = resultMesh.name;
+
     // Faint edge lines for mechanical crispness. EdgesGeometry with a 30° crease
     // threshold keeps only real feature edges (not every triangle), so smooth
     // fillets stay clean. Added as a child so it inherits the mesh transform and

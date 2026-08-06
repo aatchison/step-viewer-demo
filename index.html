@@ -156,11 +156,11 @@
     #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
-    #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+    #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
       color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .35rem .7rem; }
-    #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn { display: inline-flex; align-items: center; gap: .35rem; }
-    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover, #measure-btn:hover, #measure-clear:hover, #section-btn:hover { background: #232a35; border-color: #3a4150; }
+    #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { display: inline-flex; align-items: center; gap: .35rem; }
+    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover, #measure-btn:hover, #measure-clear:hover, #section-btn:hover, #select-fit-btn:hover { background: #232a35; border-color: #3a4150; }
     /* Measure toggle active state — reuses the same accent on-state language as the
        wireframe toggle / gallery pills (lifted text over a translucent blue fill
        with the accent border) so "measure mode is on" reads at a glance. Both the
@@ -181,6 +181,9 @@
     #measure-clear:disabled { opacity: .5; cursor: not-allowed; }
     #measure-clear:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
     #measure-clear[hidden] { display: none; }
+    /* Fit-to-selection button — hidden until a face is picked (like measure-clear),
+       so it only appears once there's a selection to frame. */
+    #select-fit-btn[hidden] { display: none; }
     /* Floating distance read-out for the measurement tool. Positioned each frame
        in the render loop from the segment midpoint projected to screen px, so it
        tracks the 3D points as the camera orbits. Centered on its anchor point
@@ -428,6 +431,12 @@
       color: #cfe0ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #model-info .mi-stats { font-size: .7rem; color: var(--hc-muted, #8b949e);
       font-variant-numeric: tabular-nums; }
+    /* Selected-face readout — appears in the model-info HUD only while a face is
+       picked. Tinted the same teal as the WebGL highlight emissive so the on-screen
+       glow and the label read as one selection. */
+    #model-info .mi-sel { max-width: 100%; font-size: .7rem; font-weight: 600;
+      color: #4fe0b0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #model-info .mi-sel[hidden] { display: none; }
     /* Screen-reader-only utility: visually removed but present in the a11y tree.
        Used for the natural-language model summary announced via #model-info's
        polite live region (the visible name/stats are aria-hidden so the summary
@@ -480,7 +489,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -503,12 +512,14 @@
       #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
       #contrast-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
       #share-btn .btn-label, #embed-btn .btn-label,
-      #measure-btn .btn-label, #measure-clear .btn-label, #section-btn .btn-label { display: none; }
+      #measure-btn .btn-label, #measure-clear .btn-label, #section-btn .btn-label,
+      #select-fit-btn .btn-label { display: none; }
       #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
       #contrast-btn .btn-icon, #save-btn .btn-icon, #export-btn .btn-icon,
       #share-btn .btn-icon, #embed-btn .btn-icon,
-      #measure-btn .btn-icon, #measure-clear .btn-icon, #section-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn { min-width: 44px; padding: .4rem;
+      #measure-btn .btn-icon, #measure-clear .btn-icon, #section-btn .btn-icon,
+      #select-fit-btn .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
       /* Preset cluster collapses to axis-sign glyphs on the same narrow
@@ -557,6 +568,12 @@
          the axis / slider / flip panel (#section-panel). Collapses to the ⧈ glyph
          under the same 600px / coarse-pointer rules as the other header buttons. -->
     <button id="section-btn" type="button" title="Toggle section / cross-section clip plane" aria-label="Section / cross-section clip plane" aria-pressed="false" data-i18n-attr="title:sectionTitle;aria-label:sectionAria"><span class="btn-icon" aria-hidden="true">⧈</span><span class="btn-label" data-i18n="sectionLabel">Section</span></button>
+    <!-- Fit-to-selection. Click a face on the model to select it (see the picker in
+         the module script), then this reframes the camera on that face's own bounds
+         — distinct from the global Fit, which reframes the whole model. Hidden until
+         a face is selected; also reachable via the Z key. Collapses to the ⊹ glyph
+         under the same 600px / coarse-pointer rules as the other header buttons. -->
+    <button id="select-fit-btn" type="button" hidden title="Fit camera to the selected face (Z)" aria-label="Fit to selection" data-i18n-attr="title:selectFitTitle;aria-label:selectFitAria"><span class="btn-icon" aria-hidden="true">⊹</span><span class="btn-label" data-i18n="selectFitLabel">Fit selection</span></button>
     <!-- High-contrast toggle. aria-pressed reflects the live state (corrected by
          the module script on load from the persisted / OS preference); the ◑ glyph
          shows on narrow screens where the label collapses (see max-width:600px). -->
@@ -643,6 +660,8 @@
            measurement. -->
       <li><span class="k">M</span><span class="d" data-i18n="descMeasure">Toggle distance measure</span></li>
       <li><span class="k" data-i18n="kEsc">Esc</span><span class="d" data-i18n="descMeasureClear">Clear measurement</span></li>
+      <li><span class="k" data-i18n="kClick">Click</span><span class="d" data-i18n="descSelect">Select a face (Esc / empty click clears)</span></li>
+      <li><span class="k">Z</span><span class="d" data-i18n="descSelectFit">Fit to selected face</span></li>
       <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
       <li><span class="k">1</span><span class="k">4</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
       <!-- Standard-view presets — numpad keys (NumLock-independent via e.code)
@@ -672,6 +691,10 @@
          sentence) rather than twice (name + terse stats). -->
     <span class="mi-name" aria-hidden="true"></span>
     <span class="mi-stats" aria-hidden="true"></span>
+    <!-- Picked-face name (click-to-select). aria-hidden; the selection is announced
+         through the #hint live region so it isn't read out twice. Shown only while a
+         face is selected. -->
+    <span class="mi-sel" aria-hidden="true" hidden></span>
     <span class="mi-a11y sr-only"></span>
   </div>
   <!-- Floating distance read-out for the point-to-point measurement tool. Shown
@@ -1510,6 +1533,135 @@
 
     updateMeasureClearState(); // reflect the initial (nothing measured) state
 
+    // --- Click-to-select a face + fit-to-selection ----------------------------
+    // CAD inspection: a plain canvas click (when Measure isn't the active click
+    // owner) raycasts currentModel's meshes and highlights the hit mesh by
+    // emissive-tinting its OWN material — no overlay mesh/geometry is created, so
+    // the "highlight resources" are just the saved material props we restore on
+    // clear (nothing to dispose or leak). Emissive tint is orthogonal to
+    // material.wireframe and material.opacity, so the highlight rides along with
+    // the wireframe toggle and never disturbs the swap-in fade. The picked
+    // sub-object name (mesh.name from the STEP child — set in src/step.js — or a
+    // 'Face N' index fallback) shows in the model-info HUD. Decorative feature
+    // edges already have raycast disabled (src/step.js) so they're never pickable.
+    const selectFitBtn = document.getElementById('select-fit-btn');
+    const miSel = document.querySelector('#model-info .mi-sel');
+    const selectRay = new THREE.Raycaster();
+    const _selNdc = new THREE.Vector2();
+    const SELECT_EMISSIVE = 0x0f7a58;       // teal glow — distinct from measure amber
+    const SELECT_EMISSIVE_INTENSITY = 0.9;
+    // The current selection, or null: the picked mesh plus the material's
+    // pre-highlight emissive so clearSelection restores it exactly.
+    let selected = null;
+    // pointerdown bookkeeping so pointerup tells a pick-click from an orbit drag
+    // (mirrors the measurement tool).
+    let selectDownX = 0, selectDownY = 0, selectDownId = -1;
+    const SELECT_CLICK_TOL = 6; // px of travel still counted as a click
+
+    // Resolve a human label for the picked mesh: the STEP sub-object name if the
+    // loader carried one, else a 1-based index among the model's mesh children
+    // (edges are children of each mesh, not of the group, so group.children are
+    // all meshes).
+    function selectionName(mesh) {
+      if (mesh.name) return mesh.name;
+      const i = currentModel ? currentModel.children.indexOf(mesh) : -1;
+      return t('selectFallback', { index: i >= 0 ? i + 1 : 1 });
+    }
+
+    // Restore the previously highlighted material and drop the selection + its HUD
+    // readout / Fit button. Safe to call with nothing selected. Restoring a
+    // material prop (not disposing an overlay) IS the whole cleanup — no leak.
+    function clearSelection(announce) {
+      if (selected) {
+        const m = selected.mesh.material;
+        if (m && !Array.isArray(m) && m.emissive) {
+          m.emissive.setHex(selected.emissive);
+          m.emissiveIntensity = selected.emissiveIntensity;
+          m.needsUpdate = true;
+        }
+        selected = null;
+      }
+      if (miSel) { miSel.hidden = true; miSel.textContent = ''; }
+      if (selectFitBtn) selectFitBtn.hidden = true;
+      if (announce) hint.textContent = t('selectCleared');
+    }
+
+    // Highlight `mesh` and surface its name. Clears any prior selection first so
+    // only one face is ever lit. Our loaded meshes always carry a single
+    // MeshStandardMaterial (see src/step.js); guard anyway.
+    function selectMesh(mesh) {
+      const m = mesh.material;
+      if (!m || Array.isArray(m) || !m.emissive) return;
+      clearSelection(false);
+      selected = { mesh, emissive: m.emissive.getHex(), emissiveIntensity: m.emissiveIntensity };
+      m.emissive.setHex(SELECT_EMISSIVE);
+      m.emissiveIntensity = SELECT_EMISSIVE_INTENSITY;
+      m.needsUpdate = true;
+      const name = selectionName(mesh);
+      if (miSel) { miSel.textContent = t('selectReadout', { name }); miSel.hidden = false; }
+      if (selectFitBtn) selectFitBtn.hidden = false;
+      hint.textContent = t('selectHint', { name });
+    }
+
+    // Raycast currentModel at NDC coords: a hit selects that mesh; a miss clears
+    // any current selection (click empty space to deselect).
+    function pickAt(ndcX, ndcY) {
+      if (!currentModel) return;
+      _selNdc.set(ndcX, ndcY);
+      selectRay.setFromCamera(_selNdc, camera);
+      const hits = selectRay.intersectObject(currentModel, true);
+      const hit = hits.find((h) => h.object && h.object.isMesh);
+      if (hit) selectMesh(hit.object);
+      else if (selected) clearSelection(true);
+    }
+
+    // Reframe the camera on the selected mesh's own bounds — the same aspect-aware
+    // distance math and default view direction as frameObject, but with the orbit
+    // target set to the selection CENTER (not the origin) so a small feature fills
+    // the frame. Distinct from the global Fit, which reframes the whole model.
+    function fitToSelection() {
+      if (!selected) return;
+      const box = new THREE.Box3().setFromObject(selected.mesh);
+      if (box.isEmpty()) return;
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const radius = 0.5 * Math.max(size.x, size.y, size.z) || 1;
+      const dist = fitDistanceForRadius(radius);
+      camera.position.set(center.x + dist * 0.6, center.y + dist * 0.5, center.z + dist * 0.8);
+      camera.near = Math.max(dist / 1000, 0.01);
+      camera.far = dist * 1000;
+      camera.updateProjectionMatrix();
+      controls.target.copy(center);          // frame the feature, not the origin
+      controls.minDistance = radius * 0.4;
+      controls.maxDistance = dist * 6;
+      controls.update();
+    }
+
+    if (selectFitBtn) selectFitBtn.addEventListener('click', fitToSelection);
+
+    // Tell a pick-click from an orbit drag by pointer travel (mirrors the measure
+    // tool). Selection is inert while Measure owns the click.
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      if (measureMode || e.button !== 0) return;
+      selectDownX = e.clientX; selectDownY = e.clientY; selectDownId = e.pointerId;
+    });
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      if (measureMode || e.button !== 0 || e.pointerId !== selectDownId) return;
+      selectDownId = -1;
+      // A press that traveled is an orbit drag, not a click — ignore it.
+      if (Math.hypot(e.clientX - selectDownX, e.clientY - selectDownY) > SELECT_CLICK_TOL) return;
+      // Don't pick through the top-right gizmo box — its own handler owns it.
+      const el = renderer.domElement;
+      const inGizmoX = e.clientX >= el.clientWidth - GIZMO_DIM;
+      const inGizmoY = e.clientY >= GIZMO_TOP && e.clientY <= GIZMO_TOP + GIZMO_DIM;
+      if (inGizmoX && inGizmoY) return;
+      const rect = el.getBoundingClientRect();
+      pickAt(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+    });
+
     // --- Section / cross-section clip plane ------------------------------------
     // A core CAD-inspection capability: cut through the model to inspect internal
     // geometry (wall thickness, bores, pockets). three.js does this natively with
@@ -1653,6 +1805,10 @@
         placeholder.geometry.dispose();
         placeholder.material.dispose();
       }
+      // Drop any face selection from the outgoing model while its material is
+      // still valid (restores the emissive, hides the readout / Fit button) so a
+      // stale highlight/selection can't carry onto the incoming model.
+      clearSelection(false);
       if (currentModel) {
         scene.remove(currentModel);
         disposeGroup(currentModel);
@@ -2388,6 +2544,12 @@
       // there's something to clear, so it never swallows Escape otherwise; the help
       // dialog's own Escape-to-close already returned above when it was open.
       if (e.key === 'Escape' && measurePoints.length) { clearMeasurement(); return; }
+      // Esc also clears a face selection (after any measurement above). Only acts
+      // when something is selected, so it never swallows Escape otherwise.
+      if (e.key === 'Escape' && selected) { clearSelection(true); return; }
+      // Z fits the view to the selected face (mirrors the ⊹ button); distinct from
+      // the global Fit on F/R below.
+      if (e.key === 'z' || e.key === 'Z') fitToSelection();
       // R and F both re-fit/reset the view (same as the Fit button).
       if (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R') fitView();
       // Numpad keys snap to a standard camera view (Front/Back/Top/Bottom/Right/
