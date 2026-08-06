@@ -246,6 +246,44 @@
       #section-panel .sp-axis, #section-panel .sp-flip { min-height: 40px; min-width: 40px; }
       #section-panel .sp-slider { height: 40px; }
     }
+    /* Exploded-view controls — a compact floating panel mirroring #section-panel
+       but anchored bottom-RIGHT (section sits bottom-left) so the two never collide.
+       Shown once a model is loaded; a single-solid model disables the slider and
+       reveals the honest-degrade hint. Hidden in embed mode like the rest of the
+       chrome. */
+    :root.embed #explode-panel { display: none !important; }
+    /* Width is capped at 38vw (not the 52vw the section panel uses) so that when
+       BOTH panels are open at once — Section (bottom-left) + Explode (bottom-right)
+       — they never collide on the narrowest phones: at 360px the section panel can
+       reach ~187px from the left, leaving ~141px on the right, and 38vw = ~137px
+       clears it; wider viewports have ample room and the 200px cap keeps it tidy. */
+    #explode-panel { position: fixed; right: 1rem; bottom: 1rem; z-index: 11;
+      display: flex; flex-direction: column; gap: .4rem; width: min(38vw, 200px);
+      color: #e6edf3; background: var(--hc-panel-bg, #1b2029cc);
+      border: 1px solid var(--hc-border, #2a2f3a); border-radius: 10px;
+      padding: .55rem .6rem; backdrop-filter: blur(4px);
+      box-shadow: 0 6px 20px #0006; }
+    /* display:flex above overrides the hidden attribute — restore none so the panel
+       stays invisible until the first model loads. */
+    #explode-panel[hidden] { display: none; }
+    #explode-panel .ep-title { font-size: .74rem; font-weight: 600; color: #cfe0ff;
+      letter-spacing: .2px; }
+    /* The explode-amount slider (0 = collapsed, 1 = fully spread). accent-color
+       themes the native track/thumb to the app blue; a static control, so it is
+       inherently reduced-motion safe. */
+    #explode-panel .ep-slider { width: 100%; margin: 0; accent-color: #4f9dff;
+      cursor: pointer; pointer-events: auto; }
+    #explode-panel .ep-slider:disabled { cursor: not-allowed; opacity: .5; }
+    /* Honest-degrade note shown only for single-solid models (see refreshExplode). */
+    #explode-panel .ep-hint { font-size: .7rem; color: var(--hc-muted, #8b949e);
+      line-height: 1.3; }
+    #explode-panel .ep-hint[hidden] { display: none; }
+    #explode-panel.is-disabled .ep-title { color: var(--hc-muted, #8b949e); }
+    #explode-slider:focus-visible { outline: 2px solid #4f9dff; outline-offset: 2px; }
+    /* Touch: give the slider thumb a comfortable target. */
+    @media (pointer: coarse) {
+      #explode-panel .ep-slider { height: 40px; }
+    }
     /* Non-shareable state: a user-opened file has no restorable link, so the
        button is disabled (updateShareState) — dim it and drop the pointer. The
        Export GLB button is disabled the same way until a real model is loaded
@@ -662,6 +700,9 @@
       <li><span class="k" data-i18n="kEsc">Esc</span><span class="d" data-i18n="descMeasureClear">Clear measurement</span></li>
       <li><span class="k" data-i18n="kClick">Click</span><span class="d" data-i18n="descSelect">Select a face (Esc / empty click clears)</span></li>
       <li><span class="k">Z</span><span class="d" data-i18n="descSelectFit">Fit to selected face</span></li>
+      <!-- Exploded view — a slider control (no shortcut); listed so it's discoverable
+           alongside the other inspection tools. -->
+      <li><span class="k" data-i18n="kDrag">Drag</span><span class="d" data-i18n="descExplode">Explode multi-part assemblies</span></li>
       <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
       <li><span class="k">1</span><span class="k">4</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
       <!-- Standard-view presets — numpad keys (NumLock-independent via e.code)
@@ -717,6 +758,17 @@
       <button type="button" id="section-flip" class="sp-flip" aria-pressed="false" title="Flip cut direction" aria-label="Flip the cut direction" data-i18n-attr="title:sectionFlipTitle;aria-label:sectionFlipAria"><span aria-hidden="true">⇄</span></button>
     </div>
     <input id="section-slider" class="sp-slider" type="range" min="0" max="1" step="0.005" value="0.5" aria-label="Section plane position" data-i18n-attr="aria-label:sectionSliderAria" />
+  </div>
+  <!-- Exploded-view controls. Shown once a model is loaded. The range slider (0→1)
+       spreads each top-level solid radially outward from the assembly center and
+       collapses them back at 0 (driven by applyExplode in the module script; source
+       geometry is never mutated, so it is fully reversible). Single-solid models
+       disable the slider and reveal the .ep-hint so it degrades honestly instead of
+       doing nothing. Hidden in embed mode via CSS. -->
+  <div id="explode-panel" hidden role="group" aria-labelledby="explode-panel-label">
+    <span id="explode-panel-label" class="ep-title" data-i18n="explodePanelTitle">Explode</span>
+    <input id="explode-slider" class="ep-slider" type="range" min="0" max="1" step="0.01" value="0" aria-label="Explode assembly view" data-i18n-attr="aria-label:explodeSliderAria" />
+    <span id="explode-hint" class="ep-hint" hidden data-i18n="explodeSingle">Single-solid model — explode applies to multi-part assemblies.</span>
   </div>
   <!-- The visual spinner is decorative (aria-hidden); the staged status line
        below it is the accessible status channel (role=status / aria-live=polite)
@@ -1292,7 +1344,13 @@
 
     // Re-frame whatever object is currently on screen (loaded STEP model, or the
     // placeholder before/if no model loads). Recoverable from any lost/zoom state.
-    function fitView() { frameObject(currentModel || placeholder); }
+    function fitView() {
+      // Documented interop: a global Fit collapses any exploded view first, so the
+      // framing and the ground grid/shadow footprint (groundTo, inside frameObject)
+      // are computed on the collapsed model rather than the spread-apart bounds.
+      resetExplode();
+      frameObject(currentModel || placeholder);
+    }
 
     // --- Named standard-view presets ------------------------------------------
     // One-click canonical viewpoints for CAD inspection. Each preset points the
@@ -1793,6 +1851,99 @@
     // the render loop shows the new cut on the next frame without reassignment.
     sectionSlider.addEventListener('input', updateSectionPlane);
 
+    // --- Exploded view --------------------------------------------------------
+    // A standard assembly-inspection tool. STEP files often hold multiple solids,
+    // which occt already returns as separate meshes in the group (see step.js) but
+    // renders coincident. The Explode slider (0→1) translates each top-level child
+    // mesh outward along the unit vector from the group's overall bbox center to
+    // that child's own bbox center, by slider × model-size × EXPLODE_SPREAD, so
+    // parts spread apart and collapse cleanly back at 0.
+    //
+    // We cache each child's ORIGINAL local position and its (unit) explode direction
+    // ONCE per loaded model (recomputed in the swap path), then drive positions from
+    // the slider by writing child.position only — source geometry is never touched,
+    // so it's fully reversible and costs one vector add per child per frame of drag.
+    //
+    // Fit interop (documented choice): a global Fit (fitView — button / F / R / Home
+    // / double-click) RESETS explode to 0 before framing. That keeps frameObject's
+    // bbox — and therefore groundTo's grid/shadow footprint — on the collapsed
+    // model, so the ground always sits under the collapsed footprint and the fit
+    // frames the real (un-spread) part. The slider snaps back to 0 to match.
+    const explodePanel = document.getElementById('explode-panel');
+    const explodeSlider = document.getElementById('explode-slider');
+    const explodeHint = document.getElementById('explode-hint');
+    const EXPLODE_SPREAD = 0.6; // fraction of the model's max dimension a part travels at slider=1
+    let explodeEntries = [];    // [{ mesh, base: Vector3, dir: Vector3 }] for the live model
+    let explodeScale = 1;       // model max-dimension — scales the spread distance
+    let explodeMulti = false;   // true only when the model has >1 solid (enables the control)
+
+    // Cache the per-child original position + outward explode direction and the
+    // model size, from the current model's world-space bounds converted into the
+    // group's local frame (child.position space). Runs after frameObject has
+    // recentered the group at scale 1 and before the swap-in scale animation, so
+    // the captured base positions and directions are stable. Rebuilt on every load/
+    // swap so a new model never inherits the previous cache.
+    function computeExplode() {
+      explodeEntries = [];
+      explodeScale = 1;
+      explodeMulti = false;
+      if (!currentModel) return;
+      currentModel.updateWorldMatrix(true, true);
+      const groupBox = new THREE.Box3().setFromObject(currentModel);
+      if (groupBox.isEmpty()) return;
+      const size = groupBox.getSize(new THREE.Vector3());
+      explodeScale = Math.max(size.x, size.y, size.z) || 1;
+      // Overall center, expressed in the group's local coordinate space so the
+      // resulting direction can be added straight onto child.position.
+      const overall = currentModel.worldToLocal(groupBox.getCenter(new THREE.Vector3()));
+      const meshes = currentModel.children.filter((c) => c.isMesh);
+      explodeMulti = meshes.length > 1;
+      for (const mesh of meshes) {
+        const cbox = new THREE.Box3().setFromObject(mesh);
+        if (cbox.isEmpty()) continue;
+        const center = currentModel.worldToLocal(cbox.getCenter(new THREE.Vector3()));
+        const dir = center.sub(overall); // group-local translation cancels → world-space direction
+        if (dir.lengthSq() > 1e-10) dir.normalize();
+        else dir.set(0, 0, 0); // a solid centered on the overall center simply doesn't move
+        explodeEntries.push({ mesh, base: mesh.position.clone(), dir });
+      }
+    }
+
+    // Drive child positions from a slider value t in [0,1]. Writes only
+    // child.position (no geometry mutation), so t=0 restores every base exactly.
+    function applyExplode(t) {
+      const amt = t * explodeScale * EXPLODE_SPREAD;
+      for (const e of explodeEntries) {
+        e.mesh.position.copy(e.base).addScaledVector(e.dir, amt);
+      }
+    }
+
+    // Reset the slider to 0, collapse the parts, and set the control's enabled/hint
+    // state for the freshly loaded model. Called from the swap path after
+    // computeExplode so a new model always starts collapsed and never inherits the
+    // previous explode state or enabled/disabled state.
+    function refreshExplodeControl() {
+      explodeSlider.value = '0';
+      applyExplode(0);
+      explodeSlider.disabled = !explodeMulti;
+      explodeHint.hidden = explodeMulti;
+      explodePanel.classList.toggle('is-disabled', !explodeMulti);
+      if (explodeMulti) explodePanel.removeAttribute('title');
+      else explodePanel.title = t('explodeSingle'); // tooltip on the panel for the disabled control
+    }
+
+    // Collapse the model and snap the slider back to 0. Used by the global Fit so
+    // framing + ground footprint are computed on the collapsed model.
+    function resetExplode() {
+      if (!explodeEntries.length) return;
+      explodeSlider.value = '0';
+      applyExplode(0);
+    }
+
+    explodeSlider.addEventListener('input', () => {
+      applyExplode(parseFloat(explodeSlider.value) || 0);
+    });
+
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
     async function showStepFromArrayBuffer(buf, label, onPhase, camState) {
@@ -1828,6 +1979,13 @@
       // re-center the cut. When section is off, applyClipping assigns [] (no-op cut).
       if (sectionMode) updateSectionRange(true);
       applyClipping(model);
+      // Cache each solid's base position + outward explode direction from the
+      // freshly framed (recentered, scale-1) model, then reset the control to 0 so
+      // the new model starts collapsed and never inherits the previous explode
+      // state. Multi-solid enables the slider; single-solid disables it with a hint.
+      computeExplode();
+      refreshExplodeControl();
+      explodePanel.hidden = false; // reveal the control now a model is on screen
       // Deep-link restore: if a saved camera state came with the load (from the
       // URL hash), override frameObject's default placement with it, then let
       // controls.update() settle (and clamp to the just-set min/maxDistance). A
