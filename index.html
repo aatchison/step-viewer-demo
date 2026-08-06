@@ -33,6 +33,16 @@
         document.documentElement.setAttribute('data-contrast', c);
       }
     } catch (e) {}
+    // Apply the persisted light/dark theme BEFORE first paint (same anti-FOUC
+    // rationale as the contrast block above). A stored 'light'/'dark' is
+    // authoritative; with nothing stored we leave the attribute off so the CSS
+    // @media (prefers-color-scheme: light) fallback follows the OS setting.
+    try {
+      var th = localStorage.getItem('stepviewer.theme');
+      if (th === 'light' || th === 'dark') {
+        document.documentElement.setAttribute('data-theme', th);
+      }
+    } catch (e) {}
     // Embed mode: when the viewer is loaded with the `embed` flag — a hash key
     // (#…&embed=1, layered on the deep-link state) or a ?embed query param —
     // tag <html> with .embed BEFORE first paint so the chrome-hiding CSS below
@@ -47,7 +57,126 @@
     } catch (e) {}
   </script>
   <style>
-    :root { color-scheme: dark; }
+    /* --- Design tokens ---------------------------------------------------------
+       The whole palette lives here as CSS custom properties so a theme is one
+       declaration block, not ~40 scattered hex literals. The :root defaults are
+       the original DARK values byte-for-byte, so with no theme chosen the page
+       renders exactly as before. A :root[data-theme="light"] block (plus an OS
+       @media fallback) overrides them for a legible light appearance. The 3D
+       scene (grid / edges / tone-mapping / contact shadow) can't read CSS vars,
+       so it is themed from a parallel JS object at toggle time (see sceneTheme).
+       Naming: -tr = translucent (backdrop-blur panels/HUD), -hover = hover shade,
+       on-* = the accent "on/active" pill language, scrim* = header/overlay fade. */
+    :root {
+      color-scheme: dark;
+      --fg: #e6edf3;              /* primary text */
+      --muted: #8b949e;          /* hints / subtitles / stats */
+      --panel: #1b2029;          /* solid control fill (buttons) */
+      --panel-tr: #1b2029cc;     /* translucent pill / HUD / dialog-adjacent fill */
+      --panel-hover: #232a35;    /* control hover fill */
+      --border: #2a2f3a;         /* control / pill / dialog borders */
+      --border-hover: #3a4150;   /* control hover border */
+      --accent: #4f9dff;         /* brand blue — buttons, focus rings, active */
+      --accent-hover: #6fb0ff;   /* accent hover */
+      --accent-ink: #0b1220;     /* text/glyph sitting on an accent fill */
+      --ctrl-fg: #cfe0ff;        /* neutral control text (lifts off dark panels) */
+      --ctrl-fg-2: #c2ccd6;      /* secondary control text (help descriptions) */
+      --on-fg: #eaf2ff;          /* text on an active/pressed pill */
+      --on-fill: #1f3350cc;      /* active/pressed pill fill */
+      --on-fill-strong: #1f3350ee; /* opaque-ish variant (measure label) */
+      --on-fill-hover: #244071cc; /* active pill hover fill */
+      --dialog-bg: #12161df2;    /* modal dialog / floating-panel fill */
+      --field-bg: #0a0d12;       /* text input (share-fallback) fill */
+      --scrim: #0e1116;          /* header gradient / capture / overlay base tone */
+      --scrim-90: #0e1116cc;     /* header top / drop overlay (translucent) */
+      --scrim-0: #0e111600;      /* header gradient tail (fully transparent) */
+      --bg-0: #1a212b;           /* radial backdrop: center (lifted) */
+      --bg-1: #12161d;           /* radial backdrop: near-mid */
+      --bg-2: #0d1015;           /* radial backdrop: outer-mid */
+      --bg-3: #090b0d;           /* radial backdrop: edge (darkest) */
+      --toast-fg: #ffddd8;       /* error toast text */
+      --toast-bg: #3a1f1fee;     /* error toast fill */
+      --toast-border: #7a3b3b;   /* error toast border */
+      --toast-ok-fg: #d6ffe4;    /* success toast text */
+      --toast-ok-bg: #12321fee;  /* success toast fill */
+      --toast-ok-border: #2f6b45;/* success toast border */
+    }
+    /* Light theme — legible on bright monitors / in light embedding contexts. A
+       near-white radial backdrop, dark text, light panels, and a slightly darker
+       accent so the blue keeps contrast on white. Applied when the user picks it
+       (data-theme="light") OR the OS prefers light and no explicit choice was
+       stored — mirroring the high-contrast theme's attribute + @media pattern so
+       an explicit toggle always wins over the OS setting. */
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --fg: #1b222c;
+      --muted: #566072;
+      --panel: #ffffff;
+      --panel-tr: #ffffffcc;
+      --panel-hover: #eef1f6;
+      --border: #c7ced9;
+      --border-hover: #aab3c2;
+      --accent: #2f7ae5;
+      --accent-hover: #1f66cf;
+      --accent-ink: #ffffff;
+      --ctrl-fg: #1d3a5f;
+      --ctrl-fg-2: #33465a;
+      --on-fg: #12365f;
+      --on-fill: #dbe8fbcc;
+      --on-fill-strong: #dbe8fbee;
+      --on-fill-hover: #c6dbf8cc;
+      --dialog-bg: #ffffffec;
+      --field-bg: #f0f2f6;
+      --scrim: #eef1f6;
+      --scrim-90: #eef1f6e0;
+      --scrim-0: #eef1f600;
+      --bg-0: #ffffff;
+      --bg-1: #f4f6fa;
+      --bg-2: #e9edf3;
+      --bg-3: #dbe1ea;
+      --toast-fg: #7a1f1f;
+      --toast-bg: #fdecece6;
+      --toast-border: #f0b4b4;
+      --toast-ok-fg: #14532b;
+      --toast-ok-bg: #e6f7ece6;
+      --toast-ok-border: #a9d8ba;
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        color-scheme: light;
+        --fg: #1b222c;
+        --muted: #566072;
+        --panel: #ffffff;
+        --panel-tr: #ffffffcc;
+        --panel-hover: #eef1f6;
+        --border: #c7ced9;
+        --border-hover: #aab3c2;
+        --accent: #2f7ae5;
+        --accent-hover: #1f66cf;
+        --accent-ink: #ffffff;
+        --ctrl-fg: #1d3a5f;
+        --ctrl-fg-2: #33465a;
+        --on-fg: #12365f;
+        --on-fill: #dbe8fbcc;
+        --on-fill-strong: #dbe8fbee;
+        --on-fill-hover: #c6dbf8cc;
+        --dialog-bg: #ffffffec;
+        --field-bg: #f0f2f6;
+        --scrim: #eef1f6;
+        --scrim-90: #eef1f6e0;
+        --scrim-0: #eef1f600;
+        --bg-0: #ffffff;
+        --bg-1: #f4f6fa;
+        --bg-2: #e9edf3;
+        --bg-3: #dbe1ea;
+        --toast-fg: #7a1f1f;
+        --toast-bg: #fdecece6;
+        --toast-border: #f0b4b4;
+        --toast-ok-fg: #14532b;
+        --toast-ok-bg: #e6f7ece6;
+        --toast-ok-border: #a9d8ba;
+      }
+    }
     /* --- High-contrast theme ---------------------------------------------------
        Opt-in accessible-contrast palette. Activated when the user turns on the
        header toggle (:root[data-contrast="high"]) OR their OS requests more
@@ -58,10 +187,10 @@
        renders exactly as before (default is byte-for-byte unchanged). */
     :root[data-contrast="high"] {
       --hc-fg: #f4f8fc;      /* primary themed text */
-      --hc-muted: #d7dfe8;   /* hint / subtitle / stats — was #8b949e */
-      --hc-border: #9aa6b4;  /* control / pill / dialog borders — was #2a2f3a */
-      --hc-panel-bg: #0a0d12; /* opaque pill / HUD fill — was translucent #1b2029cc */
-      --hc-dialog-bg: #05070b; /* dialog fill — was #12161df2 */
+      --hc-muted: #d7dfe8;   /* hint / subtitle / stats — was var(--muted) */
+      --hc-border: #9aa6b4;  /* control / pill / dialog borders — was var(--border) */
+      --hc-panel-bg: #0a0d12; /* opaque pill / HUD fill — was translucent var(--panel-tr) */
+      --hc-dialog-bg: #05070b; /* dialog fill — was var(--dialog-bg) */
     }
     @media (prefers-contrast: more) {
       :root:not([data-contrast="normal"]) {
@@ -77,13 +206,13 @@
        edges) sits behind the now-transparent WebGL canvas to give the scene
        depth and make the model pop. A faint SVG fractal-noise tile is layered on
        top of the gradient to dither it — cheap insurance against 8-bit banding
-       across the large dark gradient. #0e1116 stays the effective mid-tone so the
+       across the large dark gradient. var(--scrim) stays the effective mid-tone so the
        dark theme, grid, and header/toast tokens all still read as before.
        `fixed` anchors the vignette to the viewport (not the document). */
-    html, body { margin: 0; height: 100%; color: #e6edf3;
+    html, body { margin: 0; height: 100%; color: var(--fg);
       background:
         url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.022'/%3E%3C/svg%3E") repeat fixed,
-        radial-gradient(ellipse 125% 105% at 50% 40%, #1a212b 0%, #12161d 40%, #0d1015 72%, #090b0d 100%) fixed;
+        radial-gradient(ellipse 125% 105% at 50% 40%, var(--bg-0) 0%, var(--bg-1) 40%, var(--bg-2) 72%, var(--bg-3) 100%) fixed;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     #app { position: fixed; inset: 0; }
     /* The 3D view is keyboard-focusable (tabindex=0) so it can be driven by the
@@ -92,7 +221,7 @@
        whole viewport — a positive offset would draw the ring off-screen. A plain
        mouse click leaves it ring-free via :focus-visible. */
     #app:focus { outline: none; }
-    #app:focus-visible { outline: 2px solid #4f9dff; outline-offset: -2px; }
+    #app:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
     /* --- Embed mode ------------------------------------------------------------
        When the viewer is opened with the `embed` flag (hash key or query param,
        detected pre-paint by the head script which adds .embed to <html>), strip
@@ -108,7 +237,7 @@
     :root.embed #model-info { display: none !important; }
     header { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
       display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .6rem 1rem;
-      background: linear-gradient(#0e1116cc, #0e111600); pointer-events: none; }
+      background: linear-gradient(var(--scrim-90), var(--scrim-0)); pointer-events: none; }
     /* Let flex children shrink instead of forcing the bar wider than a phone. */
     header > * { min-width: 0; }
     /* Product wordmark — the top of the visual hierarchy, outranking the controls. */
@@ -117,15 +246,15 @@
     header h1 .glyph { font-size: 1.1rem; line-height: 1; }
     /* Muted tech subtitle — solid token instead of an opacity fade so it stays
        legible while still reading as secondary to the wordmark. */
-    header .tag { font-size: .72rem; font-weight: 400; color: var(--hc-muted, #8b949e); }
+    header .tag { font-size: .72rem; font-weight: 400; color: var(--hc-muted, var(--muted)); }
     header .spacer { flex: 1; }
     /* Primary action — accent-filled so "Open STEP file…" reads as the main call
        to action above the neutral wireframe/fit controls. Re-enable pointer events
        (header itself is click-through). */
     #open-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
-      font-weight: 600; color: #0b1220; background: #4f9dff; border: 1px solid #4f9dff;
+      font-weight: 600; color: var(--accent-ink); background: var(--accent); border: 1px solid var(--accent);
       border-radius: 6px; padding: .35rem .7rem; }
-    #open-btn:hover { background: #6fb0ff; border-color: #6fb0ff; }
+    #open-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
@@ -133,53 +262,53 @@
     #share-btn:focus-visible, #embed-btn:focus-visible,
     #measure-btn:focus-visible, #measure-clear:focus-visible,
     #section-btn:focus-visible, #section-flip:focus-visible, .sp-axis:focus-visible,
-    #help-btn:focus-visible, #help-close:focus-visible, #gallery .sample:focus-visible,
+    #theme-btn:focus-visible, #help-btn:focus-visible, #help-close:focus-visible, #gallery .sample:focus-visible,
     #share-fallback-close:focus-visible {
-      outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
+      outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--accent); }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
     /* Secondary control — neutral text/fill so it sits below the accent primary
        action in the visual hierarchy. */
     #wire-toggle { pointer-events: auto; cursor: pointer; user-select: none;
       display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem;
-      color: #e6edf3; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
+      color: var(--fg); background: var(--panel); border: 1px solid var(--hc-border, var(--border)); border-radius: 6px;
       padding: .3rem .6rem; }
-    #wire-toggle:hover { background: #232a35; border-color: #3a4150; }
-    #wire-toggle input { accent-color: #4f9dff; margin: 0; cursor: pointer; }
+    #wire-toggle:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    #wire-toggle input { accent-color: var(--accent); margin: 0; cursor: pointer; }
     /* Active/pressed wireframe state — mirrors the gallery `.is-active` accent
-       (lifted #eaf2ff text over a translucent blue fill with the accent border)
+       (lifted var(--on-fg) text over a translucent blue fill with the accent border)
        so "wireframe is on" reads at a glance beyond the checkbox tick, and the
        control matches the same on-state visual language as the gallery pills.
        The hover tokens above still apply on top of this via later-in-cascade
        :hover; keep this after :hover so the active fill wins when not hovering. */
-    #wire-toggle.is-active { color: #eaf2ff; background: #1f3350cc;
-      border-color: #4f9dff; }
-    #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    #wire-toggle.is-active { color: var(--on-fg); background: var(--on-fill);
+      border-color: var(--accent); }
+    #wire-toggle.is-active:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
     #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
-      color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
+      color: var(--ctrl-fg); background: var(--panel); border: 1px solid var(--hc-border, var(--border)); border-radius: 6px;
       padding: .35rem .7rem; }
     #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { display: inline-flex; align-items: center; gap: .35rem; }
-    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover, #measure-btn:hover, #measure-clear:hover, #section-btn:hover, #select-fit-btn:hover { background: #232a35; border-color: #3a4150; }
+    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover, #measure-btn:hover, #measure-clear:hover, #section-btn:hover, #select-fit-btn:hover { background: var(--panel-hover); border-color: var(--border-hover); }
     /* Measure toggle active state — reuses the same accent on-state language as the
        wireframe toggle / gallery pills (lifted text over a translucent blue fill
        with the accent border) so "measure mode is on" reads at a glance. Both the
        .is-active class and aria-pressed are set in JS (per the wireframe toggle
        pattern); styling keys on .is-active. Placed after :hover so the active fill
        wins when not hovering. */
-    #measure-btn.is-active { color: #eaf2ff; background: #1f3350cc; border-color: #4f9dff; }
-    #measure-btn.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    #measure-btn.is-active { color: var(--on-fg); background: var(--on-fill); border-color: var(--accent); }
+    #measure-btn.is-active:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
     /* Section toggle active state — same accent on-state language as the measure /
        wireframe toggles and gallery pills (lifted text over a translucent blue
        fill with the accent border) so "section mode is on" reads at a glance. Both
        .is-active and aria-pressed are set in JS (per the measure-toggle pattern);
        styling keys on .is-active. Placed after :hover so the active fill wins when
        not hovering. */
-    #section-btn.is-active { color: #eaf2ff; background: #1f3350cc; border-color: #4f9dff; }
-    #section-btn.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    #section-btn.is-active { color: var(--on-fg); background: var(--on-fill); border-color: var(--accent); }
+    #section-btn.is-active:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
     /* Clear-measurement button is disabled until something is measured. */
     #measure-clear:disabled { opacity: .5; cursor: not-allowed; }
-    #measure-clear:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
+    #measure-clear:disabled:hover { background: var(--panel); border-color: var(--hc-border, var(--border)); }
     #measure-clear[hidden] { display: none; }
     /* Fit-to-selection button — hidden until a face is picked (like measure-clear),
        so it only appears once there's a selection to frame. */
@@ -192,8 +321,8 @@
        numeric distance is announced through the #hint live region instead. */
     #measure-label { position: fixed; z-index: 12; transform: translate(-50%, -50%);
       pointer-events: none; font-size: .74rem; font-weight: 600;
-      font-variant-numeric: tabular-nums; color: #eaf2ff; background: #1f3350ee;
-      border: 1px solid #4f9dff; border-radius: 6px; padding: .12rem .4rem;
+      font-variant-numeric: tabular-nums; color: var(--on-fg); background: var(--on-fill-strong);
+      border: 1px solid var(--accent); border-radius: 6px; padding: .12rem .4rem;
       white-space: nowrap; box-shadow: 0 2px 8px #0008; }
     #measure-label[hidden] { display: none; }
     /* Section / cross-section controls. A compact floating panel shown only while
@@ -207,14 +336,14 @@
     :root.embed #section-panel { display: none !important; }
     #section-panel { position: fixed; left: 1rem; bottom: 1rem; z-index: 11;
       display: flex; flex-direction: column; gap: .45rem; width: min(52vw, 220px);
-      color: #e6edf3; background: var(--hc-panel-bg, #1b2029cc);
-      border: 1px solid var(--hc-border, #2a2f3a); border-radius: 10px;
+      color: var(--fg); background: var(--hc-panel-bg, var(--panel-tr));
+      border: 1px solid var(--hc-border, var(--border)); border-radius: 10px;
       padding: .55rem .6rem; backdrop-filter: blur(4px);
       box-shadow: 0 6px 20px #0006; }
     /* display:flex above overrides the hidden attribute's display:none — restore
        it so the panel stays invisible until Section mode is turned on. */
     #section-panel[hidden] { display: none; }
-    #section-panel .sp-title { font-size: .74rem; font-weight: 600; color: #cfe0ff;
+    #section-panel .sp-title { font-size: .74rem; font-weight: 600; color: var(--ctrl-fg);
       letter-spacing: .2px; }
     /* flex-wrap so the axis pills + flip never overflow the panel on the narrowest
        phones (at 360px the 40px coarse-pointer targets can exceed the panel width);
@@ -224,22 +353,22 @@
        axis and the flip state read at a glance. */
     #section-panel .sp-axis, #section-panel .sp-flip { pointer-events: auto;
       cursor: pointer; font: inherit; font-size: .78rem; font-weight: 600;
-      color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a);
+      color: var(--ctrl-fg); background: var(--panel); border: 1px solid var(--hc-border, var(--border));
       border-radius: 6px; padding: .25rem .5rem; min-width: 1.9rem;
       display: inline-flex; align-items: center; justify-content: center; }
-    #section-panel .sp-axis:hover, #section-panel .sp-flip:hover { background: #232a35;
-      border-color: #3a4150; }
-    #section-panel .sp-axis.is-active { color: #eaf2ff; background: #1f3350cc;
-      border-color: #4f9dff; }
-    #section-panel .sp-axis.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    #section-panel .sp-axis:hover, #section-panel .sp-flip:hover { background: var(--panel-hover);
+      border-color: var(--border-hover); }
+    #section-panel .sp-axis.is-active { color: var(--on-fg); background: var(--on-fill);
+      border-color: var(--accent); }
+    #section-panel .sp-axis.is-active:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
     #section-panel .sp-flip { margin-left: auto; } /* push flip to the right edge */
-    #section-panel .sp-flip.is-active { color: #eaf2ff; background: #1f3350cc;
-      border-color: #4f9dff; }
-    #section-panel .sp-flip.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    #section-panel .sp-flip.is-active { color: var(--on-fg); background: var(--on-fill);
+      border-color: var(--accent); }
+    #section-panel .sp-flip.is-active:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
     /* The cut-position slider. accent-color themes the native track/thumb to the
        app blue; width:100% fills the panel. The slider is a static control (no
        animation), so it is inherently reduced-motion safe. */
-    #section-panel .sp-slider { width: 100%; margin: 0; accent-color: #4f9dff;
+    #section-panel .sp-slider { width: 100%; margin: 0; accent-color: var(--accent);
       cursor: pointer; }
     /* Touch: give the axis/flip pills and the slider thumb a comfortable target. */
     @media (pointer: coarse) {
@@ -259,27 +388,27 @@
        clears it; wider viewports have ample room and the 200px cap keeps it tidy. */
     #explode-panel { position: fixed; right: 1rem; bottom: 1rem; z-index: 11;
       display: flex; flex-direction: column; gap: .4rem; width: min(38vw, 200px);
-      color: #e6edf3; background: var(--hc-panel-bg, #1b2029cc);
-      border: 1px solid var(--hc-border, #2a2f3a); border-radius: 10px;
+      color: var(--fg); background: var(--hc-panel-bg, var(--panel-tr));
+      border: 1px solid var(--hc-border, var(--border)); border-radius: 10px;
       padding: .55rem .6rem; backdrop-filter: blur(4px);
       box-shadow: 0 6px 20px #0006; }
     /* display:flex above overrides the hidden attribute — restore none so the panel
        stays invisible until the first model loads. */
     #explode-panel[hidden] { display: none; }
-    #explode-panel .ep-title { font-size: .74rem; font-weight: 600; color: #cfe0ff;
+    #explode-panel .ep-title { font-size: .74rem; font-weight: 600; color: var(--ctrl-fg);
       letter-spacing: .2px; }
     /* The explode-amount slider (0 = collapsed, 1 = fully spread). accent-color
        themes the native track/thumb to the app blue; a static control, so it is
        inherently reduced-motion safe. */
-    #explode-panel .ep-slider { width: 100%; margin: 0; accent-color: #4f9dff;
+    #explode-panel .ep-slider { width: 100%; margin: 0; accent-color: var(--accent);
       cursor: pointer; pointer-events: auto; }
     #explode-panel .ep-slider:disabled { cursor: not-allowed; opacity: .5; }
     /* Honest-degrade note shown only for single-solid models (see refreshExplode). */
-    #explode-panel .ep-hint { font-size: .7rem; color: var(--hc-muted, #8b949e);
+    #explode-panel .ep-hint { font-size: .7rem; color: var(--hc-muted, var(--muted));
       line-height: 1.3; }
     #explode-panel .ep-hint[hidden] { display: none; }
-    #explode-panel.is-disabled .ep-title { color: var(--hc-muted, #8b949e); }
-    #explode-slider:focus-visible { outline: 2px solid #4f9dff; outline-offset: 2px; }
+    #explode-panel.is-disabled .ep-title { color: var(--hc-muted, var(--muted)); }
+    #explode-slider:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     /* Touch: give the slider thumb a comfortable target. */
     @media (pointer: coarse) {
       #explode-panel .ep-slider { height: 40px; }
@@ -289,60 +418,74 @@
        Export GLB button is disabled the same way until a real model is loaded
        (updateExportState). */
     #share-btn:disabled, #export-btn:disabled, #embed-btn:disabled { opacity: .5; cursor: not-allowed; }
-    #share-btn:disabled:hover, #export-btn:disabled:hover, #embed-btn:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
+    #share-btn:disabled:hover, #export-btn:disabled:hover, #embed-btn:disabled:hover { background: var(--panel); border-color: var(--hc-border, var(--border)); }
     /* High-contrast toggle — a header control mirroring the neutral fit/wireframe
        buttons (icon-collapsible on narrow screens). aria-pressed reflects whether
        high contrast is active; when pressed it borrows the same accent on-state
        language as the wireframe toggle / gallery pills so "high contrast is on"
        reads at a glance. */
     #contrast-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
-      color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a);
+      color: var(--ctrl-fg); background: var(--panel); border: 1px solid var(--hc-border, var(--border));
       border-radius: 6px; padding: .35rem .7rem; display: inline-flex; align-items: center;
       gap: .35rem; }
-    #contrast-btn:hover { background: #232a35; border-color: #3a4150; }
-    #contrast-btn[aria-pressed="true"] { color: #eaf2ff; background: #1f3350cc;
-      border-color: #4f9dff; }
-    #contrast-btn[aria-pressed="true"]:hover { background: #244071cc; border-color: #6fb0ff; }
+    #contrast-btn:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    #contrast-btn[aria-pressed="true"] { color: var(--on-fg); background: var(--on-fill);
+      border-color: var(--accent); }
+    #contrast-btn[aria-pressed="true"]:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
     /* Help affordance — a compact circular "?" button in the header that opens the
        keyboard-shortcuts panel. Neutral tokens like the fit/wireframe controls so
        it sits below the accent primary action; header is click-through so re-enable
        pointer events. Fixed square so the glyph stays optically centered in a
        circle at every width. */
     #help-btn { pointer-events: auto; cursor: pointer; font: inherit;
-      font-size: .9rem; font-weight: 700; line-height: 1; color: #cfe0ff;
-      background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 999px;
+      font-size: .9rem; font-weight: 700; line-height: 1; color: var(--ctrl-fg);
+      background: var(--panel); border: 1px solid var(--hc-border, var(--border)); border-radius: 999px;
       width: 1.9rem; height: 1.9rem; display: inline-flex; align-items: center;
       justify-content: center; flex: none; }
-    #help-btn:hover { background: #232a35; border-color: #3a4150; }
+    #help-btn:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    /* Theme toggle — same circular icon-button shell as #help-btn. When pressed
+       (light theme active) it borrows the accent on-state language of the other
+       toggles so the active theme reads at a glance. The glyph is font-size-only
+       here; its ☀/🌙 character is set in markup and swapped by the module. */
+    #theme-btn { pointer-events: auto; cursor: pointer; font: inherit;
+      font-size: .9rem; line-height: 1; color: var(--ctrl-fg);
+      background: var(--panel); border: 1px solid var(--hc-border, var(--border)); border-radius: 999px;
+      width: 1.9rem; height: 1.9rem; display: inline-flex; align-items: center;
+      justify-content: center; flex: none; }
+    #theme-btn .tb-glyph { font-size: .95rem; line-height: 1; }
+    #theme-btn:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    #theme-btn[aria-pressed="true"] { color: var(--on-fg); background: var(--on-fill);
+      border-color: var(--accent); }
+    #theme-btn[aria-pressed="true"]:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
     /* Shortcuts dialog — a small dismissible panel listing the keyboard/pointer
        shortcuts. Native <dialog> so Escape-to-close and focus trapping come for
        free (opened with showModal). Tokens mirror the gallery pills / model-info
-       HUD (translucent #1b2029 fill, #2a2f3a border, blur) so it reads as one
+       HUD (translucent var(--panel) fill, var(--border) border, blur) so it reads as one
        system. Centered by the native modal positioning; width caps below the
        narrowest phone so it never overflows. */
     #help-dialog { margin: auto; max-width: min(92vw, 340px); width: 100%;
-      color: #e6edf3; background: var(--hc-dialog-bg, #12161df2); border: 1px solid var(--hc-border, #2a2f3a);
+      color: var(--fg); background: var(--hc-dialog-bg, var(--dialog-bg)); border: 1px solid var(--hc-border, var(--border));
       border-radius: 12px; padding: 0; box-shadow: 0 10px 30px #000a;
       backdrop-filter: blur(6px); }
     #help-dialog::backdrop { background: #05070acc; }
     .help-head { display: flex; align-items: center; justify-content: space-between;
-      gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid var(--hc-border, #2a2f3a); }
+      gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid var(--hc-border, var(--border)); }
     .help-head h2 { margin: 0; font-size: .95rem; font-weight: 700;
       letter-spacing: .2px; }
     #help-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
-      color: var(--hc-muted, #8b949e); background: transparent; border: 1px solid transparent;
+      color: var(--hc-muted, var(--muted)); background: transparent; border: 1px solid transparent;
       border-radius: 6px; width: 1.9rem; height: 1.9rem; display: inline-flex;
       align-items: center; justify-content: center; flex: none; }
-    #help-close:hover { color: #e6edf3; background: #232a35; border-color: #3a4150; }
+    #help-close:hover { color: var(--fg); background: var(--panel-hover); border-color: var(--border-hover); }
     .help-list { list-style: none; margin: 0; padding: .5rem 1rem .85rem;
       display: grid; gap: .4rem; font-size: .82rem; }
-    .help-list li { display: flex; align-items: baseline; gap: .55rem; color: #cfe0ff; }
+    .help-list li { display: flex; align-items: baseline; gap: .55rem; color: var(--ctrl-fg); }
     /* Keycap chips — monospace, bordered pills so the trigger reads as a key. */
     .help-list .k { flex: none; min-width: 1.5rem; text-align: center;
       font: 600 .72rem ui-monospace, SFMono-Regular, Menlo, monospace;
-      color: #eaf2ff; background: #1f3350cc; border: 1px solid #4f9dff;
+      color: var(--on-fg); background: var(--on-fill); border: 1px solid var(--accent);
       border-radius: 5px; padding: .12rem .35rem; }
-    .help-list .d { color: #c2ccd6; }
+    .help-list .d { color: var(--ctrl-fg-2); }
     /* Header buttons carry both a text label and an icon glyph. The label shows on
        wide screens; the icon is swapped in on compact/narrow screens (see the
        max-width:600px block) so each collapsed control keeps a recognizable glyph
@@ -360,12 +503,12 @@
       padding: 0 1rem; pointer-events: none; }
     /* Solid muted token instead of an opacity fade so the first-paint guidance and
        interaction hints stay readable against the dark canvas. */
-    #hint { font-size: .8rem; color: var(--hc-muted, #8b949e); max-width: min(92vw, 640px);
+    #hint { font-size: .8rem; color: var(--hc-muted, var(--muted)); max-width: min(92vw, 640px);
       text-align: center; }
     /* Loading spinner — centered, shown while a STEP file parses. */
     #spinner { position: fixed; top: 50%; left: 50%; z-index: 15;
       width: 42px; height: 42px; margin: -21px 0 0 -21px; display: none;
-      border: 3px solid #2a2f3a; border-top-color: #4f9dff; border-radius: 50%;
+      border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%;
       animation: spin 0.8s linear infinite; pointer-events: none; }
     #spinner.active { display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -379,75 +522,75 @@
     #load-status { position: fixed; top: 50%; left: 50%; z-index: 15;
       transform: translateX(-50%); margin: 34px 0 0; display: none;
       max-width: min(90vw, 320px); text-align: center; font-size: .82rem;
-      color: var(--hc-muted, #8b949e); pointer-events: none; }
+      color: var(--hc-muted, var(--muted)); pointer-events: none; }
     #load-status.active { display: block; }
     /* Reduced-motion: stop the perpetual spinner rotation and show a static
        loading indicator instead (the JS render loop also halts the placeholder
        spin under the same query). */
     @media (prefers-reduced-motion: reduce) {
-      #spinner { animation: none; border-top-color: #4f9dff; }
+      #spinner { animation: none; border-top-color: var(--accent); }
     }
     /* Non-blocking error toast. */
     #toast { position: fixed; top: 3.4rem; left: 50%; transform: translateX(-50%);
       z-index: 30; max-width: min(90vw, 420px); font-size: .82rem; line-height: 1.35;
-      color: #ffddd8; background: #3a1f1fee; border: 1px solid #7a3b3b; border-radius: 8px;
+      color: var(--toast-fg); background: var(--toast-bg); border: 1px solid var(--toast-border); border-radius: 8px;
       padding: .6rem .9rem; box-shadow: 0 6px 20px #0008; pointer-events: none;
       opacity: 0; transition: opacity .2s ease; }
     #toast.active { opacity: 1; pointer-events: auto; }
     /* Success variant — the share "Link copied!" confirmation reuses the toast
        channel (role=alert announces it to AT) but must not read as an error, so
        swap the soft-red palette for a calm accent-green. */
-    #toast.toast-ok { color: #d6ffe4; background: #12321fee; border-color: #2f6b45; }
+    #toast.toast-ok { color: var(--toast-ok-fg); background: var(--toast-ok-bg); border-color: var(--toast-ok-border); }
     /* Manual-copy fallback panel — shown when the Clipboard API is unavailable or
        rejected. Sits where the toast does (top-center) but is interactive: the
        read-only field is selectable so the user can copy the link by hand. Tokens
        mirror the help dialog / HUD (translucent fill, blur) so it reads as one
        system. */
     #share-fallback { position: fixed; top: 3.4rem; left: 50%; transform: translateX(-50%);
-      z-index: 31; width: min(92vw, 460px); color: #e6edf3;
-      background: var(--hc-dialog-bg, #12161df2); border: 1px solid var(--hc-border, #2a2f3a);
+      z-index: 31; width: min(92vw, 460px); color: var(--fg);
+      background: var(--hc-dialog-bg, var(--dialog-bg)); border: 1px solid var(--hc-border, var(--border));
       border-radius: 10px; padding: .6rem .75rem; box-shadow: 0 8px 24px #000a;
       backdrop-filter: blur(6px); }
     #share-fallback[hidden] { display: none; }
-    #share-fallback label { display: block; font-size: .78rem; color: var(--hc-muted, #8b949e);
+    #share-fallback label { display: block; font-size: .78rem; color: var(--hc-muted, var(--muted));
       margin: 0 0 .35rem; }
     #share-fallback .sf-row { display: flex; align-items: center; gap: .4rem; }
     #share-fallback-url { flex: 1; min-width: 0; font: inherit; font-size: .8rem;
-      color: #e6edf3; background: #0a0d12; border: 1px solid var(--hc-border, #2a2f3a);
+      color: var(--fg); background: var(--field-bg); border: 1px solid var(--hc-border, var(--border));
       border-radius: 6px; padding: .35rem .5rem; }
-    #share-fallback-url:focus-visible { outline: 2px solid #4f9dff; outline-offset: 1px;
-      border-color: #4f9dff; }
+    #share-fallback-url:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px;
+      border-color: var(--accent); }
     #share-fallback-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
-      color: var(--hc-muted, #8b949e); background: transparent; border: 1px solid transparent;
+      color: var(--hc-muted, var(--muted)); background: transparent; border: 1px solid transparent;
       border-radius: 6px; width: 1.9rem; height: 1.9rem; flex: none; display: inline-flex;
       align-items: center; justify-content: center; }
-    #share-fallback-close:hover { color: #e6edf3; background: #232a35; border-color: #3a4150; }
+    #share-fallback-close:hover { color: var(--fg); background: var(--panel-hover); border-color: var(--border-hover); }
     /* Persistent engine-load failure panel. Distinct from the transient parse
        toast above: an occt/WASM engine failure (offline / CDN down) is not
        self-clearing, so this stays put — with a friendly line and a Retry button
        — until the user re-attempts or a load finally succeeds. Centered on the
        viewport where the spinner sat (which showEngineError clears), so it reads
        as the loader's failure state. Tokens mirror the help dialog / HUD
-       (translucent #12161d fill, #2a2f3a border, blur) so it's one system; the
+       (translucent var(--bg-1) fill, var(--border) border, blur) so it's one system; the
        message uses the toast's soft-red text token, the Retry button the accent
        primary-action tokens. Width caps below the narrowest phone so it never
        overflows at 360px. */
     #engine-error { position: fixed; top: 50%; left: 50%; z-index: 30;
       transform: translate(-50%, -50%); display: flex; flex-direction: column;
       align-items: center; gap: .7rem; max-width: min(90vw, 340px);
-      text-align: center; color: #e6edf3; background: #12161df2;
-      border: 1px solid #2a2f3a; border-radius: 12px; padding: 1rem 1.1rem;
+      text-align: center; color: var(--fg); background: var(--dialog-bg);
+      border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem;
       box-shadow: 0 10px 30px #000a; backdrop-filter: blur(6px); }
     /* display:flex overrides the hidden attribute's display:none — restore it so
        the panel stays invisible until an engine failure surfaces it. */
     #engine-error[hidden] { display: none; }
     #engine-error .ee-msg { margin: 0; font-size: .9rem; line-height: 1.4;
-      color: #ffddd8; }
+      color: var(--toast-fg); }
     #engine-retry { pointer-events: auto; cursor: pointer; font: inherit;
-      font-size: .82rem; font-weight: 600; color: #0b1220; background: #4f9dff;
-      border: 1px solid #4f9dff; border-radius: 6px; padding: .4rem .9rem; }
-    #engine-retry:hover { background: #6fb0ff; border-color: #6fb0ff; }
-    #engine-retry:focus-visible { outline: 2px solid #4f9dff; outline-offset: 2px; }
+      font-size: .82rem; font-weight: 600; color: var(--accent-ink); background: var(--accent);
+      border: 1px solid var(--accent); border-radius: 6px; padding: .4rem .9rem; }
+    #engine-retry:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    #engine-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     /* Model-info HUD — a subtle read-out of the current model's name, triangle
        count, and bounding-box dimensions (medium-severity polish: these were
        computed then discarded). Parked at the top-right just under the
@@ -456,18 +599,18 @@
        the gizmo (above it), and the centered bottom cluster (below). Right-aligned
        to hug the same edge as the gizmo. Informational only, so pointer-events:
        none lets orbit drags pass straight through. Tokens mirror the gallery pills
-       (translucent #1b2029 fill, #2a2f3a border, blur) so it reads as one system. */
+       (translucent var(--panel) fill, var(--border) border, blur) so it reads as one system. */
     #model-info { position: fixed; top: 13rem; right: 1rem; z-index: 10;
       display: flex; flex-direction: column; align-items: flex-end; gap: .1rem;
       max-width: min(60vw, 220px); text-align: right; pointer-events: none;
-      background: var(--hc-panel-bg, #1b2029cc); border: 1px solid var(--hc-border, #2a2f3a); border-radius: 8px;
+      background: var(--hc-panel-bg, var(--panel-tr)); border: 1px solid var(--hc-border, var(--border)); border-radius: 8px;
       padding: .35rem .55rem; backdrop-filter: blur(4px); }
     /* display:flex above overrides the hidden attribute's default display:none —
        restore it so the panel stays invisible until the first model renders. */
     #model-info[hidden] { display: none; }
     #model-info .mi-name { max-width: 100%; font-size: .78rem; font-weight: 600;
-      color: #cfe0ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #model-info .mi-stats { font-size: .7rem; color: var(--hc-muted, #8b949e);
+      color: var(--ctrl-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #model-info .mi-stats { font-size: .7rem; color: var(--hc-muted, var(--muted));
       font-variant-numeric: tabular-nums; }
     /* Selected-face readout — appears in the model-info HUD only while a face is
        picked. Tinted the same teal as the WebGL highlight emissive so the on-screen
@@ -487,11 +630,11 @@
     #gallery { width: 100%; display: flex; justify-content: center; flex-wrap: wrap;
       gap: .5rem; pointer-events: none; }
     #gallery .sample { pointer-events: auto; cursor: pointer; font: inherit;
-      font-size: .78rem; color: #cfe0ff; background: var(--hc-panel-bg, #1b2029cc); border: 1px solid var(--hc-border, #2a2f3a);
+      font-size: .78rem; color: var(--ctrl-fg); background: var(--hc-panel-bg, var(--panel-tr)); border: 1px solid var(--hc-border, var(--border));
       border-radius: 999px; padding: .3rem .8rem; backdrop-filter: blur(4px); }
-    #gallery .sample:hover { background: #232a35; border-color: #3a4150; }
-    #gallery .sample.is-active { color: #eaf2ff; background: #1f3350cc;
-      border-color: #4f9dff; }
+    #gallery .sample:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    #gallery .sample.is-active { color: var(--on-fg); background: var(--on-fill);
+      border-color: var(--accent); }
     #gallery .sample:disabled { opacity: .5; cursor: progress; }
     /* Standard-view preset cluster — a fixed vertical toolbar on the left edge,
        vertically centered so it clears the header (top), the top-right gizmo +
@@ -504,20 +647,20 @@
       z-index: 10; display: flex; flex-direction: column; gap: .4rem;
       pointer-events: none; }
     #view-presets .preset { pointer-events: auto; cursor: pointer; font: inherit;
-      font-size: .78rem; color: #cfe0ff; background: var(--hc-panel-bg, #1b2029cc);
-      border: 1px solid var(--hc-border, #2a2f3a); border-radius: 999px;
+      font-size: .78rem; color: var(--ctrl-fg); background: var(--hc-panel-bg, var(--panel-tr));
+      border: 1px solid var(--hc-border, var(--border)); border-radius: 999px;
       padding: .3rem .8rem; backdrop-filter: blur(4px);
       display: inline-flex; align-items: center; justify-content: center; gap: .35rem; }
-    #view-presets .preset:hover { background: #232a35; border-color: #3a4150; }
-    #view-presets .preset:focus-visible { outline: 2px solid #4f9dff;
-      outline-offset: 2px; border-color: #4f9dff; }
+    #view-presets .preset:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    #view-presets .preset:focus-visible { outline: 2px solid var(--accent);
+      outline-offset: 2px; border-color: var(--accent); }
     /* Full-window drag-over affordance. */
     #drop-overlay { position: fixed; inset: 0; z-index: 20; display: none;
       align-items: center; justify-content: center; pointer-events: none;
-      background: #0e1116cc; border: 3px dashed #4f9dff; }
+      background: var(--scrim-90); border: 3px dashed var(--accent); }
     #drop-overlay.active { display: flex; }
-    #drop-overlay span { font-size: 1.1rem; font-weight: 600; color: #cfe0ff;
-      padding: 1rem 1.5rem; border-radius: 10px; background: #1b2029cc; }
+    #drop-overlay span { font-size: 1.1rem; font-weight: 600; color: var(--ctrl-fg);
+      padding: 1rem 1.5rem; border-radius: 10px; background: var(--panel-tr); }
     /* Narrow phones (~360px): drop the decorative subtitle so the header controls
        fit on one wrapped bar instead of overflowing. */
     @media (max-width: 640px) {
@@ -530,7 +673,7 @@
       #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
-      #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
+      #help-btn, #theme-btn { width: 44px; height: 44px; font-size: 1.05rem; }
       #gallery { gap: .75rem; }
       #gallery .sample { min-height: 44px; padding: .5rem 1.1rem;
         display: inline-flex; align-items: center; }
@@ -649,6 +792,12 @@
          Starts disabled — no model is loaded at first paint. -->
     <button id="embed-btn" type="button" disabled title="Only gallery samples can be embedded — open a sample to get embed code" aria-label="Copy embed code" data-i18n-attr="title:embedTitleDisabled;aria-label:embedAria"><span class="btn-icon" aria-hidden="true">&lt;&gt;</span><span class="btn-label" data-i18n="embedLabel">Copy embed code</span></button>
     <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file" data-i18n-attr="title:openTitle;aria-label:openAria"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label" data-i18n="openLabel">Open STEP file…</span></button>
+    <!-- Light/dark theme toggle. A circular icon button matching #help-btn (so it
+         is already glyph-only and stays a glyph on the <600px breakpoint). The
+         glyph swaps ☀/🌙 to signal the *active* theme; aria-pressed reflects
+         whether light is active (corrected on load from the persisted / OS
+         preference by the module script). Bound to the `T` key. -->
+    <button id="theme-btn" type="button" title="Toggle light / dark theme (T)" aria-label="Toggle light and dark theme" aria-pressed="false" data-i18n-attr="title:themeTitle;aria-label:themeAria"><span class="tb-glyph" aria-hidden="true">🌙</span></button>
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
@@ -692,6 +841,7 @@
       <li><span class="k" data-i18n="kHome">Home</span><span class="d" data-i18n="descHome">Re-fit / reset view</span></li>
       <li><span class="k">W</span><span class="d" data-i18n="descWireframe">Toggle wireframe</span></li>
       <li><span class="k">C</span><span class="d" data-i18n="descContrast">Toggle high contrast</span></li>
+      <li><span class="k">T</span><span class="d" data-i18n="descTheme">Toggle light / dark theme</span></li>
       <li><span class="k">S</span><span class="d" data-i18n="descSave">Save image (PNG)</span></li>
       <li><span class="k">E</span><span class="d" data-i18n="descExport">Export model as GLB</span></li>
       <!-- Point-to-point measurement: M toggles the tool, Esc clears the current
@@ -975,7 +1125,8 @@
       groundShadow = new THREE.Mesh(
         new THREE.PlaneGeometry(shadowSize, shadowSize),
         new THREE.MeshBasicMaterial({
-          map: shadowTexture, transparent: true, depthWrite: false, opacity: 0.9,
+          map: shadowTexture, transparent: true, depthWrite: false,
+          opacity: sceneTheme().shadowOpacity,
         })
       );
       groundShadow.rotation.x = -Math.PI / 2; // lay the quad flat on the ground plane
@@ -1041,16 +1192,56 @@
       return contrastQuery.matches;
     }
     let highContrast = contrastIsHigh();
+
+    // --- Light/dark scene state -----------------------------------------------
+    // CSS themes the DOM chrome from custom properties (see the token blocks), but
+    // the WebGL scene can't read CSS vars — so it is themed from this parallel JS
+    // object, read at toggle time. The persisted / OS choice was applied to <html
+    // data-theme> before first paint by the head script; effective state mirrors
+    // contrastIsHigh(): an explicit light/dark wins, otherwise follow the OS query.
+    const colorSchemeQuery = matchMedia('(prefers-color-scheme: light)');
+    function themeIsLight() {
+      const attr = document.documentElement.getAttribute('data-theme');
+      if (attr === 'light') return true;
+      if (attr === 'dark') return false;
+      return colorSchemeQuery.matches;
+    }
+    let lightTheme = themeIsLight();
+
     // Feature-edge line styles. High contrast uses a darker, far more opaque
-    // stroke so the overlay reads crisply against the metal surface; the default
-    // is the original faint line, so the normal theme is byte-for-byte unchanged.
+    // stroke so the overlay reads crisply against the metal surface; the dark
+    // default is the original faint line (byte-for-byte unchanged); light keeps a
+    // dark stroke but a touch more opaque so edges read on the pale backdrop.
     const EDGE_NORMAL = { color: 0x0a0d12, opacity: 0.35 };
     const EDGE_HIGH = { color: 0x000000, opacity: 0.9 };
-    const currentEdgeStyle = () => (highContrast ? EDGE_HIGH : EDGE_NORMAL);
-    // Ground-grid line colors [centerLine, gridLines]. High contrast lifts both
-    // so the floor grid reads against the dark vignette; default matches today.
-    const gridColors = () =>
-      highContrast ? [0x8b98a8, 0x5a6472] : [0x2a2f3a, 0x1b1f27];
+    const EDGE_LIGHT = { color: 0x2a3340, opacity: 0.45 };
+    // Single source of truth for every scene color/level that can't live in CSS.
+    // High contrast (an accessibility override) takes precedence; otherwise the
+    // light/dark axis picks the values. grid = [centerLine, gridLines]; exposure
+    // brightens the tone-mapped model against the pale backdrop; shadowOpacity /
+    // captureBg keep the contact shadow and saved-PNG backdrop legible per theme.
+    function sceneTheme() {
+      if (highContrast) {
+        return { grid: [0x8b98a8, 0x5a6472], edge: EDGE_HIGH,
+                 exposure: lightTheme ? 1.15 : 1.0,
+                 shadowOpacity: lightTheme ? 0.5 : 0.9,
+                 captureBg: lightTheme ? 0xeef1f6 : 0x0e1116 };
+      }
+      if (lightTheme) {
+        return { grid: [0x9aa6b4, 0xc4ccd6], edge: EDGE_LIGHT,
+                 exposure: 1.15, shadowOpacity: 0.5, captureBg: 0xeef1f6 };
+      }
+      return { grid: [0x2a2f3a, 0x1b1f27], edge: EDGE_NORMAL,
+               exposure: 1.0, shadowOpacity: 0.9, captureBg: 0x0e1116 };
+    }
+    const currentEdgeStyle = () => sceneTheme().edge;
+    // Ground-grid line colors [centerLine, gridLines]; delegates to sceneTheme so
+    // high contrast lifts them, light greys them for the pale floor, dark matches
+    // today.
+    const gridColors = () => sceneTheme().grid;
+    // Apply the initial tone-mapping exposure for the resolved theme so the first
+    // render (before any toggle) already sits right against the chosen backdrop.
+    renderer.toneMappingExposure = sceneTheme().exposure;
 
     // Show/hide the centered loading spinner while a STEP file parses.
     function setLoading(on) { spinner.classList.toggle('active', on); }
@@ -2311,6 +2502,55 @@
       if (stored !== 'high' && stored !== 'normal') applyContrast(e.matches, false);
     });
 
+    // --- Light/dark theme toggle (header button + `T` key) ---
+    // CSS themes the DOM chrome via the data-theme attribute + the token blocks
+    // (set pre-paint by the head script); here we wire the toggle, keep aria-pressed
+    // and the ☀/🌙 glyph in sync, persist the choice, and push the theme into the
+    // WebGL scene (grid colors, feature-edge stroke, tone-mapping exposure, contact-
+    // shadow opacity) which CSS can't reach.
+    const themeBtn = document.getElementById('theme-btn');
+    const themeGlyph = themeBtn.querySelector('.tb-glyph');
+    const THEME_KEY = 'stepviewer.theme';
+
+    // Re-theme the WebGL scene for the active light/dark choice, without a reload:
+    // bump the tone-mapping exposure, rebuild the ground grid + contact shadow at
+    // the last framed size (no camera change — the swap-in fade is untouched and
+    // still reduced-motion aware), and recolor the current model's feature edges.
+    function applyThemeScene() {
+      renderer.toneMappingExposure = sceneTheme().exposure;
+      if (lastGroundSize) groundTo(lastGroundSize);
+      applyEdgeContrast(currentModel);
+    }
+
+    // Show the glyph of the theme the button switches TO... actually of the ACTIVE
+    // theme: ☀ while light is on, 🌙 while dark — a familiar at-a-glance indicator.
+    function updateThemeGlyph() { themeGlyph.textContent = lightTheme ? '☀' : '🌙'; }
+
+    function applyTheme(light, persist) {
+      lightTheme = light;
+      document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');
+      themeBtn.setAttribute('aria-pressed', light ? 'true' : 'false');
+      updateThemeGlyph();
+      if (persist) {
+        try { localStorage.setItem(THEME_KEY, light ? 'light' : 'dark'); } catch (e) {}
+      }
+      applyThemeScene();
+    }
+
+    // Sync the control to the resolved initial state (persisted or OS) without
+    // persisting or re-theming the scene (the initial scene already used it).
+    themeBtn.setAttribute('aria-pressed', lightTheme ? 'true' : 'false');
+    updateThemeGlyph();
+    function toggleTheme() { applyTheme(!lightTheme, true); }
+    themeBtn.addEventListener('click', toggleTheme);
+    // Follow a live OS light/dark change only while the user hasn't made an explicit
+    // choice (nothing stored) — an explicit toggle stays authoritative.
+    colorSchemeQuery.addEventListener('change', (e) => {
+      let stored = null;
+      try { stored = localStorage.getItem(THEME_KEY); } catch (err) {}
+      if (stored !== 'light' && stored !== 'dark') applyTheme(e.matches, false);
+    });
+
     // --- Save image / PNG capture (header ⤓ button + `S` key) -----------------
     // Export the current framed render (scene + orientation gizmo) as a PNG the
     // user can drop into a doc or ticket. The live renderer is alpha:true with no
@@ -2328,7 +2568,11 @@
     // crisp at the current DPR without any resize. Wireframe / camera orientation
     // / framing are whatever's live at capture time, since we draw the real scene.
     const saveBtn = document.getElementById('save-btn');
-    const CAPTURE_BG = 0x0e1116; // CSS radial-vignette mid-tone (opaque backdrop)
+    // Opaque backdrop composited behind the model for the PNG capture so the saved
+    // image matches the on-screen backdrop tone rather than a transparent/black
+    // void. Theme-aware (dark vignette mid-tone vs. the light backdrop) so a save
+    // taken in light theme isn't a model floating on near-black.
+    const captureBg = () => sceneTheme().captureBg;
 
     // Turn a model label into a safe PNG basename: drop a trailing .step/.stp so
     // an opened "MyPart.step" becomes "MyPart" (matching the sample's bare
@@ -2350,7 +2594,7 @@
       const prevColor = new THREE.Color();
       renderer.getClearColor(prevColor);
       try {
-        renderer.setClearColor(CAPTURE_BG, 1); // opaque backdrop for the capture
+        renderer.setClearColor(captureBg(), 1); // opaque backdrop for the capture
         // Redraw scene + gizmo (autoClear is off, so clear once up front) exactly
         // as the render loop does, then read back before yielding to the browser.
         renderer.clear();
@@ -2692,6 +2936,8 @@
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
       // C toggles the high-contrast theme (mirrors the header toggle).
       if (e.key === 'c' || e.key === 'C') toggleContrast();
+      // T toggles the light/dark theme (mirrors the header ☀/🌙 toggle).
+      if (e.key === 't' || e.key === 'T') toggleTheme();
       // S saves the current view as a PNG (mirrors the header ⤓ button).
       if (e.key === 's' || e.key === 'S') saveImageSafe();
       // E exports the loaded model as a binary GLB (mirrors the header 📦 button).
