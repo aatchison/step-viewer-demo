@@ -33,11 +33,20 @@ self.onmessage = async (ev) => {
       // importScripts is synchronous and throws on a network/parse failure — both
       // land in this catch and are reported as an engine (init) failure.
       importScripts(msg.base + 'occt-import-js.js');
-      if (!self.occtimportjs) {
+      // occt-import-js is an Emscripten MODULARIZE UMD: `var occtimportjs = …`.
+      // Loaded via importScripts that top-level `var` becomes a property of the
+      // worker global, so it's reachable as self.occtimportjs; resolve it
+      // defensively (self property → bare global binding → globalThis) so a quirk
+      // in how any engine exposes the top-level var can't strand a working factory.
+      const factory =
+        self.occtimportjs ||
+        (typeof occtimportjs !== 'undefined' ? occtimportjs : undefined) ||
+        (typeof globalThis !== 'undefined' ? globalThis.occtimportjs : undefined);
+      if (typeof factory !== 'function') {
         throw new Error('occt-import-js loaded but did not expose a factory');
       }
       // Point locateFile at the same CDN dir so the sibling .wasm resolves.
-      occt = await self.occtimportjs({ locateFile: (path) => msg.base + path });
+      occt = await factory({ locateFile: (path) => msg.base + path });
       self.postMessage({ type: 'ready' });
     } catch (err) {
       self.postMessage({ type: 'init-error', message: errMessage(err) });

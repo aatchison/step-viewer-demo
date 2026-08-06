@@ -1,12 +1,15 @@
 // STEP loader core — parses STEP (ISO 10303) into three.js geometry via
 // occt-import-js (OpenCascade compiled to WebAssembly).
 //
-// occt-import-js ships as a UMD/global factory (not an ES module). The actual
-// parse (occt.ReadStepFile) runs in a classic Web Worker (src/step.worker.js)
-// that `importScripts()` the same CDN script, so a dense CAD part decodes off the
-// main thread and orbit/gizmo/UI never freeze. This module owns the worker
-// lifecycle + message protocol and rebuilds the THREE geometry from the typed
-// arrays the worker transfers back.
+// occt-import-js ships as a UMD/global factory (not an ES module). The parse
+// (occt.ReadStepFile) runs in a classic Web Worker (src/step.worker.js) that
+// `importScripts()` the same CDN script, so a dense CAD part decodes off the main
+// thread and orbit/gizmo/UI never freeze. The worker is an OPTIMIZATION, not a
+// hard dependency: if it can't init or crashes, this module transparently falls
+// back to loading occt-import-js on the MAIN thread (the pre-worker path) and
+// parsing there, so a model always loads. This module owns the worker lifecycle +
+// message protocol, the main-thread fallback engine, and rebuilds the THREE
+// geometry from the per-mesh typed arrays either engine produces.
 
 import * as THREE from 'three';
 // mergeGeometries is reachable through index.html's existing `three/addons/`
@@ -33,6 +36,18 @@ let workerReadyPromise = null;
 let readyResolvers = null; // { resolve, reject } for the pending 'ready' handshake
 let msgSeq = 0; // monotonic id so overlapping parses route to the right awaiter
 const pending = new Map(); // id → { resolve, reject } for in-flight parse requests
+
+// The worker is an OPTIMIZATION, not a hard dependency. The first time it fails to
+// init (engine/CDN/WASM/worker construction) or crashes mid-parse, we flip this
+// and route every subsequent parse straight to the main-thread engine below, so a
+// broken/blocked worker never costs a repeated failure. Sticky for the session:
+// once the worker has proven unusable, Retry keeps using the reliable main-thread
+// path rather than re-failing through it.
+let workerDisabled = false;
+
+// Cached main-thread occt engine promise (the pre-worker fallback path). Null
+// until the fallback first needs it; cleared by resetOcct() so Retry re-downloads.
+let mainThreadOcctPromise = null;
 
 // Route every worker message to the right awaiter. 'ready'/'init-error' settle the
 // engine-init handshake; 'result'/'parse-error' settle the parse keyed by id.
@@ -141,22 +156,37 @@ function getWorkerReady() {
   return workerReadyPromise;
 }
 
-// Send the STEP bytes to the worker (transferred zero-copy) and await the parsed
-// per-mesh typed arrays. Rejects with `kind: 'parse'` on bad bytes.
+// Send the STEP bytes to the worker and await the parsed per-mesh typed arrays.
+// Rejects with `kind: 'parse'` on bad bytes.
 function postParse(arrayBuffer) {
   return new Promise((resolve, reject) => {
     const id = ++msgSeq;
     pending.set(id, { resolve, reject });
-    worker.postMessage({ type: 'parse', id, buffer: arrayBuffer }, [arrayBuffer]);
+    // Input is intentionally NOT transferred: the main thread keeps the buffer
+    // intact so getMeshes() can re-parse on the main-thread fallback if the worker
+    // crashes mid-parse. STEP input is text — small next to the decoded geometry —
+    // so the structured-clone copy into the worker is cheap; the wins that matter
+    // (off-thread ReadStepFile and the zero-copy RESULT transfer back) both stay.
+    worker.postMessage({ type: 'parse', id, buffer: arrayBuffer });
   });
 }
 
-// Ensures the parse worker + its WASM engine are up (idempotent).
-// Any failure here is an engine/CDN/WASM/worker problem (network or init), NOT a
-// parse failure — it rejects with `kind: 'init'` so callers can word the message
-// right, and the cache self-clears so a later load can retry.
+// Ensures a STEP engine is up (idempotent): the parse worker + its WASM engine
+// when possible, otherwise the main-thread engine. An engine/CDN/WASM/worker init
+// failure in the worker (kind:'init') is NOT fatal — it disables the worker for
+// the session and this resolves against the main-thread engine instead, so the
+// engine is "up" wherever either path can load. It only rejects (kind:'init') if
+// BOTH the worker and the main-thread download/init fail (e.g. truly offline).
 export async function initOcct() {
-  return getWorkerReady();
+  if (!workerDisabled) {
+    try {
+      return await getWorkerReady();
+    } catch (err) {
+      if (err && err.kind === 'parse') throw err; // can't happen on init; be safe
+      disableWorker(); // engine/CDN/WASM/worker init failure — degrade to main thread
+    }
+  }
+  return initOcctMainThread();
 }
 
 // Terminate the parse worker and discard the cached engine-ready promise so the
@@ -167,6 +197,13 @@ export async function initOcct() {
 // starts a genuinely new attempt.
 export function resetOcct() {
   teardownWorker();
+  // Also discard the cached main-thread engine so a Retry after a total (worker +
+  // main-thread) failure re-downloads it fresh rather than re-awaiting a hung or
+  // rejected promise.
+  mainThreadOcctPromise = null;
+  // workerDisabled stays sticky on purpose: if the worker already proved unusable
+  // this session, Retry keeps using the reliable main-thread engine instead of
+  // re-failing through the worker again.
 }
 
 // Parses a STEP file (as an ArrayBuffer / TypedArray) and returns a THREE.Group
@@ -187,11 +224,11 @@ export function resetOcct() {
 // next camera move). No-op when omitted.
 export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
   if (onPhase) onPhase('engine');
-  await getWorkerReady();
 
-  // Normalize to a standalone ArrayBuffer we can hand to the worker's transfer
-  // list (zero-copy). Slice a TypedArray view to exactly its range so we transfer
-  // only these bytes and never detach a buffer the view might share.
+  // Normalize to a standalone ArrayBuffer once, up front — both the worker and the
+  // main-thread fallback consume it, and it must be handed off without detaching a
+  // buffer a view might share. Slice a TypedArray view to exactly its range so we
+  // only ever look at these bytes.
   let arrayBuffer;
   if (buf instanceof ArrayBuffer) {
     arrayBuffer = buf;
@@ -201,11 +238,42 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
     arrayBuffer = new Uint8Array(buf).buffer;
   }
 
-  if (onPhase) onPhase('parse');
-  // The parse runs in the worker; it transfers back per-mesh typed arrays. A
-  // bad-bytes failure rejects here with kind:'parse' (see postParse/protocol).
-  const meshes = await postParse(arrayBuffer);
+  // Parse to per-mesh typed arrays — off-thread via the worker when it's healthy,
+  // otherwise on the main-thread engine. Both sources yield the same mesh shape.
+  const meshes = await getMeshes(arrayBuffer, onPhase);
 
+  return buildGroup(meshes, edgeStyle, onEdgesReady);
+}
+
+// Resolve the parsed per-mesh typed arrays, preferring the off-thread worker and
+// falling back to the main-thread engine. The worker keeps orbit/gizmo/UI
+// responsive while a dense part decodes, but it is an OPTIMIZATION, never a hard
+// dependency: any engine/CDN/WASM/worker init failure — or a worker crash
+// mid-parse — permanently disables the worker for this session (see
+// `workerDisabled`) and we re-run on the proven pre-regression main-thread path,
+// so a model ALWAYS loads even where the worker can't. A genuine bad-bytes parse
+// failure (kind:'parse') is re-thrown untouched: the main thread would fail on the
+// same bytes identically, so retrying there would only double the work.
+async function getMeshes(arrayBuffer, onPhase) {
+  if (!workerDisabled) {
+    try {
+      await getWorkerReady();
+      if (onPhase) onPhase('parse');
+      return await postParse(arrayBuffer);
+    } catch (err) {
+      if (err && err.kind === 'parse') throw err; // bad STEP bytes — no fallback helps
+      disableWorker(); // engine/init failure or worker crash — degrade to main thread
+    }
+  }
+  if (onPhase) onPhase('parse');
+  return parseOnMainThread(arrayBuffer);
+}
+
+// Build the THREE.Group from the (worker- or main-thread-produced) per-mesh typed
+// arrays. Shared verbatim by both engines so the returned Group — geometry,
+// merged-by-colour draw calls, materials, userData, and deferred edge overlays —
+// is byte-for-byte identical no matter which engine parsed the STEP.
+function buildGroup(meshes, edgeStyle, onEdgesReady) {
   // Turn each occt result mesh into a THREE.BufferGeometry (+ its resolved color
   // and STEP sub-object name), computing normals where occt didn't supply them.
   const entries = meshes.map((resultMesh) => {
@@ -296,6 +364,100 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
   }
 
   return group;
+}
+
+// --- Main-thread fallback engine -------------------------------------------
+// The pre-regression path: inject occt-import-js as a classic <script>, call the
+// exposed global factory, and parse on the main thread. It blocks the UI while a
+// dense part decodes (which is exactly why the worker exists), but it needs no
+// Worker + importScripts + off-thread WASM, so it loads wherever the worker path
+// is blocked or broken. Reached only via getMeshes()/initOcct() once the worker
+// has been disabled, so the common case still parses off-thread.
+
+// Idempotent-per-call factory loader: resolves window.occtimportjs, injecting the
+// CDN <script> once if it isn't already present.
+function loadOcctFactoryMainThread() {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      reject(new Error('no DOM available for the main-thread occt fallback'));
+      return;
+    }
+    if (window.occtimportjs) {
+      resolve(window.occtimportjs);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = OCCT_BASE + 'occt-import-js.js';
+    script.onload = () => {
+      if (window.occtimportjs) resolve(window.occtimportjs);
+      else reject(new Error('occt-import-js loaded but did not expose a factory'));
+    };
+    script.onerror = () => reject(new Error('Failed to load occt-import-js from CDN'));
+    document.head.appendChild(script);
+  });
+}
+
+// Load + init the main-thread WASM engine exactly once, cached. locateFile points
+// at the same CDN dir so the sibling .wasm resolves. A failure rejects with
+// kind:'init' and clears the cache so a later attempt retries the download.
+function initOcctMainThread() {
+  if (!mainThreadOcctPromise) {
+    mainThreadOcctPromise = loadOcctFactoryMainThread()
+      .then((factory) => factory({ locateFile: (path) => OCCT_BASE + path }))
+      .catch((err) => {
+        mainThreadOcctPromise = null; // allow a retry on the next attempt
+        const e = err instanceof Error ? err : new Error(String(err));
+        e.kind = 'init';
+        throw e;
+      });
+  }
+  return mainThreadOcctPromise;
+}
+
+// Parse STEP bytes on the main thread and return the SAME per-mesh typed-array
+// shape the worker posts back, so buildGroup consumes either engine identically.
+// Bad bytes reject with kind:'parse'; engine/CDN/WASM failures surface (via
+// initOcctMainThread) with kind:'init'.
+async function parseOnMainThread(arrayBuffer) {
+  const occt = await initOcctMainThread();
+  const result = occt.ReadStepFile(new Uint8Array(arrayBuffer), null);
+  if (!result || !result.success) {
+    const e = new Error('occt ReadStepFile failed to parse the STEP data');
+    e.kind = 'parse';
+    throw e;
+  }
+  return result.meshes.map(repackResultMesh);
+}
+
+// Repack one occt result mesh into the { position, normal, index, color, name }
+// typed-array shape the worker transfers back (see step.worker.js), so buildGroup
+// is fed byte-for-byte the same structure from either engine.
+function repackResultMesh(rm) {
+  const position = Float32Array.from(rm.attributes.position.array);
+
+  let normal = null;
+  if (rm.attributes.normal && rm.attributes.normal.array) {
+    normal = Float32Array.from(rm.attributes.normal.array);
+  }
+
+  let index = null;
+  if (rm.index && rm.index.array) {
+    index = Uint32Array.from(rm.index.array);
+  }
+
+  let color = null;
+  if (rm.color && rm.color.length >= 3) {
+    color = Float32Array.from([rm.color[0], rm.color[1], rm.color[2]]);
+  }
+
+  return { position, normal, index, color, name: rm.name || '' };
+}
+
+// Permanently route to the main-thread engine for the rest of the session and tear
+// down the (broken) worker so nothing keeps awaiting it.
+function disableWorker() {
+  workerDisabled = true;
+  teardownWorker();
 }
 
 // A stable key for a geometry's mergeability: sorted attribute names plus whether
