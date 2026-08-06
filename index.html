@@ -33,6 +33,18 @@
         document.documentElement.setAttribute('data-contrast', c);
       }
     } catch (e) {}
+    // Embed mode: when the viewer is loaded with the `embed` flag — a hash key
+    // (#…&embed=1, layered on the deep-link state) or a ?embed query param —
+    // tag <html> with .embed BEFORE first paint so the chrome-hiding CSS below
+    // applies immediately (no flash of header/gallery/HUD that then vanishes).
+    // Presence-only: `embed`, `embed=1`, etc. all count.
+    try {
+      var hp = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+      var sp = new URLSearchParams(location.search || '');
+      if (hp.get('embed') != null || sp.get('embed') != null) {
+        document.documentElement.classList.add('embed');
+      }
+    } catch (e) {}
   </script>
   <style>
     :root { color-scheme: dark; }
@@ -81,6 +93,18 @@
        mouse click leaves it ring-free via :focus-visible. */
     #app:focus { outline: none; }
     #app:focus-visible { outline: 2px solid #4f9dff; outline-offset: -2px; }
+    /* --- Embed mode ------------------------------------------------------------
+       When the viewer is opened with the `embed` flag (hash key or query param,
+       detected pre-paint by the head script which adds .embed to <html>), strip
+       the non-essential chrome so a small embedded <iframe> shows just the
+       interactive model + orientation gizmo. The canvas (#app) and the gizmo
+       (drawn as a canvas overlay pass, not a DOM node) are left untouched, and
+       OrbitControls stay attached, so orbit / zoom / pan keep working inside the
+       frame. The shared sample + camera state is still honored (parseHash runs
+       regardless of embed), so the frame opens at the intended view. */
+    :root.embed header,
+    :root.embed #bottom-cluster,
+    :root.embed #model-info { display: none !important; }
     header { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
       display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .6rem 1rem;
       background: linear-gradient(#0e1116cc, #0e111600); pointer-events: none; }
@@ -105,7 +129,7 @@
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
     #contrast-btn:focus-visible, #save-btn:focus-visible, #export-btn:focus-visible,
-    #share-btn:focus-visible,
+    #share-btn:focus-visible, #embed-btn:focus-visible,
     #help-btn:focus-visible, #help-close:focus-visible, #gallery .sample:focus-visible,
     #share-fallback-close:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
@@ -129,17 +153,17 @@
     #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
-    #fit-btn, #save-btn, #export-btn, #share-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+    #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
       color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .35rem .7rem; }
-    #save-btn, #export-btn, #share-btn { display: inline-flex; align-items: center; gap: .35rem; }
-    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover { background: #232a35; border-color: #3a4150; }
+    #save-btn, #export-btn, #share-btn, #embed-btn { display: inline-flex; align-items: center; gap: .35rem; }
+    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover { background: #232a35; border-color: #3a4150; }
     /* Non-shareable state: a user-opened file has no restorable link, so the
        button is disabled (updateShareState) — dim it and drop the pointer. The
        Export GLB button is disabled the same way until a real model is loaded
        (updateExportState). */
-    #share-btn:disabled, #export-btn:disabled { opacity: .5; cursor: not-allowed; }
-    #share-btn:disabled:hover, #export-btn:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
+    #share-btn:disabled, #export-btn:disabled, #embed-btn:disabled { opacity: .5; cursor: not-allowed; }
+    #share-btn:disabled:hover, #export-btn:disabled:hover, #embed-btn:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
     /* High-contrast toggle — a header control mirroring the neutral fit/wireframe
        buttons (icon-collapsible on narrow screens). aria-pressed reflects whether
        high contrast is active; when pressed it borrows the same accent on-state
@@ -353,7 +377,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -374,11 +398,11 @@
       header { gap: .5rem; padding: .5rem .75rem; }
       #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
       #contrast-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
-      #share-btn .btn-label { display: none; }
+      #share-btn .btn-label, #embed-btn .btn-label { display: none; }
       #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
       #contrast-btn .btn-icon, #save-btn .btn-icon, #export-btn .btn-icon,
-      #share-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn { min-width: 44px; padding: .4rem;
+      #share-btn .btn-icon, #embed-btn .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
     }
@@ -427,6 +451,17 @@
          🔗 glyph under the same 600px / coarse-pointer rules as the other header
          buttons. Starts disabled — no model is loaded at first paint. -->
     <button id="share-btn" type="button" disabled title="Copy a shareable link to this view (gallery samples only)" aria-label="Copy shareable link" data-i18n-attr="title:shareTitle;aria-label:shareAria"><span class="btn-icon" aria-hidden="true">🔗</span><span class="btn-label" data-i18n="shareLabel">Copy link</span></button>
+    <!-- Copy-embed-code control. Composes a ready-to-paste <iframe> snippet whose
+         src is the ABSOLUTE public GitHub Pages viewer URL (canonical og:url
+         origin) plus the current view state and the `embed` flag, with sensible
+         default width/height, loading="lazy", style="border:0", and a per-model
+         title for accessibility (see copyEmbedCode / buildEmbedSnippet). Like
+         Copy link it only works for restorable bundled samples — a user-opened
+         local blob can't be reconstructed remotely — so it's disabled while such
+         a file is on screen (updateEmbedState). Collapses to the <> glyph under
+         the same 600px / coarse-pointer rules as the other header buttons.
+         Starts disabled — no model is loaded at first paint. -->
+    <button id="embed-btn" type="button" disabled title="Only gallery samples can be embedded — open a sample to get embed code" aria-label="Copy embed code" data-i18n-attr="title:embedTitleDisabled;aria-label:embedAria"><span class="btn-icon" aria-hidden="true">&lt;&gt;</span><span class="btn-label" data-i18n="embedLabel">Copy embed code</span></button>
     <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file" data-i18n-attr="title:openTitle;aria-label:openAria"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label" data-i18n="openLabel">Open STEP file…</span></button>
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
@@ -540,6 +575,11 @@
     applyStaticI18n();
 
     const app = document.getElementById('app');
+    // Embed mode was resolved pre-paint by the head script (it added .embed to
+    // <html> when the `embed` flag is present in the hash/query). Read it back
+    // here so JS paths — the hash writer (keep the flag) and the copy-embed
+    // action — can branch on it. The chrome hiding itself is pure CSS.
+    const EMBED_MODE = document.documentElement.classList.contains('embed');
     // alpha:true so the canvas clears transparent — the page's radial-vignette
     // backdrop (CSS on html/body) shows through behind the model instead of a
     // flat opaque scene color, giving the scene depth.
@@ -1094,6 +1134,7 @@
         currentSampleFile = null;
         writeHash();
         updateShareState(); // a user file isn't shareable — disable the copy-link button
+        updateEmbedState(); // …nor embeddable — disable the copy-embed-code button
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = t('couldNotLoadConsole', { label: file.name });
@@ -1164,7 +1205,12 @@
       const p = camera.position;
       const tg = controls.target;
       const c = [p.x, p.y, p.z, tg.x, tg.y, tg.z].map(roundSig).join(',');
-      const hash = `#m=${encodeURIComponent(currentSampleFile)}&c=${c}`;
+      // Preserve the `embed` flag across camera-settle rewrites so an embedded
+      // frame's own URL stays a valid embed link (this replaceState would
+      // otherwise drop the flag the head script read at startup). Detecting
+      // embed mode from the <html> class avoids re-parsing the hash each write.
+      const embedSuffix = EMBED_MODE ? '&embed=1' : '';
+      const hash = `#m=${encodeURIComponent(currentSampleFile)}&c=${c}${embedSuffix}`;
       history.replaceState(null, '', hash);
     }
 
@@ -1248,6 +1294,7 @@
         currentSampleFile = sample.file;
         writeHash();
         updateShareState(); // a bundled sample is shareable — enable the copy-link button
+        updateEmbedState(); // …and embeddable — enable the copy-embed-code button
         // Highlight the pill for the model now on screen.
         buttons.forEach((b) => {
           const active = b.dataset.file === sample.file;
@@ -1559,8 +1606,10 @@
     // so the button is disabled while such a file is on screen (updateShareState),
     // with a title that says why.
     const shareBtn = document.getElementById('share-btn');
+    const embedBtn = document.getElementById('embed-btn');
     const shareFallback = document.getElementById('share-fallback');
     const shareFallbackUrl = document.getElementById('share-fallback-url');
+    const shareFallbackLabel = document.getElementById('share-fallback-label');
     const shareFallbackClose = document.getElementById('share-fallback-close');
 
     // Reflect whether the on-screen model is a shareable bundled sample. Called
@@ -1575,11 +1624,14 @@
       shareBtn.setAttribute('aria-label', label);
     }
 
-    // Manual-copy fallback: surface the link in a selectable, auto-focused field
+    // Manual-copy fallback: surface the text in a selectable, auto-focused field
     // so a non-secure context (no navigator.clipboard) or a rejected write never
-    // loses the link silently.
-    function showShareFallback(url) {
-      shareFallbackUrl.value = url;
+    // loses it silently. Shared by both the copy-link and copy-embed-code paths;
+    // labelKey swaps the field's instruction ("Copy this link:" vs "Copy this
+    // embed code:") so the panel reads correctly for whichever action opened it.
+    function showShareFallback(text, labelKey) {
+      shareFallbackLabel.textContent = t(labelKey || 'shareFallbackLabel');
+      shareFallbackUrl.value = text;
       shareFallback.hidden = false;
       shareFallbackUrl.focus();
       shareFallbackUrl.select();
@@ -1637,7 +1689,98 @@
       copiedTimer = setTimeout(() => { shareLabelEl.textContent = original; }, 1800);
     }
 
+    // --- Copy embed code (header <> button) ------------------------------------
+    // Compose a ready-to-paste <iframe> snippet so people writing docs / blogs /
+    // wikis can drop the live viewer inline. The snippet is fully self-contained
+    // and points ONLY at the public GitHub Pages origin (canonical og:url) — no
+    // backend, no build step — so pasting it into any plain HTML page renders a
+    // working embedded viewer. Like Copy link it's only offered for restorable
+    // bundled samples (a user-opened local blob can't be reconstructed remotely),
+    // so the button is disabled while such a file is on screen (updateEmbedState).
+
+    // Escape a string for safe use inside a double-quoted HTML attribute in the
+    // generated snippet (the model label flows into the title attribute).
+    const escapeAttr = (s) => String(s)
+      .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Canonical public base URL for the embed src: prefer the og:url meta (the
+    // published GitHub Pages URL) so a snippet copied from a local/dev checkout
+    // still points at the public origin; fall back to the live origin+path if the
+    // meta is missing. Any existing hash on the meta value is stripped — the
+    // current view hash is appended by buildEmbedUrl.
+    function canonicalBase() {
+      try {
+        const meta = document.querySelector('meta[property="og:url"]');
+        if (meta && meta.content) return meta.content.replace(/#.*$/, '');
+      } catch (e) {}
+      return location.origin + location.pathname;
+    }
+
+    // Absolute viewer URL for the embed src: the canonical public base + the
+    // current view hash (sample key + camera, refreshed from the live camera) +
+    // the `embed` flag so the framed viewer opens chrome-less at the intended
+    // view. writeHash first syncs the hash to the CURRENT camera so the embed
+    // link is never a stale debounced value.
+    function buildEmbedUrl() {
+      writeHash();
+      let hash = location.hash; // '#m=<file>&c=<coords>' (+ '&embed=1' if already embedded)
+      if (!/(^|[#&])embed(=|&|$)/.test(hash)) hash += '&embed=1';
+      return canonicalBase() + hash;
+    }
+
+    // The pasteable <iframe> snippet: absolute public src, sensible default
+    // dimensions, lazy loading, no border, and a per-model title for a11y.
+    function buildEmbedSnippet() {
+      const url = buildEmbedUrl();
+      const title = t('embedIframeTitle', { label: currentModelLabel || t('appName') });
+      return `<iframe src="${escapeAttr(url)}" width="640" height="480" `
+        + `loading="lazy" style="border:0" title="${escapeAttr(title)}"></iframe>`;
+    }
+
+    // Reflect whether the on-screen model is an embeddable bundled sample. Mirrors
+    // updateShareState (called from the same load/init sites): disable + retitle
+    // the button while a non-restorable user file is on screen.
+    function updateEmbedState() {
+      const embeddable = !!currentSampleFile;
+      embedBtn.disabled = !embeddable;
+      embedBtn.title = embeddable ? t('embedTitle') : t('embedTitleDisabled');
+      embedBtn.setAttribute('aria-label', embeddable ? t('embedAria') : t('embedTitleDisabled'));
+    }
+
+    async function copyEmbedCode() {
+      if (!currentSampleFile) return; // guard: only bundled samples are embeddable
+      const snippet = buildEmbedSnippet();
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(snippet);
+          showToast(t('embedCopied'), true); // role=alert announces success to AT
+          flashEmbedCopied();
+          return;
+        }
+      } catch (err) {
+        console.warn('Clipboard write failed:', err);
+      }
+      // No Clipboard API, or the write was rejected — surface the snippet in the
+      // selectable manual-copy fallback (same channel as Copy link).
+      showShareFallback(snippet, 'embedFallbackLabel');
+    }
+    embedBtn.addEventListener('click', copyEmbedCode);
+
+    // Transient "Copied!" swap on the embed button's visible label (hidden at
+    // narrow widths, so the toast above is the primary confirmation).
+    const embedLabelEl = embedBtn.querySelector('.btn-label');
+    let embedCopiedTimer = null;
+    function flashEmbedCopied() {
+      if (!embedLabelEl) return;
+      const original = t('embedLabel');
+      embedLabelEl.textContent = t('shareCopiedShort');
+      clearTimeout(embedCopiedTimer);
+      embedCopiedTimer = setTimeout(() => { embedLabelEl.textContent = original; }, 1800);
+    }
+
     updateShareState(); // reflect the initial (no-model) disabled state
+    updateEmbedState();
 
     // --- Shortcuts help dialog (header "?" button + `?` key) ---
     // Native <dialog>.showModal() gives Escape-to-close and focus trapping for
