@@ -565,6 +565,12 @@
       color: var(--on-fg); background: var(--on-fill); border: 1px solid var(--accent);
       border-radius: 5px; padding: .12rem .35rem; }
     .help-list .d { color: var(--ctrl-fg-2); }
+    /* Touch-gesture rows (issue #105) are only meaningful on touch-capable
+       devices, so hide them by default and reveal them when any pointer is
+       coarse (covers phones, tablets, and hybrid touch laptops). display:flex
+       matches the base `.help-list li` layout when shown. */
+    .help-list .touch-only { display: none; }
+    @media (any-pointer: coarse) { .help-list .touch-only { display: flex; } }
     /* Header buttons carry both a text label and an icon glyph. The label shows on
        wide screens; the icon is swapped in on compact/narrow screens (see the
        max-width:600px block) so each collapsed control keeps a recognizable glyph
@@ -573,6 +579,13 @@
        text collapses to the icon. */
     .btn-icon { display: none; font-size: 1rem; line-height: 1; }
     canvas { display: block; }
+    /* The WebGL canvas owns every touch gesture (issue #105): touch-action:none
+       stops the browser from claiming taps/drags for its own scroll and
+       double-tap-to-zoom, so orbit / pinch / two-finger pan and the custom
+       double-tap-to-fit detector all get clean events. OrbitControls sets this
+       on renderer.domElement too; asserting it in CSS keeps it true even before
+       controls attach and independent of the library. */
+    #app canvas { touch-action: none; }
     /* Bottom cluster — gallery and hint share ONE stacked container so they can
        never overlap, no matter how far the pills wrap on narrow screens. Column
        flow (gallery above hint) with a fixed gap guarantees separation; the
@@ -1157,6 +1170,12 @@
     <ul class="help-list">
       <li><span class="k" data-i18n="kDrag">Drag</span><span class="d" data-i18n="descOrbitModel">Orbit the model</span></li>
       <li><span class="k" data-i18n="kScroll">Scroll</span><span class="d" data-i18n="descZoom">Zoom in / out</span></li>
+      <!-- Touch gestures (issue #105) — shown only on coarse-pointer / touch
+           devices via the .touch-only rule so they're discoverable where they
+           apply without cluttering the desktop shortcut list. -->
+      <li class="touch-only"><span class="k" data-i18n="kDoubleTap">Double-tap</span><span class="d" data-i18n="descDoubleTap">Fit / reset view</span></li>
+      <li class="touch-only"><span class="k" data-i18n="kTwoFinger">Two-finger drag</span><span class="d" data-i18n="descTwoFinger">Pan the view</span></li>
+      <li class="touch-only"><span class="k" data-i18n="kPinch">Pinch</span><span class="d" data-i18n="descPinch">Zoom in / out</span></li>
       <!-- Keyboard camera controls — active while the 3D view (Tab to it) is
            focused; the arrows orbit, +/- dolly, Shift+arrows pan, Home re-fits. -->
       <li><span class="k">←</span><span class="k">→</span><span class="k">↑</span><span class="k">↓</span><span class="d" data-i18n="descOrbitCamera">Orbit camera (view focused)</span></li>
@@ -1425,6 +1444,14 @@
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    // Make the touch gesture map explicit rather than relying on OrbitControls'
+    // defaults (issue #105): one finger orbits, two fingers dolly + pan together
+    // (DOLLY_PAN) so pinch-zoom and two-finger drag both work from the same
+    // gesture. Documented in the help dialog's touch-gesture rows. OrbitControls
+    // also sets touch-action:none on renderer.domElement so these gestures are
+    // captured cleanly instead of triggering the browser's scroll / double-tap
+    // zoom (the canvas CSS asserts the same, belt-and-braces).
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
     // Image-based lighting: a prefiltered RoomEnvironment gives every surface a
     // soft studio reflection so curvature reads instead of a flat monochrome
@@ -4080,8 +4107,53 @@
     // --- Reset / fit view (button, `F` key, double-click canvas) ---
     document.getElementById('fit-btn').addEventListener('click', fitView);
     // Double-click re-fits — but not while measuring, where two quick clicks are a
-    // pair of measurement picks, not a fit gesture.
-    renderer.domElement.addEventListener('dblclick', () => { if (!measureMode) fitView(); });
+    // pair of measurement picks, not a fit gesture. On hybrid touch+mouse devices
+    // a touch double-tap can still emit a synthetic dblclick; suppressDblclickUntil
+    // (set by the touch handler below) swallows it so the fit never double-fires.
+    renderer.domElement.addEventListener('dblclick', () => {
+      if (measureMode) return;
+      if (performance.now() < suppressDblclickUntil) return;
+      fitView();
+    });
+
+    // --- Touch double-tap to fit (issue #105) --------------------------------
+    // dblclick is unreliable on touchscreens — many mobile browsers suppress or
+    // debounce the synthetic event and it collides with the browser's own
+    // double-tap-to-zoom — so touch gets its own detector off touchend timing.
+    // Two clean single-finger taps within DBLTAP_MS and DBLTAP_PX of each other
+    // call fitView(). Any multi-touch lift (pinch / two-finger pan) is ignored
+    // and resets the pending tap, so a fit can never fire mid-gesture. The canvas
+    // carries touch-action:none (CSS + OrbitControls), so the browser's native
+    // double-tap-zoom is already suppressed; preventDefault() on the second tap is
+    // a belt-and-braces guard for stragglers.
+    const DBLTAP_MS = 300;   // max gap between the two taps
+    const DBLTAP_PX = 30;    // max movement between taps (single finger)
+    let lastTapTime = 0;
+    let lastTapX = 0, lastTapY = 0;
+    let suppressDblclickUntil = 0;  // ignore synthetic dblclick until this time
+    renderer.domElement.addEventListener('touchend', (e) => {
+      // Only a clean single-finger lift with no fingers still down is a tap:
+      // anything else is (the tail of) a pinch / two-finger gesture — drop it and
+      // cancel any pending first tap so the pair can't span a gesture.
+      if (e.touches.length > 0 || e.changedTouches.length !== 1 || measureMode) {
+        lastTapTime = 0;
+        return;
+      }
+      const touch = e.changedTouches[0];
+      const now = performance.now();
+      const dt = now - lastTapTime;
+      const moved = Math.hypot(touch.clientX - lastTapX, touch.clientY - lastTapY);
+      if (lastTapTime && dt < DBLTAP_MS && moved < DBLTAP_PX) {
+        e.preventDefault();                 // stop any native double-tap-to-zoom
+        suppressDblclickUntil = now + 700;  // swallow the trailing synthetic dblclick
+        lastTapTime = 0;                    // consume the pair; a 3rd tap starts fresh
+        fitView();
+      } else {
+        lastTapTime = now;
+        lastTapX = touch.clientX;
+        lastTapY = touch.clientY;
+      }
+    }, { passive: false });
 
     // --- Keyboard-driven camera navigation -----------------------------------
     // OrbitControls only listens to pointer/wheel events, so a keyboard-only user
