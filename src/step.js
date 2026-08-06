@@ -564,6 +564,24 @@ export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { co
   // yield the same `{ meshes, root }` shape.
   const { meshes, root } = await getMeshes(arrayBuffer, reader, onPhase);
 
+  // No-renderable-geometry guard (issue #97): a file can parse cleanly yet carry
+  // nothing tessellable — wireframe/surfaces-only, a datum/annotation export, or an
+  // assembly of empty references — in which case the engine reports success with an
+  // empty (or all-zero-vertex) mesh list. Building an empty THREE.Group here would
+  // let showStepFromArrayBuffer tear down the current model and swap in a blank
+  // scene with a success-worded hint and no signal that the file held nothing to
+  // draw. Detect it and throw a distinctly-tagged error (kind:'empty') so the UI
+  // can route it like a per-file parse error (transient toast) — and, because the
+  // throw happens before any teardown, the previously loaded model stays on screen.
+  const hasRenderableGeometry =
+    Array.isArray(meshes) &&
+    meshes.some((m) => m && m.position && m.position.length > 0);
+  if (!hasRenderableGeometry) {
+    const e = new Error('parsed OK but contains no solid geometry');
+    e.kind = 'empty';
+    throw e;
+  }
+
   const group = buildGroup(meshes, root, edgeStyle, onEdgesReady);
 
   // Native length unit (issue #95): STEP declares its length unit as plain

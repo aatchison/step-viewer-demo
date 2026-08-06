@@ -192,6 +192,11 @@ const messages = {
     couldNotLoadConsole: 'Could not load {label} — see console',
     notStepFile: '{name} is not a supported CAD file (.step, .stp, .iges, .igs, .brep, .brp)',
 
+    // --- Multi-file drop / selection (issue #99) ---
+    noValidInSet: 'No supported CAD file (.step, .stp, .iges, .igs, .brep, .brp) in the {count} dropped item(s)',
+    multiDropQueued: '{count} files added to the gallery — click a pill to switch between them',
+    droppedTitle: 'Loaded file: {name}',
+
     // --- Large-file size guard ---
     sizeSoftWarn: '{label} is large ({size}) — parsing may be slow.',
     sizeHardConfirm:
@@ -211,6 +216,10 @@ const messages = {
     errHttp: 'Could not load {label} — the file could not be fetched ({message}).',
     errParse:
       'Could not load {label} — the file could not be parsed; it may be invalid or an unsupported CAD variant.',
+    errEmpty:
+      'Could not display {label} — the file parsed successfully but contains no solid geometry (it may be surfaces/wireframe or an empty assembly).',
+    errDegenerate:
+      'Could not display {label} — the parsed geometry has invalid (non-finite) coordinates, so it cannot be framed. The previous model was kept.',
     errGeneric: 'Could not load {label} — the file may be invalid or unsupported.',
 
     // --- Model-info HUD ---

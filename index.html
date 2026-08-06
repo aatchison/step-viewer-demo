@@ -773,6 +773,12 @@
     #gallery .sample.is-active { color: var(--on-fg); background: var(--on-fill);
       border-color: var(--accent); }
     #gallery .sample:disabled { opacity: .5; cursor: progress; }
+    /* Temporary File-backed pills from a multi-file drop/selection (issue #99).
+       Dashed border signals "session-only, not a bundled sample"; the file name
+       is clamped so a long name can't blow out the wrapped strip at 360/390px. */
+    #gallery .sample.dropped { border-style: dashed;
+      max-width: min(42vw, 12rem); overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; }
     /* Standard-view preset cluster — a fixed vertical toolbar on the left edge,
        vertically centered so it clears the header (top), the top-right gizmo +
        model-info HUD, and the centered bottom cluster at every width. The
@@ -977,7 +983,7 @@
          preference by the module script). Bound to the `T` key. -->
     <button id="theme-btn" type="button" title="Toggle light / dark theme (T)" aria-label="Toggle light and dark theme" aria-pressed="false" data-i18n-attr="title:themeTitle;aria-label:themeAria"><span class="tb-glyph" aria-hidden="true">🌙</span></button>
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
-    <input id="file-input" type="file" accept=".step,.stp,.igs,.iges,.brp,.brep" hidden />
+    <input id="file-input" type="file" accept=".step,.stp,.igs,.iges,.brp,.brep" multiple hidden />
   </header>
   <!-- Standard-view preset cluster: one-click canonical camera viewpoints
        (Front/Back/Top/Bottom/Right/Left/Iso) for CAD-style inspection. A fixed
@@ -1204,6 +1210,24 @@
     // message builder below reads t(), and before the hint is composed, so the
     // whole UI renders in the chosen locale from first module execution.
     applyStaticI18n();
+
+    // --- Offline / CDN-blip resilience (service worker) -----------------------
+    // Every core dep loads from jsdelivr at runtime (three + addons, occt .js/
+    // .wasm) and samples from the origin, so a reload while offline — or during a
+    // transient CDN blip — would otherwise die on a blank engine-error panel. A
+    // static, same-origin sw.js precaches the pinned URLs and serves them cache-
+    // first (see sw.js), so a warm reload renders fully offline. Feature-detected
+    // and guarded so it's a hard no-op where unsupported (file://, old browsers,
+    // insecure contexts — navigator.serviceWorker only exists in a secure context)
+    // and never allowed to throw into app startup. Registered on 'load' so it
+    // doesn't contend with the initial multi-MB three.js + WASM download.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch((err) => {
+          console.warn('Service worker registration failed (offline cache disabled):', err);
+        });
+      });
+    }
 
     // Accepted CAD file extensions, shared by the drop guard and the file-picker
     // reject path so both stay in lockstep with what src/step.js can actually
@@ -1621,6 +1645,10 @@
     // Compact dimension formatting: whole numbers past 100, one decimal past 10,
     // two below — keeps a tiny 0.80 gear and a 250 block both legible.
     function fmtDim(n) {
+      // Never render 'NaN'/'Infinity' in the HUD or measurement read-outs: a
+      // non-finite dimension (degenerate/corrupt geometry, issue #98) collapses
+      // to a neutral em-dash placeholder instead of leaking the raw token.
+      if (!Number.isFinite(n)) return '—';
       const a = Math.abs(n);
       if (a >= 100) return Math.round(n).toString();
       if (a >= 10) return n.toFixed(1);
@@ -1778,6 +1806,8 @@
       if (kind === 'init') return t('errInit', { label });
       if (kind === 'http') return t('errHttp', { label, message: err.message });
       if (kind === 'parse') return t('errParse', { label });
+      if (kind === 'empty') return t('errEmpty', { label });
+      if (kind === 'degenerate') return t('errDegenerate', { label });
       return t('errGeneric', { label });
     }
 
@@ -1841,6 +1871,18 @@
     // dimension is tighter (the horizontal one when aspect < 1). The 1.18 is
     // headroom padding. Extracted so the named-view presets (applyView) frame at
     // exactly the same distance as a Fit — only the direction differs.
+    // Finiteness guards for degenerate geometry (issue #98). A partial/malformed
+    // parse can report success yet carry NaN/±Infinity vertex positions; the
+    // resulting Box3 is NOT empty, so isEmpty() misses it. isFiniteVec checks a
+    // Vector3's three components; isFiniteBox checks a Box3's min/max corners
+    // (its own getSize/getCenter are then guaranteed finite too).
+    function isFiniteVec(v) {
+      return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+    }
+    function isFiniteBox(box) {
+      return !box.isEmpty() && isFiniteVec(box.min) && isFiniteVec(box.max);
+    }
+
     function fitDistanceForRadius(radius) {
       const fovV = camera.fov * Math.PI / 180;
       const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
@@ -1854,6 +1896,14 @@
       if (box.isEmpty()) return;
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
+      // Non-finite guard (issue #98): a subtly-malformed parse can yield NaN/±Inf
+      // vertex positions, giving a box that is NOT empty but whose size/center are
+      // non-finite. Framing on it would set camera.position/near/far to NaN and
+      // render the scene black with no recovery. Bail on the same contract as the
+      // empty-box early return — leave the camera/controls/object untouched. The
+      // swap path (showStepFromArrayBuffer) also pre-checks and aborts before this,
+      // so this is a defensive second line for any other frameObject caller.
+      if (!isFiniteVec(size) || !isFiniteVec(center)) return;
       obj.position.sub(center); // recenter at origin
 
       // Drop the ground grid to the (now recentered) model's base and size it to
@@ -2613,6 +2663,22 @@
       // `ext` selects the occt reader (STEP / IGES / BREP) inside the loader; the
       // rest of the swap path is format-agnostic (all three yield the same meshes).
       const model = await loadCadFromArrayBuffer(buf, ext, onPhase, currentEdgeStyle(), invalidate);
+      // Non-finite bounding-box guard (issue #98): a partial/subtly-malformed file
+      // can parse to success yet carry NaN/±Infinity vertex positions. The empty-
+      // geometry guard (#97) in the loader only catches a zero-vertex mesh list —
+      // a box built from NaN coordinates is NOT empty, so it slips through. If we
+      // let it reach frameObject it would set camera.position/near/far to NaN and
+      // black out the scene with no recovery. Check the parsed group's Box3 HERE,
+      // before any teardown: if it's non-finite, throw kind:'degenerate' so the
+      // catch surfaces a toast and the previous model/placeholder + active pill are
+      // all preserved (nothing below runs — no dispose, no camera move).
+      const parsedBox = new THREE.Box3().setFromObject(model);
+      if (!isFiniteBox(parsedBox)) {
+        disposeGroup(model); // free the just-built (unusable) GPU buffers; not added to the scene
+        const e = new Error('parsed geometry has non-finite bounding box');
+        e.kind = 'degenerate';
+        throw e;
+      }
       // Only tear down the old scene contents once the new parse succeeds.
       if (placeholder.parent) {
         scene.remove(placeholder);
@@ -2671,22 +2737,38 @@
       hint.textContent = t('loadedHint', { label, zoom: zoomHint });
     }
 
-    // --- Large-file guard ------------------------------------------------------
-    // Byte-size thresholds checked on EVERY load entry point before the buffer is
-    // handed to the parser (File.size for open/drag-drop, ArrayBuffer.byteLength
-    // for the fetched sample). occt-import-js parses against the tab's memory
-    // budget, so a multi-hundred-MB drop can exhaust memory or lock the tab with
-    // no warning. These constants are the single source of truth so open,
-    // drag-drop, and gallery-sample loads behave identically. Pure length checks
-    // against the buffer already in hand — no backend, no streaming.
-    const SOFT_LIMIT_BYTES = 40 * 1024 * 1024;   // 40 MB — non-blocking warn, then parse
-    const HARD_LIMIT_BYTES = 150 * 1024 * 1024;  // 150 MB — explicit confirm before parsing
+    // --- Large-file guard (issues #90, #100) -----------------------------------
+    // occt-import-js reads a whole file into memory and tessellates it against the
+    // tab's memory budget, so a multi-hundred-MB STEP (common for full assemblies)
+    // can spike memory and freeze the tab for tens of seconds behind the spinner —
+    // indistinguishable from a hang — or OOM the WASM heap outright. Guard on the
+    // user-supplied byte size BEFORE the blob is read/parsed. This is a pure,
+    // client-side length check (File.size needs no read) — no backend, no streaming,
+    // zero-build.
+    //
+    // Applies ONLY to user File objects (open / drag-drop / the switchable pills of
+    // a multi-file drop, all of which read through loadFile). The bundled gallery
+    // samples are deliberately NOT gated (issue #100): they are known-small, shipped
+    // fetches, not user Files, so prompting on them would be pure noise.
+    //
+    // Two tiers so the feedback is proportionate:
+    //   • SOFT (≥ 40 MB): a non-blocking toast — "getting large, may be slow" — then
+    //     parse anyway. Purely informational.
+    //   • HARD (≥ 50 MB): a blocking confirm() naming the file + size in MB; parse
+    //     ONLY on confirm. This is the LARGE_FILE threshold issue #100 calls out —
+    //     50 MB is where a synchronous main-thread parse starts risking multi-second
+    //     freezes / OOM on modest devices, so it's the defensible line to make the
+    //     user reconsider. A cancel returns false and the caller must be a true
+    //     no-op (no read, no spinner, current model untouched — see loadFile).
+    const SOFT_LIMIT_BYTES = 40 * 1024 * 1024;  // 40 MB — non-blocking warn, then parse
+    const HARD_LIMIT_BYTES = 50 * 1024 * 1024;  // 50 MB — explicit confirm before parsing
     const fmtMB = (bytes) => `${Math.round(bytes / (1024 * 1024))} MB`;
 
     // Gate a load by byte size. Returns true to proceed, false to abort (the
-    // caller must leave the current model untouched). Soft-over: surface a
-    // non-blocking toast via the existing channel, then proceed. Hard-over:
-    // require an explicit confirm(); a cancel returns false so nothing is parsed.
+    // caller must leave the current model, hint, and spinner untouched). Soft-over:
+    // surface a non-blocking toast via the existing channel, then proceed.
+    // Hard-over: require an explicit confirm(); a cancel returns false so nothing
+    // is read or parsed.
     function guardFileSize(bytes, label) {
       if (bytes >= HARD_LIMIT_BYTES) {
         return window.confirm(t('sizeHardConfirm', { label, size: fmtMB(bytes) }));
@@ -2885,14 +2967,10 @@
           throw e;
         }
         const buf = await res.arrayBuffer();
-        // Guard on the fetched buffer's byteLength before parsing. A hard-limit
-        // cancel returns; the finally block clears the loader/spinner and
-        // re-enables the gallery, leaving the current model untouched. Restore the
-        // prior hint so a stale "Loading…" line can't linger past the cancel.
-        if (!guardFileSize(buf.byteLength, sample.label)) {
-          if (currentModel) hint.textContent = t('loadedHint', { label: currentModelLabel, zoom: zoomHint });
-          return;
-        }
+        // NOTE (issue #100): bundled gallery samples are intentionally NOT run
+        // through guardFileSize. They are known-small assets we ship and fetch (not
+        // user-supplied File objects), so a size prompt here would only be noise —
+        // the guard exists to protect the tab from arbitrarily large USER files.
         // Derive the reader from the bundled file name (the label is localized and
         // has no extension) so an .iges/.brep sample routes to the right occt reader.
         await showStepFromArrayBuffer(buf, sample.label, extOf(sample.file), onPhase, camState);
@@ -3963,12 +4041,97 @@
       invalidate();
     });
 
+    // --- Multi-file intake (issue #99) -----------------------------------------
+    // BOTH entry points — the file picker and full-window drag-drop — used to keep
+    // only files[0], silently discarding the rest of a multi-file drop/selection
+    // with no signal. They now funnel through ingestFiles(), which filters the set
+    // to the CAD extensions occt reads (the same CAD_EXT_RE the single-file guard
+    // uses) and then, uniformly for both sources:
+    //   • 0 valid  → reject the whole set — the lone-file wording for a single
+    //                wrong-extension file, a count-aware line for a larger set.
+    //   • 1 valid  → load it exactly as before (no queue to switch between).
+    //   • >1 valid → load the first AND render every valid file as a temporary
+    //                gallery pill (reusing the .sample markup, backed by the
+    //                in-memory File) so the user can switch between them without
+    //                re-dropping. Session-only: the Files are never persisted and
+    //                the pills are replaced by the next intake / single-file load.
+
+    // Temporary File-backed gallery pills from the last multi-file intake. Each
+    // entry is { file, pill }. Cleared by clearDroppedPills().
+    let droppedEntries = [];
+
+    function clearDroppedPills() {
+      droppedEntries.forEach((e) => e.pill.remove());
+      droppedEntries = [];
+    }
+
+    // Build one temporary pill per valid File and append it to the gallery. No
+    // dataset.file: loadSample marks its active pill by matching dataset.file to a
+    // bundled sample name, so leaving it unset keeps these pills out of that match
+    // — loading a bundled sample then correctly deactivates every dropped pill.
+    function renderDroppedPills(files) {
+      clearDroppedPills();
+      files.forEach((file) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sample dropped'; // reuse the gallery-pill styling
+        btn.textContent = file.name;
+        btn.setAttribute('aria-pressed', 'false');
+        btn.title = t('droppedTitle', { name: file.name });
+        const entry = { file, pill: btn };
+        // Ignore clicks while a load is in flight (spinner active) so two files
+        // can't race; a bundled-sample load also disables .sample buttons.
+        btn.addEventListener('click', () => {
+          if (!spinner.classList.contains('active')) loadDroppedFile(entry);
+        });
+        gallery.appendChild(btn);
+        droppedEntries.push(entry);
+      });
+    }
+
+    // Load one File-backed pill: make it the active pill (deactivating every other
+    // gallery pill, bundled or dropped), then load through the same loadFile path a
+    // drag-drop/open uses, so the size guard, hash/share reset, and error handling
+    // are all identical to a single-file load.
+    function loadDroppedFile(entry) {
+      gallery.querySelectorAll('.sample').forEach((b) => {
+        const active = b === entry.pill;
+        b.classList.toggle('is-active', active);
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      loadFile(entry.file);
+    }
+
+    // Shared intake for a FileList (or File[]) from either entry point.
+    function ingestFiles(fileList) {
+      const all = Array.from(fileList || []);
+      if (!all.length) return;
+      const valid = all.filter((f) => CAD_EXT_RE.test(f.name));
+      if (!valid.length) {
+        // Nothing readable in the selection. Keep the original single-file hint for
+        // a lone wrong-extension file; generalize (with the count) for a real set.
+        hint.textContent = all.length === 1
+          ? t('notStepFile', { name: all[0].name })
+          : t('noValidInSet', { count: all.length });
+        return;
+      }
+      if (valid.length === 1) {
+        clearDroppedPills(); // a single valid file has no queue to offer
+        loadFile(valid[0]);
+        return;
+      }
+      // Multiple valid files: build the switchable queue and load the first.
+      renderDroppedPills(valid);
+      loadDroppedFile(droppedEntries[0]);
+      showToast(t('multiDropQueued', { count: valid.length }));
+    }
+
     // --- File picker ---
     const fileInput = document.getElementById('file-input');
     document.getElementById('open-btn').addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', () => {
-      if (fileInput.files.length) loadFile(fileInput.files[0]);
-      fileInput.value = ''; // allow re-selecting the same file
+      ingestFiles(fileInput.files);
+      fileInput.value = ''; // allow re-selecting the same file(s)
     });
 
     // --- Full-window drag-and-drop ---
@@ -3997,13 +4160,10 @@
       e.preventDefault();
       dragDepth = 0;
       overlay.classList.remove('active');
-      const file = e.dataTransfer && e.dataTransfer.files[0];
-      if (!file) return;
-      if (!CAD_EXT_RE.test(file.name)) {
-        hint.textContent = t('notStepFile', { name: file.name });
-        return;
-      }
-      loadFile(file);
+      // Same multi-file logic as the picker: filter the whole drop to CAD files
+      // and either load one, queue several as pills, or reject the set — never
+      // silently keep files[0] and drop the rest.
+      ingestFiles(e.dataTransfer && e.dataTransfer.files);
     });
 
     addEventListener('resize', () => {
