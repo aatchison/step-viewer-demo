@@ -48,7 +48,10 @@ import { buildGroupFromOcctResult, repackResultMesh } from './step-core.js';
 
 /** A stage tag passed to the optional progress hook. @typedef {'engine' | 'parse'} LoadPhase */
 
-const OCCT_VERSION = '0.0.23';
+// Exported so the UI (About panel, issue #113) can display the live engine
+// version instead of hardcoding it — a version bump here updates the panel
+// automatically. The three.js version is read at runtime from THREE.REVISION.
+export const OCCT_VERSION = '0.0.23';
 const OCCT_BASE = `https://cdn.jsdelivr.net/npm/occt-import-js@${OCCT_VERSION}/dist/`;
 
 // occt-import-js already bundles readers for three CAD formats — the engine reads
@@ -683,16 +686,70 @@ export async function loadCadFromArrayBuffer(buf, ext, onPhase, edgeStyle = { co
   return group;
 }
 
+// ---------------------------------------------------------------------------
+// The occt-import-js result contract, documented in ONE place.
+//
+// occt's `Read{Step,Iges,Brep}File(bytes, params)` all return the SAME nested shape
+// typed below (observed against occt-import-js@0.0.23 — see OCCT_VERSION). A
+// contributor extending the loader — adding materials, per-mesh names, hierarchy, or
+// a new format — should read these typedefs instead of reverse-engineering the schema
+// from usage or the occt C++/WASM source. This is the RAW shape the engine emits;
+// {@link repackResultMesh} (in ./step-core.js) flattens each mesh into the
+// transferable {@link OcctMesh} typed-array shape buildGroupFromOcctResult consumes,
+// and the worker transfers that flattened shape back — so the raw structure below is
+// only ever touched at the parse boundary (parseOnMainThread + the worker).
+// ---------------------------------------------------------------------------
+
+/**
+ * The raw value occt's `Read*File(bytes, params)` returns.
+ * @typedef {object} OcctReadResult
+ * @property {boolean} success - False when occt could not parse the bytes. The loader
+ *   treats a falsy `success` as a kind:'parse' failure (see parseOnMainThread); a
+ *   truthy `success` with an empty/degenerate `meshes` is caught downstream as
+ *   kind:'empty' (a file that parsed but holds nothing tessellable).
+ * @property {OcctRawMesh[]} meshes - One entry per tessellated solid; possibly empty.
+ * @property {object} [root] - The assembly hierarchy (nodes carry a `name` and
+ *   `meshes` index refs into the flat array, plus `children`). Sanitized into the
+ *   lite tree the UI reads; absent or null when the engine supplies no hierarchy.
+ */
+
+/**
+ * One raw mesh inside {@link OcctReadResult}.meshes — the NESTED attribute shape occt
+ * emits, before {@link repackResultMesh} flattens it.
+ *
+ * Fields occt returns that this loader intentionally IGNORES (documented so "what
+ * else is available" is discoverable without diffing the occt source):
+ *   - `brep_faces`: an array of `{ first, last, color }` ranges that group the index
+ *     buffer by the originating B-rep face — the hook for per-face selection or
+ *     per-face coloring. This loader shades one material per whole solid, so it is
+ *     dropped. A future per-face feature would read it here.
+ * @typedef {object} OcctRawMesh
+ * @property {{ array: number[] }} attributes - Vertex attributes. `attributes.position`
+ *   `{ array }` is flat XYZ vertex positions, 3 numbers per vertex, in the model's
+ *   NATIVE length units (occt does not normalize to mm/m; detectStepLengthUnit reads
+ *   the unit from the STEP text) — REQUIRED, a mesh without it is not renderable.
+ *   `attributes.normal` `{ array }` is flat XYZ per-vertex normals, 3 per vertex —
+ *   OPTIONAL, omitted for some tessellations; when absent the group builder calls
+ *   computeVertexNormals() to derive them.
+ * @property {{ array: number[] }} [index] - Triangle vertex indices, 3 per triangle.
+ *   OPTIONAL — absent for a non-indexed (triangle-soup) mesh.
+ * @property {[number, number, number]} [color] - Per-body RGB, each channel a float
+ *   already NORMALIZED to 0–1 (NOT 0–255) — mapped straight into new THREE.Color(r,g,b)
+ *   with NO /255. OPTIONAL — absent when the body declares no color (default blue).
+ * @property {string} [name] - STEP product/solid label, or absent/'' when unnamed.
+ */
+
 // Back-compat thin wrapper: the original STEP-only entry point, preserved so any
 // caller (or bookmark) still works. Routes through the format-aware loader with the
 // STEP reader.
 /**
  * Back-compat STEP-only wrapper around {@link loadCadFromArrayBuffer}.
- * @param {ArrayBuffer | ArrayBufferView} buf - The raw STEP bytes.
- * @param {(phase: LoadPhase) => void} [onPhase] - Progress hook: 'engine' then 'parse'.
+ * @param {ArrayBuffer | Uint8Array} buf - The raw STEP bytes.
+ * @param {(phase: 'engine' | 'parse') => void} [onPhase] - Progress hook, invoked
+ *   with 'engine' (before WASM engine init) then 'parse' (before decoding bytes).
  * @param {EdgeStyle} [edgeStyle] - Deferred feature-edge overlay stroke.
  * @param {() => void} [onEdgesReady] - Redraw hook after each edge overlay builds.
- * @returns {Promise<Group>} The loaded model group.
+ * @returns {Promise<THREE.Group>} The loaded model group.
  */
 export function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }, onEdgesReady) {
   return loadCadFromArrayBuffer(buf, 'step', onPhase, edgeStyle, onEdgesReady);
@@ -784,7 +841,10 @@ function initOcctMainThread() {
 // initOcctMainThread) with kind:'init'.
 async function parseOnMainThread(arrayBuffer, reader) {
   const occt = await initOcctMainThread();
-  const result = occt[reader](new Uint8Array(arrayBuffer), null);
+  // The raw occt read result — see the {@link OcctReadResult} typedef above for the
+  // full nested contract (`{ success, meshes: OcctRawMesh[], root }`). The worker
+  // path produces the identical shape off-thread; both feed repackResultMesh.
+  const result = /** @type {OcctReadResult} */ (occt[reader](new Uint8Array(arrayBuffer), null));
   if (!result || !result.success) {
     const e = /** @type {TaggedError} */ (new Error(`occt ${reader} failed to parse the CAD data`));
     e.kind = 'parse';

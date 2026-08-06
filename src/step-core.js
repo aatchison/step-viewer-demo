@@ -148,10 +148,16 @@ export function buildGroupFromOcctResult(meshes, root, edgeStyle = { color: 0x0a
       geometry.setIndex(new THREE.Uint32BufferAttribute(resultMesh.index, 1));
     }
 
+    // occt omits normals for some tessellations. When absent, derive smooth
+    // per-vertex normals from the geometry so lighting still works — the one place
+    // this loader synthesizes data occt didn't provide.
     if (!resultMesh.normal) {
       geometry.computeVertexNormals();
     }
 
+    // occt color channels are already floats normalized to 0–1 (NOT 0–255), so they
+    // map straight into THREE.Color(r, g, b) with NO /255 conversion. Keep this in
+    // mind before "fixing" the color mapping — dividing here would wash the model out.
     let color = new THREE.Color(0x4f9dff);
     if (resultMesh.color && resultMesh.color.length >= 3) {
       color = new THREE.Color(resultMesh.color[0], resultMesh.color[1], resultMesh.color[2]);
@@ -239,6 +245,8 @@ export function repackResultMesh(rm) {
     index = Uint32Array.from(rm.index.array);
   }
 
+  // Preserve occt's color verbatim: each channel is already a 0–1 float (not 0–255),
+  // so buildGroupFromOcctResult can feed it straight to THREE.Color with no scaling.
   let color = null;
   if (rm.color && rm.color.length >= 3) {
     color = Float32Array.from([rm.color[0], rm.color[1], rm.color[2]]);

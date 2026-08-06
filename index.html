@@ -294,6 +294,7 @@
     #measure-btn:focus-visible, #measure-clear:focus-visible,
     #section-btn:focus-visible, #section-flip:focus-visible, .sp-axis:focus-visible,
     #theme-btn:focus-visible, #help-btn:focus-visible, #help-close:focus-visible, #gallery .sample:focus-visible,
+    #about-btn:focus-visible, #about-close:focus-visible, #about-tour-start:focus-visible, .about-repo:focus-visible,
     #share-fallback-close:focus-visible {
       outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--accent); }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
@@ -516,12 +517,14 @@
        it sits below the accent primary action; header is click-through so re-enable
        pointer events. Fixed square so the glyph stays optically centered in a
        circle at every width. */
-    #help-btn { pointer-events: auto; cursor: pointer; font: inherit;
+    /* #about-btn shares the exact circular icon-button shell so the two neutral
+       header affordances read as a pair. */
+    #help-btn, #about-btn { pointer-events: auto; cursor: pointer; font: inherit;
       font-size: .9rem; font-weight: 700; line-height: 1; color: var(--ctrl-fg);
       background: var(--panel); border: 1px solid var(--hc-border, var(--border)); border-radius: 999px;
       width: 1.9rem; height: 1.9rem; display: inline-flex; align-items: center;
       justify-content: center; flex: none; }
-    #help-btn:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    #help-btn:hover, #about-btn:hover { background: var(--panel-hover); border-color: var(--border-hover); }
     /* Theme toggle — same circular icon-button shell as #help-btn. When pressed
        (light theme active) it borrows the accent on-state language of the other
        toggles so the active theme reads at a glance. The glyph is font-size-only
@@ -542,20 +545,55 @@
        HUD (translucent var(--panel) fill, var(--border) border, blur) so it reads as one
        system. Centered by the native modal positioning; width caps below the
        narrowest phone so it never overflows. */
-    #help-dialog { margin: auto; max-width: min(92vw, 340px); width: 100%;
+    /* #about-dialog (issue #113) shares the #help-dialog shell tokens so the two
+       panels read as one system; it caps a touch wider to fit the credits prose. */
+    #help-dialog, #about-dialog { margin: auto; width: 100%;
       color: var(--fg); background: var(--hc-dialog-bg, var(--dialog-bg)); border: 1px solid var(--hc-border, var(--border));
       border-radius: 12px; padding: 0; box-shadow: 0 10px 30px #000a;
       backdrop-filter: blur(6px); }
-    #help-dialog::backdrop { background: #05070acc; }
+    #help-dialog { max-width: min(92vw, 340px); }
+    #about-dialog { max-width: min(92vw, 400px); }
+    #help-dialog::backdrop, #about-dialog::backdrop { background: #05070acc; }
     .help-head { display: flex; align-items: center; justify-content: space-between;
       gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid var(--hc-border, var(--border)); }
     .help-head h2 { margin: 0; font-size: .95rem; font-weight: 700;
       letter-spacing: .2px; }
-    #help-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
+    #help-close, #about-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
       color: var(--hc-muted, var(--muted)); background: transparent; border: 1px solid transparent;
       border-radius: 6px; width: 1.9rem; height: 1.9rem; display: inline-flex;
       align-items: center; justify-content: center; flex: none; }
-    #help-close:hover { color: var(--fg); background: var(--panel-hover); border-color: var(--border-hover); }
+    #help-close:hover, #about-close:hover { color: var(--fg); background: var(--panel-hover); border-color: var(--border-hover); }
+    /* About dialog body — credits prose + version list. Tokens mirror the help
+       list (translucent fill inherited from the shell, muted secondary text). */
+    .about-body { padding: .6rem 1rem .3rem; font-size: .82rem; line-height: 1.5;
+      color: var(--ctrl-fg); }
+    .about-lede { margin: 0 0 .7rem; color: var(--ctrl-fg-2); }
+    .about-sub { margin: .3rem 0 .35rem; font-size: .78rem; font-weight: 700;
+      letter-spacing: .3px; text-transform: uppercase; color: var(--hc-muted, var(--muted)); }
+    .about-list { list-style: none; margin: 0 0 .6rem; padding: 0; display: grid; gap: .45rem; }
+    .about-list li { color: var(--ctrl-fg); }
+    .about-role { color: var(--ctrl-fg-2); }
+    .about-meta { color: var(--hc-muted, var(--muted)); }
+    #about-dialog a { color: var(--accent); text-decoration: underline;
+      text-underline-offset: 2px; }
+    #about-dialog a:hover { color: var(--accent-hover); }
+    .about-note { margin: 0 0 .55rem; color: var(--ctrl-fg-2); font-size: .78rem; }
+    .about-versions { list-style: none; margin: .1rem 0 .2rem; padding: 0;
+      display: grid; gap: .3rem; }
+    .about-versions li { display: flex; align-items: baseline; justify-content: space-between;
+      gap: 1rem; }
+    .about-versions .about-lib { color: var(--ctrl-fg); }
+    .about-versions .about-ver { font: 600 .78rem ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--on-fg); background: var(--on-fill); border: 1px solid var(--accent);
+      border-radius: 5px; padding: .1rem .4rem; }
+    /* Footer: repo link (left) + Take-the-tour primary action (right). */
+    .about-foot { display: flex; align-items: center; justify-content: space-between;
+      gap: .75rem; padding: .5rem 1rem .85rem; }
+    .about-repo { font-size: .8rem; }
+    #about-tour-start { cursor: pointer; font: inherit; font-size: .8rem; font-weight: 600;
+      color: var(--accent-ink); background: var(--accent); border: 1px solid var(--accent);
+      border-radius: 6px; padding: .35rem .8rem; flex: none; }
+    #about-tour-start:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
     .help-list { list-style: none; margin: 0; padding: .5rem 1rem .85rem;
       display: grid; gap: .4rem; font-size: .82rem; }
     .help-list li { display: flex; align-items: baseline; gap: .55rem; color: var(--ctrl-fg); }
@@ -866,7 +904,7 @@
       #open-btn, #fit-btn, #contrast-btn, #blueprint-btn, #colorpart-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
-      #help-btn, #theme-btn { width: 44px; height: 44px; font-size: 1.05rem; }
+      #help-btn, #about-btn, #theme-btn { width: 44px; height: 44px; font-size: 1.05rem; }
       #gallery { gap: .75rem; }
       #gallery .sample { min-height: 44px; padding: .5rem 1.1rem;
         display: inline-flex; align-items: center; }
@@ -1002,6 +1040,69 @@
     @media (max-width: 600px) {
       #bottom-cluster { bottom: calc(var(--sheet-peek-h, 4.5rem) + .5rem); }
     }
+    /* --- First-visit guided tour (issue #112) --------------------------------
+       A pure-CSS coach-mark overlay: a full-window click-catcher scrim, a
+       spotlight that rings + dims around the active target (box-shadow cutout),
+       and a tooltip card positioned next to the target by the module script via
+       getBoundingClientRect(). Tokens mirror #help-dialog so it reads as one
+       system. Above every other chrome (drop-overlay 20, sheet 22, toast 30). */
+    #tour { position: fixed; inset: 0; z-index: 40; }
+    #tour[hidden] { display: none; }
+    /* Full-window click-catcher — a scrim click dismisses the tour. The visible
+       dimming is drawn by #tour-spot's box-shadow cutout below, so this stays
+       transparent and only owns the pointer target. */
+    #tour-scrim { position: absolute; inset: 0; background: transparent; cursor: pointer; }
+    /* Spotlight: a bordered highlight ring around the active target plus a huge
+       box-shadow that dims everything OUTSIDE its rect (the cutout that
+       spotlights the control). pointer-events:none so clicks fall through to the
+       scrim beneath. The position/size is animated for a smooth step-to-step
+       move — disabled under prefers-reduced-motion below. */
+    #tour-spot { position: fixed; left: 0; top: 0; width: 0; height: 0;
+      border-radius: 10px; pointer-events: none; border: 2px solid var(--accent);
+      box-shadow: 0 0 0 9999px #05070acc, 0 0 0 4px #4f9dff55;
+      transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease; }
+    /* Tooltip card — an ARIA dialog (focus trapped by the module). Tokens mirror
+       #help-dialog (translucent dialog fill, muted border, blur). Positioned by
+       the module next to the active target; width caps below the narrowest phone
+       so it never overflows at 360px. */
+    #tour-card { position: fixed; left: 0; top: 0; z-index: 41; width: min(92vw, 320px);
+      color: var(--fg); background: var(--hc-dialog-bg, var(--dialog-bg));
+      border: 1px solid var(--hc-border, var(--border)); border-radius: 12px;
+      padding: .85rem 1rem .75rem; box-shadow: 0 10px 30px #000a;
+      backdrop-filter: blur(6px);
+      transition: opacity .2s ease, transform .2s ease; }
+    .tour-title { margin: 0 0 .35rem; font-size: .95rem; font-weight: 700; letter-spacing: .2px; }
+    .tour-body { margin: 0 0 .7rem; font-size: .82rem; line-height: 1.45; color: var(--ctrl-fg-2); }
+    .tour-foot { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+    .tour-counter { font-size: .72rem; color: var(--hc-muted, var(--muted));
+      font-variant-numeric: tabular-nums; }
+    .tour-btns { display: inline-flex; gap: .4rem; }
+    .tour-btns button { cursor: pointer; font: inherit; font-size: .78rem; font-weight: 600;
+      border-radius: 6px; padding: .3rem .7rem; }
+    .tour-skip, .tour-back { color: var(--ctrl-fg); background: var(--panel);
+      border: 1px solid var(--hc-border, var(--border)); }
+    .tour-skip:hover, .tour-back:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    .tour-next { color: var(--accent-ink); background: var(--accent); border: 1px solid var(--accent); }
+    .tour-next:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .tour-btns button:disabled { opacity: .45; cursor: not-allowed; }
+    .tour-btns button:disabled:hover { background: var(--panel); border-color: var(--hc-border, var(--border)); }
+    .tour-btns button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    /* Re-trigger affordance in the help dialog footer. */
+    .help-foot { padding: .25rem 1rem .85rem; display: flex; justify-content: flex-end; }
+    #tour-start { cursor: pointer; font: inherit; font-size: .8rem; font-weight: 600;
+      color: var(--accent-ink); background: var(--accent); border: 1px solid var(--accent);
+      border-radius: 6px; padding: .35rem .8rem; }
+    #tour-start:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    #tour-start:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    /* Reduced motion: cards/spot appear and move instantly (no slide/scale). */
+    @media (prefers-reduced-motion: reduce) {
+      #tour-spot, #tour-card { transition: none; }
+    }
+    /* Touch: comfortable button targets in the card. */
+    @media (pointer: coarse) {
+      .tour-btns button { min-height: 40px; padding: .5rem .9rem; }
+      #tour-start, #about-tour-start { min-height: 40px; }
+    }
   </style>
 </head>
 <body>
@@ -1136,6 +1237,12 @@
          preference by the module script). Bound to the `T` key. -->
     <button id="theme-btn" type="button" title="Toggle light / dark theme (T)" aria-label="Toggle light and dark theme" aria-pressed="false" data-i18n-attr="title:themeTitle;aria-label:themeAria"><span class="tb-glyph" aria-hidden="true">🌙</span></button>
     <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
+    <!-- About / credits & versions (issue #113). A circular icon button matching
+         #help-btn (already glyph-only, so it stays a single glyph at the ≤600px
+         icon-collapse breakpoint and keeps the header one row). Opens a native
+         <dialog> mirroring #help-dialog; aria-haspopup="dialog" + aria-label give
+         it an accessible name. The ⓘ glyph reads as "information". -->
+    <button id="about-btn" type="button" title="About this viewer (credits &amp; versions)" aria-label="About this viewer" aria-haspopup="dialog" data-i18n-attr="title:aboutTitle;aria-label:aboutAria">ⓘ</button>
     <input id="file-input" type="file" accept=".step,.stp,.igs,.iges,.brp,.brep" multiple hidden />
   </header>
   <!-- Standard-view preset cluster: one-click canonical camera viewpoints
@@ -1209,6 +1316,62 @@
       <li><span class="k">Num</span><span class="k">0–6</span><span class="d" data-i18n="descViews">Standard views (Front/Back/Top/Bottom/Right/Left/Iso)</span></li>
       <li><span class="k" data-i18n="kDrop">Drop</span><span class="d" data-i18n="descOpen">Open a .step / .stp file</span></li>
     </ul>
+    <!-- Re-triggerable guided tour (issue #112). Replays the first-visit
+         coach-marks regardless of the persisted stepviewer.tourSeen flag. -->
+    <div class="help-foot">
+      <button id="tour-start" type="button" data-i18n="tourStart">Take the tour</button>
+    </div>
+  </dialog>
+  <!-- About / credits & versions (issue #113). Native <dialog> (opened via
+       showModal) so Escape-to-close and focus trapping are handled by the
+       platform; the × button and a backdrop click also dismiss it, and native
+       <dialog> restores focus to the opener (#about-btn) on close. Structure and
+       tokens mirror #help-dialog. Credits mirror README.md so the two stay
+       consistent; the version strings are filled in at runtime by the module
+       (three.js from THREE.REVISION, occt-import-js from the OCCT_VERSION export
+       in src/step.js) rather than hardcoded, so a version bump updates the UI. -->
+  <dialog id="about-dialog" aria-labelledby="about-title">
+    <div class="help-head">
+      <h2 id="about-title" data-i18n="aboutHeading">About this viewer</h2>
+      <button id="about-close" type="button" aria-label="Close about" data-i18n-attr="aria-label:aboutCloseAria">×</button>
+    </div>
+    <div class="about-body">
+      <p class="about-lede" data-i18n="aboutLede">A zero-build, browser-based viewer for STEP / IGES / BREP CAD files — parsed in WebAssembly and rendered with WebGL.</p>
+      <h3 class="about-sub" data-i18n="aboutCreditsHeading">Built on</h3>
+      <ul class="about-list">
+        <li>
+          <a href="https://threejs.org" target="_blank" rel="noopener noreferrer">three.js</a>
+          <span class="about-role" data-i18n="aboutThreeRole">— WebGL 3D rendering</span>
+          <span class="about-meta">
+            (<a href="https://github.com/mrdoob/three.js" target="_blank" rel="noopener noreferrer">source</a>,
+            <a href="https://github.com/mrdoob/three.js/blob/dev/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>)
+          </span>
+        </li>
+        <li>
+          <a href="https://github.com/kovacsv/occt-import-js" target="_blank" rel="noopener noreferrer">occt-import-js</a>
+          <span class="about-role" data-i18n="aboutOcctRole">— STEP / IGES / BREP import (OpenCascade compiled to WebAssembly)</span>
+          <span class="about-meta">
+            (<a href="https://github.com/kovacsv/occt-import-js/blob/main/LICENSE.md" target="_blank" rel="noopener noreferrer">MIT License</a>)
+          </span>
+        </li>
+      </ul>
+      <p class="about-note" data-i18n="aboutOcctNote">occt-import-js wraps Open CASCADE Technology, which is licensed under the LGPL-2.1 with an additional exception.</p>
+      <p class="about-note">
+        <span data-i18n="aboutCdnNote">Both libraries load at runtime from the</span>
+        <a href="https://www.jsdelivr.com/" target="_blank" rel="noopener noreferrer">jsDelivr</a> CDN.
+      </p>
+      <h3 class="about-sub" data-i18n="aboutVersionsHeading">Versions</h3>
+      <ul class="about-versions">
+        <li><span class="about-lib">three.js</span><span class="about-ver" id="about-three-ver">—</span></li>
+        <li><span class="about-lib">occt-import-js</span><span class="about-ver" id="about-occt-ver">—</span></li>
+      </ul>
+    </div>
+    <!-- Footer: launch the shared guided tour (issue #112 handler) and link to
+         the source repository. -->
+    <div class="about-foot">
+      <a class="about-repo" href="https://github.com/aatchison/step-viewer-demo" target="_blank" rel="noopener noreferrer" data-i18n="aboutRepoLabel">View source on GitHub</a>
+      <button id="about-tour-start" type="button" data-i18n="tourStart">Take the tour</button>
+    </div>
   </dialog>
   <!-- Bottom cluster: gallery stacked directly above the hint in a single
        container so they share layout and can never overlap. -->
@@ -1361,6 +1524,33 @@
     <button id="engine-retry" type="button" data-i18n="retry">Retry</button>
   </div>
   <div id="drop-overlay"><span data-i18n="dropOverlay">Drop a .step / .stp file to load</span></div>
+  <!-- First-visit guided tour (issue #112). A pure-DOM/CSS/JS coach-mark overlay
+       (no <dialog>, no new deps) driven from the module script. #tour-scrim is a
+       full-window click-catcher that dismisses; the visible dimming is drawn by
+       #tour-spot's box-shadow cutout so the spotlighted control stays crisp.
+       #tour-card is an ARIA dialog whose focus is trapped by the module while the
+       tour is open. Tokens mirror #help-dialog (translucent dialog fill, muted
+       border, blur) so it reads as one system. Hidden until the module shows it —
+       automatically on first visit (gated by localStorage) or on demand from the
+       help dialog's "Take the tour" button. -->
+  <div id="tour" hidden>
+    <div id="tour-scrim"></div>
+    <div id="tour-spot" aria-hidden="true"></div>
+    <div id="tour-card" role="dialog" aria-modal="true"
+         aria-labelledby="tour-title" aria-describedby="tour-body"
+         data-i18n-attr="aria-label:tourAria">
+      <h2 id="tour-title" class="tour-title"></h2>
+      <p id="tour-body" class="tour-body"></p>
+      <div class="tour-foot">
+        <span id="tour-counter" class="tour-counter" aria-live="polite"></span>
+        <span class="tour-btns">
+          <button id="tour-skip" type="button" class="tour-skip" data-i18n="tourSkip">Skip</button>
+          <button id="tour-back" type="button" class="tour-back" data-i18n="tourBack">Back</button>
+          <button id="tour-next" type="button" class="tour-next">Next</button>
+        </span>
+      </div>
+    </div>
+  </div>
 
   <script type="importmap">
   {

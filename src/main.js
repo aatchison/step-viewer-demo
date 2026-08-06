@@ -3,7 +3,7 @@
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
     import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
     import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-    import { loadCadFromArrayBuffer, readerForExtension, resetOcct } from './step.js';
+    import { loadCadFromArrayBuffer, readerForExtension, resetOcct, OCCT_VERSION } from './step.js';
     import { countTriangles, SAMPLES as SAMPLE_MANIFEST } from './step-core.js';
     import { t, applyStaticI18n } from './i18n.js';
     import {
@@ -2624,6 +2624,12 @@
     updateShareState(); // reflect the initial (no-model) disabled state
     updateEmbedState();
 
+    // Shared guided-tour launcher. initTour() assigns this to its internal
+    // start(force) once wired, so other affordances (the About dialog's "Take the
+    // tour" button, issue #113) drive the exact same tour handler as the help
+    // dialog's button rather than duplicating the sequence.
+    let launchTour = null;
+
     // --- Shortcuts help dialog (header "?" button + `?` key) ---
     // Native <dialog>.showModal() gives Escape-to-close and focus trapping for
     // free; the × button and a backdrop click also dismiss it.
@@ -2640,12 +2646,259 @@
       if (e.target === helpDialog) helpDialog.close();
     });
 
+    // --- First-visit guided tour (issue #112) --------------------------------
+    // A pure-DOM/CSS/JS coach-mark overlay (no <dialog>, no new deps). It walks a
+    // short ordered sequence anchored to real controls, spotlighting each via
+    // getBoundingClientRect(), and shows automatically once on the first visit
+    // (gated by localStorage) — re-triggerable from the help dialog. Escape / a
+    // scrim click dismiss; Enter/→ advance; ←/Back step back; focus is trapped in
+    // the card and restored on close.
+    (function initTour() {
+      const TOUR_SEEN_KEY = 'stepviewer.tourSeen';
+      const tour = document.getElementById('tour');
+      const scrim = document.getElementById('tour-scrim');
+      const spot = document.getElementById('tour-spot');
+      const card = document.getElementById('tour-card');
+      const titleEl = document.getElementById('tour-title');
+      const bodyEl = document.getElementById('tour-body');
+      const counterEl = document.getElementById('tour-counter');
+      const backBtn = document.getElementById('tour-back');
+      const nextBtn = document.getElementById('tour-next');
+      const skipBtn = document.getElementById('tour-skip');
+      const startBtn = document.getElementById('tour-start');
+      if (!tour || !card || !spot || !scrim) return; // markup absent — no-op
+
+      const GAP = 12;     // gap between the spotlight and the card
+      const PAD = 6;      // spotlight padding around the target
+      const MARGIN = 10;  // keep the card this far from the viewport edges
+
+      // The orientation gizmo is a WebGL overlay pass (not a DOM node), so its
+      // screen rect is synthesized from the same constants the gizmo uses
+      // (GIZMO_DIM 128, GIZMO_TOP 68 + the safe-area inset), pinned top-right.
+      function gizmoRect() {
+        const dim = 128;
+        const top = 68 + safeTop();
+        const w = Math.min(dim, innerWidth - 2 * MARGIN);
+        const left = Math.max(MARGIN, innerWidth - 16 - dim);
+        return { left, top, width: w, height: dim, right: left + w, bottom: top + dim };
+      }
+
+      // Ordered coach-marks. Each anchors to a real control (or a synthesized
+      // rect); steps whose target is missing/off-screen at show-time are skipped.
+      const STEPS = [
+        { el: () => gallery, title: 'tourGalleryTitle', body: 'tourGalleryBody' },
+        { el: () => document.getElementById('wire-toggle'), title: 'tourWireTitle', body: 'tourWireBody' },
+        { el: () => document.getElementById('fit-btn'), title: 'tourFitTitle', body: 'tourFitBody' },
+        { el: () => document.getElementById('open-btn'), title: 'tourOpenTitle', body: 'tourOpenBody' },
+        { rect: gizmoRect, title: 'tourGizmoTitle', body: 'tourGizmoBody' },
+      ];
+
+      let active = [];        // steps visible for this run
+      let idx = 0;
+      let prevFocus = null;
+      let rafId = 0;
+
+      function seen() {
+        try { return localStorage.getItem(TOUR_SEEN_KEY) === '1'; } catch (e) { return false; }
+      }
+      function markSeen() {
+        try { localStorage.setItem(TOUR_SEEN_KEY, '1'); } catch (e) { /* private mode */ }
+      }
+
+      // Resolve a step to a viewport rect, or null if its target is absent or
+      // entirely off-screen (e.g. a control that collapsed into a hidden sheet).
+      function rectFor(step) {
+        if (step.rect) return step.rect();
+        const el = step.el && step.el();
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        if (!r || r.width <= 0 || r.height <= 0) return null;
+        if (r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth) return null;
+        return { left: r.left, top: r.top, width: r.width, height: r.height,
+                 right: r.right, bottom: r.bottom };
+      }
+
+      // Place the spotlight over the active target and the card beside it —
+      // preferring below, then above, then clamped within the viewport.
+      function layout() {
+        const step = active[idx];
+        if (!step) return;
+        const r = rectFor(step) || gizmoRect();
+        const sl = Math.max(0, r.left - PAD);
+        const st = Math.max(0, r.top - PAD);
+        const sw = Math.min(innerWidth, r.right + PAD) - sl;
+        const sh = Math.min(innerHeight, r.bottom + PAD) - st;
+        spot.style.left = sl + 'px';
+        spot.style.top = st + 'px';
+        spot.style.width = sw + 'px';
+        spot.style.height = sh + 'px';
+
+        const cw = card.offsetWidth, ch = card.offsetHeight;
+        let top;
+        if (st + sh + GAP + ch <= innerHeight - MARGIN) top = st + sh + GAP;      // below
+        else if (st - GAP - ch >= MARGIN) top = st - GAP - ch;                    // above
+        else top = Math.max(MARGIN, Math.min(innerHeight - ch - MARGIN, st));     // clamp
+        let left = sl + sw / 2 - cw / 2;                                          // center on spot
+        left = Math.max(MARGIN, Math.min(innerWidth - cw - MARGIN, left));
+        card.style.left = left + 'px';
+        card.style.top = top + 'px';
+      }
+
+      function render() {
+        const step = active[idx];
+        if (!step) return;
+        titleEl.textContent = t(step.title);
+        bodyEl.textContent = t(step.body);
+        counterEl.textContent = t('tourCounter', { n: idx + 1, total: active.length });
+        backBtn.disabled = idx === 0;
+        nextBtn.textContent = idx === active.length - 1 ? t('tourDone') : t('tourNext');
+        layout();
+      }
+
+      function focusables() {
+        return Array.from(card.querySelectorAll('button:not([disabled])'));
+      }
+      function trapTab(e) {
+        const f = focusables();
+        if (!f.length) return;
+        const first = f[0], last = f[f.length - 1];
+        if (!card.contains(document.activeElement)) { e.preventDefault(); first.focus(); return; }
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(); return; }
+        if (e.key === 'Tab') { trapTab(e); return; }
+        if (e.key === 'ArrowRight') { e.preventDefault(); next(); return; }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); return; }
+        if (e.key === 'Enter') {
+          // Let a focused footer button take its native activation; otherwise
+          // Enter advances the tour.
+          if (e.target === backBtn || e.target === skipBtn || e.target === nextBtn) return;
+          e.preventDefault(); next();
+        }
+      }
+
+      function onResize() {
+        cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(layout);
+      }
+
+      function next() {
+        if (idx >= active.length - 1) { end(); return; }
+        idx += 1;
+        render();
+        nextBtn.focus();
+      }
+      function prev() {
+        if (idx === 0) return;
+        idx -= 1;
+        render();
+        (backBtn.disabled ? nextBtn : backBtn).focus();
+      }
+
+      // End the tour (finish OR skip): persist the seen flag so it never
+      // auto-shows again, tear down listeners, and restore focus.
+      function end() {
+        if (tour.hidden) return;
+        tour.hidden = true;
+        document.removeEventListener('keydown', onKey, true);
+        removeEventListener('resize', onResize);
+        cancelAnimationFrame(rafId);
+        markSeen();
+        if (prevFocus && typeof prevFocus.focus === 'function') {
+          try { prevFocus.focus(); } catch (e) { /* element gone */ }
+        }
+      }
+
+      // Open the tour. `force` replays it regardless of the persisted flag (the
+      // help-dialog re-trigger); the auto path passes no force and bails if seen.
+      function start(force) {
+        if (!tour.hidden) return;
+        if (!force && seen()) return;
+        active = STEPS.filter((s) => rectFor(s));
+        if (!active.length) return;
+        idx = 0;
+        prevFocus = document.activeElement;
+        tour.hidden = false;
+        document.addEventListener('keydown', onKey, true);
+        addEventListener('resize', onResize);
+        render();                       // sizes the card so layout() can measure it
+        requestAnimationFrame(() => { layout(); nextBtn.focus(); });
+      }
+
+      // Expose start() so non-help affordances (e.g. the About dialog) can launch
+      // the same tour. `force` replays it regardless of the persisted seen flag.
+      launchTour = start;
+
+      nextBtn.addEventListener('click', next);
+      backBtn.addEventListener('click', prev);
+      skipBtn.addEventListener('click', end);
+      scrim.addEventListener('click', end);
+      if (startBtn) {
+        startBtn.addEventListener('click', () => {
+          if (helpDialog.open) helpDialog.close();
+          // Let the dialog's top-layer/backdrop tear down before opening the tour.
+          requestAnimationFrame(() => start(true));
+        });
+      }
+
+      // Auto-show once on the first visit, after the initial paint/model settle so
+      // the anchored controls have a stable layout to measure.
+      addEventListener('load', () => { setTimeout(() => start(false), 500); });
+    })();
+
+    // --- About / credits & versions dialog (header ⓘ button, issue #113) ---
+    // Native <dialog>.showModal() gives Escape-to-close, focus-into-dialog on
+    // open, and focus-return-to-opener on close for free; the × button and a
+    // backdrop click also dismiss it — mirroring the help dialog exactly. The
+    // version strings are filled from the live runtime (THREE.REVISION and the
+    // OCCT_VERSION export) rather than hardcoded, so a version bump updates the UI.
+    (function initAbout() {
+      const aboutBtn = document.getElementById('about-btn');
+      const aboutDialog = document.getElementById('about-dialog');
+      const aboutClose = document.getElementById('about-close');
+      const aboutTourStart = document.getElementById('about-tour-start');
+      if (!aboutBtn || !aboutDialog) return; // markup absent — no-op
+
+      // Live version reads. THREE.REVISION is the loaded three.js version; the
+      // occt-import-js version is the single source of truth exported by step.js.
+      const threeVerEl = document.getElementById('about-three-ver');
+      const occtVerEl = document.getElementById('about-occt-ver');
+      if (threeVerEl) threeVerEl.textContent = `r${THREE.REVISION}`;
+      if (occtVerEl) occtVerEl.textContent = OCCT_VERSION;
+
+      function openAbout() { if (!aboutDialog.open && typeof aboutDialog.showModal === 'function') aboutDialog.showModal(); }
+      aboutBtn.addEventListener('click', openAbout);
+      aboutClose.addEventListener('click', () => aboutDialog.close());
+      // Backdrop click: showModal centers the panel, so a click whose target is
+      // the <dialog> element itself (not its content) landed on the backdrop.
+      aboutDialog.addEventListener('click', (e) => {
+        if (e.target === aboutDialog) aboutDialog.close();
+      });
+      // "Take the tour" launches the shared guided-tour handler. Close the dialog
+      // first and let its top-layer/backdrop tear down before the tour opens (so
+      // the tour's own focus/spotlight measures against a clean layout).
+      if (aboutTourStart) {
+        aboutTourStart.addEventListener('click', () => {
+          aboutDialog.close();
+          requestAnimationFrame(() => { if (typeof launchTour === 'function') launchTour(true); });
+        });
+      }
+    })();
+
     addEventListener('keydown', (e) => {
       // Ignore when typing in a field or with modifier keys held. `?` is Shift+/,
       // so allow Shift through (checked after the modifier guard below).
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const tag = e.target && e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      // While the guided tour overlay is open it owns the keyboard (its own
+      // capture-phase handler drives Next/Back/Skip/Escape); don't fire the
+      // viewer shortcuts underneath it (issue #112).
+      const tourEl = document.getElementById('tour');
+      if (tourEl && !tourEl.hidden) return;
       // `?` opens the shortcuts help from anywhere. Handle before the dialog-open
       // guard so it still works, and independent of the viewer shortcuts.
       if (e.key === '?') { openHelp(); return; }
