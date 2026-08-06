@@ -1002,6 +1002,69 @@
     @media (max-width: 600px) {
       #bottom-cluster { bottom: calc(var(--sheet-peek-h, 4.5rem) + .5rem); }
     }
+    /* --- First-visit guided tour (issue #112) --------------------------------
+       A pure-CSS coach-mark overlay: a full-window click-catcher scrim, a
+       spotlight that rings + dims around the active target (box-shadow cutout),
+       and a tooltip card positioned next to the target by the module script via
+       getBoundingClientRect(). Tokens mirror #help-dialog so it reads as one
+       system. Above every other chrome (drop-overlay 20, sheet 22, toast 30). */
+    #tour { position: fixed; inset: 0; z-index: 40; }
+    #tour[hidden] { display: none; }
+    /* Full-window click-catcher — a scrim click dismisses the tour. The visible
+       dimming is drawn by #tour-spot's box-shadow cutout below, so this stays
+       transparent and only owns the pointer target. */
+    #tour-scrim { position: absolute; inset: 0; background: transparent; cursor: pointer; }
+    /* Spotlight: a bordered highlight ring around the active target plus a huge
+       box-shadow that dims everything OUTSIDE its rect (the cutout that
+       spotlights the control). pointer-events:none so clicks fall through to the
+       scrim beneath. The position/size is animated for a smooth step-to-step
+       move — disabled under prefers-reduced-motion below. */
+    #tour-spot { position: fixed; left: 0; top: 0; width: 0; height: 0;
+      border-radius: 10px; pointer-events: none; border: 2px solid var(--accent);
+      box-shadow: 0 0 0 9999px #05070acc, 0 0 0 4px #4f9dff55;
+      transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease; }
+    /* Tooltip card — an ARIA dialog (focus trapped by the module). Tokens mirror
+       #help-dialog (translucent dialog fill, muted border, blur). Positioned by
+       the module next to the active target; width caps below the narrowest phone
+       so it never overflows at 360px. */
+    #tour-card { position: fixed; left: 0; top: 0; z-index: 41; width: min(92vw, 320px);
+      color: var(--fg); background: var(--hc-dialog-bg, var(--dialog-bg));
+      border: 1px solid var(--hc-border, var(--border)); border-radius: 12px;
+      padding: .85rem 1rem .75rem; box-shadow: 0 10px 30px #000a;
+      backdrop-filter: blur(6px);
+      transition: opacity .2s ease, transform .2s ease; }
+    .tour-title { margin: 0 0 .35rem; font-size: .95rem; font-weight: 700; letter-spacing: .2px; }
+    .tour-body { margin: 0 0 .7rem; font-size: .82rem; line-height: 1.45; color: var(--ctrl-fg-2); }
+    .tour-foot { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+    .tour-counter { font-size: .72rem; color: var(--hc-muted, var(--muted));
+      font-variant-numeric: tabular-nums; }
+    .tour-btns { display: inline-flex; gap: .4rem; }
+    .tour-btns button { cursor: pointer; font: inherit; font-size: .78rem; font-weight: 600;
+      border-radius: 6px; padding: .3rem .7rem; }
+    .tour-skip, .tour-back { color: var(--ctrl-fg); background: var(--panel);
+      border: 1px solid var(--hc-border, var(--border)); }
+    .tour-skip:hover, .tour-back:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    .tour-next { color: var(--accent-ink); background: var(--accent); border: 1px solid var(--accent); }
+    .tour-next:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .tour-btns button:disabled { opacity: .45; cursor: not-allowed; }
+    .tour-btns button:disabled:hover { background: var(--panel); border-color: var(--hc-border, var(--border)); }
+    .tour-btns button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    /* Re-trigger affordance in the help dialog footer. */
+    .help-foot { padding: .25rem 1rem .85rem; display: flex; justify-content: flex-end; }
+    #tour-start { cursor: pointer; font: inherit; font-size: .8rem; font-weight: 600;
+      color: var(--accent-ink); background: var(--accent); border: 1px solid var(--accent);
+      border-radius: 6px; padding: .35rem .8rem; }
+    #tour-start:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    #tour-start:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    /* Reduced motion: cards/spot appear and move instantly (no slide/scale). */
+    @media (prefers-reduced-motion: reduce) {
+      #tour-spot, #tour-card { transition: none; }
+    }
+    /* Touch: comfortable button targets in the card. */
+    @media (pointer: coarse) {
+      .tour-btns button { min-height: 40px; padding: .5rem .9rem; }
+      #tour-start { min-height: 40px; }
+    }
   </style>
 </head>
 <body>
@@ -1209,6 +1272,11 @@
       <li><span class="k">Num</span><span class="k">0–6</span><span class="d" data-i18n="descViews">Standard views (Front/Back/Top/Bottom/Right/Left/Iso)</span></li>
       <li><span class="k" data-i18n="kDrop">Drop</span><span class="d" data-i18n="descOpen">Open a .step / .stp file</span></li>
     </ul>
+    <!-- Re-triggerable guided tour (issue #112). Replays the first-visit
+         coach-marks regardless of the persisted stepviewer.tourSeen flag. -->
+    <div class="help-foot">
+      <button id="tour-start" type="button" data-i18n="tourStart">Take the tour</button>
+    </div>
   </dialog>
   <!-- Bottom cluster: gallery stacked directly above the hint in a single
        container so they share layout and can never overlap. -->
@@ -1361,6 +1429,33 @@
     <button id="engine-retry" type="button" data-i18n="retry">Retry</button>
   </div>
   <div id="drop-overlay"><span data-i18n="dropOverlay">Drop a .step / .stp file to load</span></div>
+  <!-- First-visit guided tour (issue #112). A pure-DOM/CSS/JS coach-mark overlay
+       (no <dialog>, no new deps) driven from the module script. #tour-scrim is a
+       full-window click-catcher that dismisses; the visible dimming is drawn by
+       #tour-spot's box-shadow cutout so the spotlighted control stays crisp.
+       #tour-card is an ARIA dialog whose focus is trapped by the module while the
+       tour is open. Tokens mirror #help-dialog (translucent dialog fill, muted
+       border, blur) so it reads as one system. Hidden until the module shows it —
+       automatically on first visit (gated by localStorage) or on demand from the
+       help dialog's "Take the tour" button. -->
+  <div id="tour" hidden>
+    <div id="tour-scrim"></div>
+    <div id="tour-spot" aria-hidden="true"></div>
+    <div id="tour-card" role="dialog" aria-modal="true"
+         aria-labelledby="tour-title" aria-describedby="tour-body"
+         data-i18n-attr="aria-label:tourAria">
+      <h2 id="tour-title" class="tour-title"></h2>
+      <p id="tour-body" class="tour-body"></p>
+      <div class="tour-foot">
+        <span id="tour-counter" class="tour-counter" aria-live="polite"></span>
+        <span class="tour-btns">
+          <button id="tour-skip" type="button" class="tour-skip" data-i18n="tourSkip">Skip</button>
+          <button id="tour-back" type="button" class="tour-back" data-i18n="tourBack">Back</button>
+          <button id="tour-next" type="button" class="tour-next">Next</button>
+        </span>
+      </div>
+    </div>
+  </div>
 
   <script type="importmap">
   {

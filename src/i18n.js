@@ -265,6 +265,25 @@ const messages = {
     partsFallback: 'Part {n}',
     partsRowAria: 'Toggle visibility of {name}',
     descParts: 'Show / hide individual assembly parts',
+
+    // --- First-visit guided tour (issue #112) ---
+    tourStart: 'Take the tour',
+    tourSkip: 'Skip',
+    tourBack: 'Back',
+    tourNext: 'Next',
+    tourDone: 'Done',
+    tourCounter: '{n} of {total}',
+    tourAria: 'Guided tour',
+    tourGalleryTitle: 'Sample gallery',
+    tourGalleryBody: 'Pick a bundled model here to load it instantly — or drag & drop your own .step / .stp / .iges / .brep file anywhere on the view.',
+    tourWireTitle: 'Wireframe',
+    tourWireBody: 'Toggle a see-through wireframe overlay to inspect the model’s edges and structure. Shortcut: W.',
+    tourFitTitle: 'Fit view',
+    tourFitBody: 'Re-frame the whole model any time you lose it. Shortcut: F or R, or double-click the model.',
+    tourOpenTitle: 'Open a file',
+    tourOpenBody: 'Load a STEP, IGES, or BREP file from your device. You can also drop a file straight onto the view.',
+    tourGizmoTitle: 'Orient the view',
+    tourGizmoBody: 'The orientation gizmo up here shows which way is up. Drag anywhere on the model to orbit; scroll or pinch to zoom.',
   },
 
   // Second locale — a deliberately PARTIAL Spanish stub. Only some keys are
@@ -446,6 +465,25 @@ const messages = {
     metaSystem: 'Sistema de origen',
     metaPreprocessor: 'Preprocesador',
     metaTimestamp: 'Fecha',
+
+    // --- Recorrido guiado en la primera visita (issue #112) ---
+    tourStart: 'Ver el tutorial',
+    tourSkip: 'Omitir',
+    tourBack: 'Atrás',
+    tourNext: 'Siguiente',
+    tourDone: 'Listo',
+    tourCounter: '{n} de {total}',
+    tourAria: 'Recorrido guiado',
+    tourGalleryTitle: 'Galería de ejemplos',
+    tourGalleryBody: 'Elige aquí un modelo incluido para cargarlo al instante, o arrastra y suelta tu propio archivo .step / .stp / .iges / .brep sobre la vista.',
+    tourWireTitle: 'Malla',
+    tourWireBody: 'Activa una malla semitransparente para inspeccionar las aristas y la estructura del modelo. Atajo: W.',
+    tourFitTitle: 'Encuadrar',
+    tourFitBody: 'Vuelve a encuadrar todo el modelo cuando lo pierdas de vista. Atajo: F o R, o doble clic en el modelo.',
+    tourOpenTitle: 'Abrir un archivo',
+    tourOpenBody: 'Carga un archivo STEP, IGES o BREP desde tu dispositivo. También puedes soltar un archivo sobre la vista.',
+    tourGizmoTitle: 'Orienta la vista',
+    tourGizmoBody: 'El gizmo de orientación de aquí arriba indica hacia dónde está arriba. Arrastra sobre el modelo para orbitar; usa la rueda o pellizca para acercar.',
   },
 };
 
