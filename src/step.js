@@ -1,9 +1,12 @@
 // STEP loader core — parses STEP (ISO 10303) into three.js geometry via
 // occt-import-js (OpenCascade compiled to WebAssembly).
 //
-// occt-import-js ships as a UMD/global factory (not an ES module), so we inject
-// it as a classic <script> and then call the exposed `occtimportjs` factory,
-// pointing `locateFile` at the CDN so the sibling .wasm resolves correctly.
+// occt-import-js ships as a UMD/global factory (not an ES module). The actual
+// parse (occt.ReadStepFile) runs in a classic Web Worker (src/step.worker.js)
+// that `importScripts()` the same CDN script, so a dense CAD part decodes off the
+// main thread and orbit/gizmo/UI never freeze. This module owns the worker
+// lifecycle + message protocol and rebuilds the THREE geometry from the typed
+// arrays the worker transfers back.
 
 import * as THREE from 'three';
 
@@ -18,47 +21,149 @@ const runWhenIdle =
     ? (fn) => requestIdleCallback(fn, { timeout: 1000 })
     : (fn) => setTimeout(fn, 0);
 
-let occtPromise = null;
+// The single reused parse worker and the promise that resolves once its WASM
+// engine has initialized ('engine' phase, cached after the first load). Both are
+// null until the first load lazily spawns the worker, and both are cleared by
+// resetOcct() so Retry starts a genuinely fresh attempt.
+let worker = null;
+let workerReadyPromise = null;
+let readyResolvers = null; // { resolve, reject } for the pending 'ready' handshake
+let msgSeq = 0; // monotonic id so overlapping parses route to the right awaiter
+const pending = new Map(); // id → { resolve, reject } for in-flight parse requests
 
-function loadOcctFactory() {
+// Route every worker message to the right awaiter. 'ready'/'init-error' settle the
+// engine-init handshake; 'result'/'parse-error' settle the parse keyed by id.
+function handleWorkerMessage(ev) {
+  const msg = ev.data;
+  switch (msg.type) {
+    case 'ready':
+      if (readyResolvers) {
+        readyResolvers.resolve();
+        readyResolvers = null;
+      }
+      break;
+    case 'init-error': {
+      const e = new Error(msg.message || 'Failed to load the 3D engine in the worker');
+      e.kind = 'init';
+      if (readyResolvers) {
+        readyResolvers.reject(e);
+        readyResolvers = null;
+      }
+      // The engine never came up — tear the worker down so a retry rebuilds it.
+      teardownWorker(e);
+      break;
+    }
+    case 'result': {
+      const p = pending.get(msg.id);
+      if (p) {
+        pending.delete(msg.id);
+        p.resolve(msg.meshes);
+      }
+      break;
+    }
+    case 'parse-error': {
+      const p = pending.get(msg.id);
+      if (p) {
+        pending.delete(msg.id);
+        const e = new Error(msg.message || 'occt ReadStepFile failed to parse the STEP data');
+        e.kind = 'parse';
+        p.reject(e);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+// A worker-level uncaught error (script failed to load, an uncatchable WASM
+// abort, etc.) leaves the worker unusable — classify it as an engine/init failure
+// so the UI shows the persistent Retry panel and rebuilds a fresh worker.
+function handleWorkerError(ev) {
+  const e = new Error((ev && ev.message) || 'STEP parse worker crashed');
+  e.kind = 'init';
+  if (readyResolvers) {
+    readyResolvers.reject(e);
+    readyResolvers = null;
+  }
+  teardownWorker(e);
+}
+
+// Terminate the worker (if any) and reject anything still in flight so nothing
+// hangs forever. `err` is the failure that prompted the teardown; a plain
+// resetOcct()/successful path passes none, and pending parses get a generic
+// init-kind rejection.
+function teardownWorker(err) {
+  if (worker) {
+    worker.terminate();
+    worker = null;
+  }
+  workerReadyPromise = null;
+  readyResolvers = null;
+  for (const p of pending.values()) {
+    const e = err || new Error('STEP parse worker was terminated');
+    if (!e.kind) e.kind = 'init';
+    p.reject(e);
+  }
+  pending.clear();
+}
+
+// Lazily spawn the worker and initialize the WASM engine exactly once, returning
+// a promise that resolves when the worker reports 'ready'. Cached across loads.
+// A failure to construct the worker, or an engine/CDN/WASM init failure inside it,
+// rejects with `kind: 'init'` and clears the cache so the next call retries.
+function getWorkerReady() {
+  if (!workerReadyPromise) {
+    workerReadyPromise = new Promise((resolve, reject) => {
+      try {
+        // Classic worker (no { type: 'module' }) so it can importScripts() the
+        // occt UMD build. Resolve the URL relative to this module so it works
+        // regardless of where the app is served from.
+        worker = new Worker(new URL('./step.worker.js', import.meta.url));
+      } catch (err) {
+        workerReadyPromise = null;
+        const e = err instanceof Error ? err : new Error(String(err));
+        e.kind = 'init';
+        reject(e);
+        return;
+      }
+      worker.onmessage = handleWorkerMessage;
+      worker.onerror = handleWorkerError;
+      readyResolvers = { resolve, reject };
+      // Hand the CDN base in so OCCT_VERSION lives only here, not duplicated in
+      // the worker; the worker importScripts + inits the engine on receipt.
+      worker.postMessage({ type: 'init', base: OCCT_BASE });
+    });
+  }
+  return workerReadyPromise;
+}
+
+// Send the STEP bytes to the worker (transferred zero-copy) and await the parsed
+// per-mesh typed arrays. Rejects with `kind: 'parse'` on bad bytes.
+function postParse(arrayBuffer) {
   return new Promise((resolve, reject) => {
-    if (window.occtimportjs) return resolve(window.occtimportjs);
-    const script = document.createElement('script');
-    script.src = OCCT_BASE + 'occt-import-js.js';
-    script.onload = () => {
-      if (window.occtimportjs) resolve(window.occtimportjs);
-      else reject(new Error('occt-import-js loaded but did not expose a factory'));
-    };
-    script.onerror = () => reject(new Error('Failed to load occt-import-js from CDN'));
-    document.head.appendChild(script);
+    const id = ++msgSeq;
+    pending.set(id, { resolve, reject });
+    worker.postMessage({ type: 'parse', id, buffer: arrayBuffer }, [arrayBuffer]);
   });
 }
 
-// Loads and initializes the occt-import-js WASM module (idempotent).
-// Any failure here is an engine/CDN/WASM problem (network or init), NOT a parse
-// failure — tag it with `kind: 'init'` so callers can word the message right,
-// and reset the cached promise so a later load can retry the download.
+// Ensures the parse worker + its WASM engine are up (idempotent).
+// Any failure here is an engine/CDN/WASM/worker problem (network or init), NOT a
+// parse failure — it rejects with `kind: 'init'` so callers can word the message
+// right, and the cache self-clears so a later load can retry.
 export async function initOcct() {
-  if (!occtPromise) {
-    occtPromise = loadOcctFactory()
-      .then((factory) => factory({ locateFile: (path) => OCCT_BASE + path }))
-      .catch((err) => {
-        occtPromise = null; // allow a retry on the next load attempt
-        const e = err instanceof Error ? err : new Error(String(err));
-        e.kind = 'init';
-        throw e;
-      });
-  }
-  return occtPromise;
+  return getWorkerReady();
 }
 
-// Discard the cached engine-init promise so the next initOcct() starts a fresh
-// download + init. Used by the UI's Retry after an engine/CDN load failure or a
-// stall: initOcct only self-clears the cache on rejection, so a still-pending
-// (hung) attempt would otherwise be re-awaited forever. Clearing it here lets a
-// retry kick off a genuinely new attempt.
+// Terminate the parse worker and discard the cached engine-ready promise so the
+// next initOcct()/load spawns a fresh worker and re-inits the engine. Used by the
+// UI's Retry after an engine/CDN load failure or a stall: getWorkerReady only
+// self-clears on rejection, so a still-pending (hung) attempt would otherwise be
+// re-awaited forever. Terminating here also kills any in-flight parse so a retry
+// starts a genuinely new attempt.
 export function resetOcct() {
-  occtPromise = null;
+  teardownWorker();
 }
 
 // Parses a STEP file (as an ArrayBuffer / TypedArray) and returns a THREE.Group
@@ -74,40 +179,43 @@ export function resetOcct() {
 // to the original faint line, so an omitted argument is byte-for-byte unchanged.
 export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color: 0x0a0d12, opacity: 0.35 }) {
   if (onPhase) onPhase('engine');
-  const occt = await initOcct();
-  const fileBuffer = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  await getWorkerReady();
 
-  if (onPhase) onPhase('parse');
-  const result = occt.ReadStepFile(fileBuffer, null);
-  if (!result || !result.success) {
-    // The engine loaded but the bytes were not valid/parseable STEP — tag it as
-    // a genuine parse failure so callers can distinguish it from a load failure.
-    const e = new Error('occt ReadStepFile failed to parse the STEP data');
-    e.kind = 'parse';
-    throw e;
+  // Normalize to a standalone ArrayBuffer we can hand to the worker's transfer
+  // list (zero-copy). Slice a TypedArray view to exactly its range so we transfer
+  // only these bytes and never detach a buffer the view might share.
+  let arrayBuffer;
+  if (buf instanceof ArrayBuffer) {
+    arrayBuffer = buf;
+  } else if (ArrayBuffer.isView(buf)) {
+    arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  } else {
+    arrayBuffer = new Uint8Array(buf).buffer;
   }
 
+  if (onPhase) onPhase('parse');
+  // The parse runs in the worker; it transfers back per-mesh typed arrays. A
+  // bad-bytes failure rejects here with kind:'parse' (see postParse/protocol).
+  const meshes = await postParse(arrayBuffer);
+
   const group = new THREE.Group();
-  for (const resultMesh of result.meshes) {
+  for (const resultMesh of meshes) {
     const geometry = new THREE.BufferGeometry();
 
     geometry.setAttribute(
       'position',
-      new THREE.Float32BufferAttribute(resultMesh.attributes.position.array, 3)
+      new THREE.Float32BufferAttribute(resultMesh.position, 3)
     );
 
-    if (resultMesh.attributes.normal && resultMesh.attributes.normal.array) {
-      geometry.setAttribute(
-        'normal',
-        new THREE.Float32BufferAttribute(resultMesh.attributes.normal.array, 3)
-      );
+    if (resultMesh.normal) {
+      geometry.setAttribute('normal', new THREE.Float32BufferAttribute(resultMesh.normal, 3));
     }
 
-    if (resultMesh.index && resultMesh.index.array) {
-      geometry.setIndex(new THREE.Uint32BufferAttribute(resultMesh.index.array, 1));
+    if (resultMesh.index) {
+      geometry.setIndex(new THREE.Uint32BufferAttribute(resultMesh.index, 1));
     }
 
-    if (!(resultMesh.attributes.normal && resultMesh.attributes.normal.array)) {
+    if (!resultMesh.normal) {
       geometry.computeVertexNormals();
     }
 
