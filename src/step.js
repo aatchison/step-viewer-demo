@@ -371,10 +371,34 @@ function isInScene(obj) {
   return false;
 }
 
+// Triangle-count ceiling for the decorative feature-edge overlay. EdgesGeometry
+// walks EVERY triangle of the mesh (O(tris) CPU) and allocates a whole second
+// geometry's worth of GPU memory for the line set — pure polish on top of the
+// shaded mesh, which is already the deliverable. On a multi-million-triangle part
+// that idle task janks and can roughly double memory for a barely-visible gain,
+// so above this threshold we skip the overlay for that mesh entirely: no
+// EdgesGeometry, no LineSegments, no extra material is ever allocated. Models
+// under the limit are byte-for-byte unchanged.
+const EDGE_TRI_LIMIT = 500_000;
+
+// Triangle count for a geometry, matching how the app counts tris elsewhere
+// (index.count/3 when indexed, else position.count/3 — see index.html
+// countTriangles). Returns 0 for a geometry with neither attribute so it can
+// never trip the skip guard on a degenerate/empty mesh.
+function triangleCount(geometry) {
+  if (geometry.index) return geometry.index.count / 3;
+  const pos = geometry.attributes && geometry.attributes.position;
+  return pos ? pos.count / 3 : 0;
+}
+
 // Build the decorative feature-edge overlay for a mesh during an idle slot,
 // after the shaded mesh is already on screen. Kept off the parse/first-render
 // path so first display isn't blocked on it (see call site).
 function scheduleEdges(mesh, geometry, edgeStyle, onEdgesReady) {
+  // Above EDGE_TRI_LIMIT the overlay costs more than it's worth (see the constant):
+  // bail before scheduling any idle work so nothing is allocated for this mesh. The
+  // shaded mesh still renders normally; it just goes without feature edges.
+  if (triangleCount(geometry) > EDGE_TRI_LIMIT) return;
   runWhenIdle(() => {
     // The group may have been swapped out before this idle slot ran; if it's no
     // longer in the scene, skip so we don't build edges on a discarded model.
