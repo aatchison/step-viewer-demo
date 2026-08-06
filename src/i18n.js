@@ -211,6 +211,8 @@ const messages = {
     errHttp: 'Could not load {label} — the file could not be fetched ({message}).',
     errParse:
       'Could not load {label} — the file could not be parsed; it may be invalid or an unsupported CAD variant.',
+    errEmpty:
+      'Could not display {label} — the file parsed successfully but contains no solid geometry (it may be surfaces/wireframe or an empty assembly).',
     errGeneric: 'Could not load {label} — the file may be invalid or unsupported.',
 
     // --- Model-info HUD ---

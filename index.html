@@ -1778,6 +1778,7 @@
       if (kind === 'init') return t('errInit', { label });
       if (kind === 'http') return t('errHttp', { label, message: err.message });
       if (kind === 'parse') return t('errParse', { label });
+      if (kind === 'empty') return t('errEmpty', { label });
       return t('errGeneric', { label });
     }
 
