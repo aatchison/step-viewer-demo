@@ -131,6 +131,13 @@ export async function loadStepFromArrayBuffer(buf, onPhase, edgeStyle = { color:
 
     const mesh = new THREE.Mesh(geometry, material);
 
+    // Stash the resolved occt base color on the mesh so the app's material
+    // presets (Studio/Technical/Clay/X-ray) can recolor and restore the part's
+    // real color without re-parsing the STEP. `color` above is the same value
+    // the default Studio material starts with; clone so a later preset mutating
+    // material.color can never mutate this reference.
+    mesh.userData.baseColor = color.clone();
+
     // Carry the STEP sub-object name through to the Mesh so the click-to-select
     // picker can label the face it hit. occt-import-js exposes a per-mesh `name`
     // (the STEP product/solid label); it can be empty, so the picker falls back

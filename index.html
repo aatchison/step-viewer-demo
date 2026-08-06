@@ -283,6 +283,28 @@
     #wire-toggle.is-active { color: var(--on-fg); background: var(--on-fill);
       border-color: var(--accent); }
     #wire-toggle.is-active:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
+    /* Material-preset picker — a native <select> wrapped in a label styled to
+       match the wireframe toggle so it reads as one system. The header is
+       click-through, so re-enable pointer events here too. */
+    #material-toggle { pointer-events: auto; cursor: pointer; user-select: none;
+      display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem;
+      color: var(--fg); background: var(--panel); border: 1px solid var(--hc-border, var(--border)); border-radius: 6px;
+      padding: .3rem .5rem; }
+    #material-toggle:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    /* The select is chromeless — it inherits the label's font/color and sits
+       flush inside the pill. It keeps the OS-native option dropdown (accessible
+       and keyboard-driven for free); only the closed control is restyled. */
+    #material-select { font: inherit; font-size: .8rem; color: inherit; cursor: pointer;
+      background: transparent; border: 0; border-radius: 4px; padding: 0 .1rem; margin: 0; }
+    /* Native option lists render in OS chrome; force legible tokens so the popup
+       is readable in the dark theme (some engines honor these). */
+    #material-select option { color: var(--fg); background: var(--panel); }
+    #material-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    /* Accent the pill whenever a non-default (non-Studio) preset is active, the
+       same on-state language as the wireframe toggle / gallery pills, so a
+       technical/clay/x-ray look reads at a glance. */
+    #material-toggle.is-active { color: var(--on-fg); background: var(--on-fill); border-color: var(--accent); }
+    #material-toggle.is-active:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
     #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
@@ -690,7 +712,7 @@
        coarse block so these paddings win on equal specificity. */
     @media (max-width: 600px) {
       header { gap: .5rem; padding: .5rem .75rem; }
-      #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
+      #wire-toggle .btn-label, #material-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
       #contrast-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
       #share-btn .btn-label, #embed-btn .btn-label,
       #measure-btn .btn-label, #measure-clear .btn-label, #section-btn .btn-label,
@@ -703,6 +725,7 @@
       #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
+      #material-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
       /* Preset cluster collapses to axis-sign glyphs on the same narrow
          breakpoint, mirroring the header controls' label→icon collapse. */
       #view-presets .preset .btn-label { display: none; }
@@ -727,6 +750,24 @@
     <span class="spacer"></span>
     <label id="wire-toggle" title="Toggle wireframe (W)" data-i18n-attr="title:wireframeTitle">
       <input id="wire-check" type="checkbox" aria-label="Wireframe" data-i18n-attr="aria-label:wireframeLabel" /> <span class="btn-icon" aria-hidden="true">▦</span><span class="btn-label" data-i18n="wireframeLabel">Wireframe</span>
+    </label>
+    <!-- Material & lighting preset picker. A native <select> (inherently
+         keyboard-operable, with a :focus-visible ring below) chooses the shading
+         preset applied over every mesh in the loaded model — Studio (the default
+         machined-metal look), Technical (flat neutral for reading form), Clay
+         (matte terracotta), or X-ray (translucent for internal features). The
+         choice persists to localStorage and is re-applied to any newly loaded
+         model via showStepFromArrayBuffer. The label collapses to the ◐ glyph
+         under the same 600px / coarse-pointer rules as the other header controls;
+         the select itself always stays visible. -->
+    <label id="material-toggle" title="Material & lighting preset (Studio / Technical / Clay / X-ray)" data-i18n-attr="title:materialTitle">
+      <span class="btn-icon" aria-hidden="true">◐</span><span class="btn-label" data-i18n="materialLabel">Material</span>
+      <select id="material-select" aria-label="Material & lighting preset" data-i18n-attr="aria-label:materialAria">
+        <option value="studio" data-i18n="matStudio">Studio</option>
+        <option value="technical" data-i18n="matTechnical">Technical</option>
+        <option value="clay" data-i18n="matClay">Clay</option>
+        <option value="xray" data-i18n="matXray">X-ray</option>
+      </select>
     </label>
     <button id="fit-btn" type="button" title="Fit / reset view (R or F, or double-click canvas)" aria-label="Fit view" data-i18n-attr="title:fitTitle;aria-label:fitAria"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label" data-i18n="fitLabel">Fit view</span></button>
     <!-- Measure toggle. When active, a click raycasts against the loaded meshes to
@@ -2163,6 +2204,7 @@
       currentModelLabel = label; // remember for the Save-image PNG filename
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
+      applyMaterialPreset(model); // adopt the persisted material/lighting preset
       frameObject(model); // frame at scale 1 before the transition shrinks it
       // Reapply the section clip plane to the freshly loaded meshes so switching
       // models mid-section keeps cutting. frameObject has just recentered the model
@@ -2452,6 +2494,101 @@
       applyWireframe(currentModel);
     }
     wireCheck.addEventListener('change', () => setWireframe(wireCheck.checked));
+
+    // --- Material & lighting presets (Studio / Technical / Clay / X-ray) -------
+    // The mesh materials are built as a single machined-metal look in src/step.js
+    // (each mesh also stashing its resolved occt color on
+    // `mesh.userData.baseColor`). These presets recolor + re-shade every mesh
+    // material in place — mutating the existing MeshStandardMaterial rather than
+    // replacing it — so the wireframe toggle, the section clip planes
+    // (material.clippingPlanes), and any live face-selection emissive glow all
+    // ride along untouched. Each preset writes the FULL set of props it varies so
+    // switching back to Studio fully restores the default look. The choice is
+    // persisted and re-applied to every newly loaded model (gallery/file/drop) via
+    // showStepFromArrayBuffer's applyMaterialPreset call.
+    const MATERIAL_KEY = 'stepviewer.material';
+    const MAT_TECHNICAL_BASE = 0xb8bfc7; // neutral light-grey for uniform readable shading
+    const MAT_CLAY_BASE = 0xb06a43;      // warm terracotta
+    const MATERIAL_PRESETS = {
+      // Studio — the original machined-metal PBR (matches src/step.js exactly).
+      studio: (m, base) => {
+        m.color.copy(base);
+        m.metalness = 0.85; m.roughness = 0.3; m.envMapIntensity = 1.15;
+        m.transparent = false; m.opacity = 1; m.depthWrite = true;
+      },
+      // Technical — flat neutral grey, near-zero metalness + high roughness so the
+      // IBL barely reflects: uniform matte shading that reads surface form.
+      technical: (m) => {
+        m.color.setHex(MAT_TECHNICAL_BASE);
+        m.metalness = 0.05; m.roughness = 0.85; m.envMapIntensity = 0.3;
+        m.transparent = false; m.opacity = 1; m.depthWrite = true;
+      },
+      // Clay — matte warm terracotta, no metalness or reflections (shape review).
+      clay: (m) => {
+        m.color.setHex(MAT_CLAY_BASE);
+        m.metalness = 0.0; m.roughness = 1.0; m.envMapIntensity = 0.0;
+        m.transparent = false; m.opacity = 1; m.depthWrite = true;
+      },
+      // X-ray — translucent so overlapping solids read as see-through; depthWrite
+      // off so back faces show through (DoubleSide is kept by applyMaterialPreset).
+      xray: (m, base) => {
+        m.color.copy(base);
+        m.metalness = 0.1; m.roughness = 0.6; m.envMapIntensity = 0.5;
+        m.transparent = true; m.opacity = 0.25; m.depthWrite = false;
+      },
+    };
+
+    // Resolve the persisted preset (default Studio so the out-of-the-box look is
+    // unchanged). Read before the first model loads so the initial
+    // showStepFromArrayBuffer applies it.
+    let materialPreset = 'studio';
+    (function readStoredMaterial() {
+      let stored = null;
+      try { stored = localStorage.getItem(MATERIAL_KEY); } catch (e) {}
+      if (MATERIAL_PRESETS[stored]) materialPreset = stored;
+    })();
+
+    // Apply the active preset over every mesh material in a group. Skips the
+    // deferred feature-edge LineSegments (they're children of each mesh, not
+    // meshes themselves) so the edge overlay is never disposed or restyled here.
+    function applyMaterialPreset(group) {
+      if (!group) return;
+      const apply = MATERIAL_PRESETS[materialPreset] || MATERIAL_PRESETS.studio;
+      const xray = materialPreset === 'xray';
+      group.traverse((obj) => {
+        if (!obj.isMesh || !obj.material) return;
+        // Fall back to the live color if a mesh somehow lacks a stashed base
+        // (older group / non-STEP mesh) so recolor-then-restore is still stable.
+        const base = obj.userData.baseColor || obj.material.color;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach((m) => {
+          apply(m, base);
+          m.side = THREE.DoubleSide; // every preset keeps DoubleSide (esp. X-ray)
+          m.needsUpdate = true;
+        });
+        // X-ray is transparent with depthWrite off: draw it after the ground grid
+        // (renderOrder 0) and contact shadow (renderOrder 1) so it blends over
+        // them without z-fighting. Opaque presets render in the normal order.
+        obj.renderOrder = xray ? 3 : 0;
+      });
+    }
+
+    const materialSelect = document.getElementById('material-select');
+    const materialToggle = document.getElementById('material-toggle');
+    function setMaterialPreset(preset, persist) {
+      if (!MATERIAL_PRESETS[preset]) preset = 'studio';
+      materialPreset = preset;
+      materialSelect.value = preset;
+      // Accent the pill for any non-default preset (mirrors the wireframe toggle's
+      // is-active on-state) so a non-Studio look reads at a glance.
+      materialToggle.classList.toggle('is-active', preset !== 'studio');
+      if (persist) { try { localStorage.setItem(MATERIAL_KEY, preset); } catch (e) {} }
+      applyMaterialPreset(currentModel);
+    }
+    // Sync the control to the resolved initial preset (no persist, no model yet).
+    materialSelect.value = materialPreset;
+    materialToggle.classList.toggle('is-active', materialPreset !== 'studio');
+    materialSelect.addEventListener('change', () => setMaterialPreset(materialSelect.value, true));
 
     // --- High-contrast theme toggle (header button + `C` key) ---
     // CSS themes the DOM via the data-contrast attribute (set pre-paint by the
