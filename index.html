@@ -652,6 +652,12 @@
     let spin = placeholder; // object the render loop rotates (null once static model loads)
     let currentModel = null; // the loaded STEP Group currently in the scene, if any
     let currentModelLabel = null; // label of the on-screen model (for the PNG filename)
+    // File key of the bundled sample currently on screen, or null when a
+    // user-opened/dropped file is shown. Drives the deep-link hash: only bundled
+    // samples are encodable (a local blob can't be restored without a backend),
+    // so a null here clears the sample part of the URL hash. Set by loadSample,
+    // cleared by loadFile.
+    let currentSampleFile = null;
     let wireframe = false; // wireframe render state, applied to loaded meshes
     // prefers-reduced-motion query. Declared here (used by both the model swap-in
     // transition below and the placeholder-spin gate in the render loop). Live, so
@@ -968,7 +974,7 @@
 
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
-    async function showStepFromArrayBuffer(buf, label, onPhase) {
+    async function showStepFromArrayBuffer(buf, label, onPhase, camState) {
       // Pass the active feature-edge style so a fresh load in high contrast builds
       // its (idle-deferred) edge overlay crisp from the start, not faint-then-fixed.
       const model = await loadStepFromArrayBuffer(buf, onPhase, currentEdgeStyle());
@@ -988,6 +994,11 @@
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
       frameObject(model); // frame at scale 1 before the transition shrinks it
+      // Deep-link restore: if a saved camera state came with the load (from the
+      // URL hash), override frameObject's default placement with it, then let
+      // controls.update() settle (and clamp to the just-set min/maxDistance). A
+      // link with only a sample key (no camera) leaves the auto-fit framing.
+      if (camState) applyCameraState(camState);
       updateModelInfo(model, label); // refresh the name/tris/dims HUD for the swap
       startSwapIn(model); // ease the new model in (scale + fade) instead of popping
       markFirstRender(); // first successful render clears the loader + stall watch
@@ -1004,6 +1015,10 @@
       try {
         const buf = await file.arrayBuffer();
         await showStepFromArrayBuffer(buf, file.name);
+        // A user file is a local blob with no restorable URL — clear the sample
+        // part of the hash so a stale sample link can't be shared for this view.
+        currentSampleFile = null;
+        writeHash();
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = t('couldNotLoadConsole', { label: file.name });
@@ -1034,10 +1049,97 @@
 
     const gallery = document.getElementById('gallery');
 
+    // --- Deep-link / shareable-view hash --------------------------------------
+    // The only durable state channel on a static GitHub Pages site is the URL, so
+    // encode a compact restorable view in location.hash: the bundled sample key
+    // (stable file name, locale-independent — never the localized label) plus the
+    // camera position + orbit target needed to reproduce the shot. Coordinates are
+    // rounded to a few significant digits to keep the hash short. Only bundled
+    // samples are encoded; user-opened blobs can't be restored without a backend.
+
+    // Round to ~4 significant digits so a long float like 4.7320508 shortens to
+    // 4.732 without exploding the hash. Non-finite guards to 0.
+    function roundSig(n) {
+      if (!isFinite(n)) return 0;
+      if (n === 0) return 0;
+      return Number(n.toPrecision(4));
+    }
+
+    // Apply a restored camera state (arrays of 3 numbers): set the camera position
+    // and orbit target, refresh the projection, and let OrbitControls settle. Runs
+    // after frameObject, so it overrides the default auto-fit placement.
+    function applyCameraState(cam) {
+      camera.position.set(cam.pos[0], cam.pos[1], cam.pos[2]);
+      controls.target.set(cam.target[0], cam.target[1], cam.target[2]);
+      camera.updateProjectionMatrix();
+      controls.update();
+    }
+
+    // Serialize the current view into location.hash via replaceState (so it never
+    // spams the back-stack). With no bundled sample on screen (a user file, or
+    // nothing) the sample part is cleared: strip the hash entirely. Encodes as
+    // `#m=<file>&c=x,y,z,tx,ty,tz`.
+    function writeHash() {
+      if (!currentSampleFile) {
+        if (location.hash) {
+          history.replaceState(null, '', location.pathname + location.search);
+        }
+        return;
+      }
+      const p = camera.position;
+      const tg = controls.target;
+      const c = [p.x, p.y, p.z, tg.x, tg.y, tg.z].map(roundSig).join(',');
+      const hash = `#m=${encodeURIComponent(currentSampleFile)}&c=${c}`;
+      history.replaceState(null, '', hash);
+    }
+
+    // Parse location.hash into a restore descriptor, or null to fall back to the
+    // normal default auto-load. Returns { sample, cam } where cam is null when the
+    // link carries only a sample key (→ normal auto-fit framing) or when the camera
+    // values are malformed. An unknown/garbage sample key returns null (graceful
+    // fallback). Never throws.
+    function parseHash() {
+      try {
+        const h = location.hash.replace(/^#/, '');
+        if (!h) return null;
+        const params = new URLSearchParams(h);
+        const key = params.get('m');
+        if (!key) return null;
+        const sample = SAMPLES.find((s) => s.file === key);
+        if (!sample) return null; // unknown/garbage sample key → default auto-load
+        let cam = null;
+        const c = params.get('c');
+        if (c) {
+          const nums = c.split(',').map(Number);
+          // Only accept a complete, all-finite 6-tuple; anything malformed falls
+          // through as cam=null so the sample still loads at auto-fit framing.
+          if (nums.length === 6 && nums.every((n) => Number.isFinite(n))) {
+            cam = { pos: nums.slice(0, 3), target: nums.slice(3, 6) };
+          }
+        }
+        return { sample, cam };
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Debounced hash refresh on camera settle. OrbitControls fires 'change' on
+    // every mutated frame (pointer orbit/zoom/pan, wheel, damping tail, the
+    // keyboard camera keys, and gizmo snaps — all of which call controls.update()),
+    // so coalesce with a timer and write once the view has settled instead of
+    // thrashing history every frame. writeHash uses replaceState, so no back-stack
+    // spam. No-op while no bundled sample is on screen (writeHash guards on it).
+    let hashWriteTimer = null;
+    function scheduleHashWrite() {
+      clearTimeout(hashWriteTimer);
+      hashWriteTimer = setTimeout(writeHash, 500);
+    }
+    controls.addEventListener('change', scheduleHashWrite);
+
     // Fetch + parse + render a bundled sample, reusing the model-swap path so the
     // placeholder / previous model is disposed exactly as with user files.
-    async function loadSample(sample) {
-      retryAction = () => loadSample(sample); // Retry re-fetches + re-loads this sample
+    async function loadSample(sample, camState) {
+      retryAction = () => loadSample(sample, camState); // Retry re-fetches + re-loads this sample
       const buttons = gallery.querySelectorAll('.sample');
       buttons.forEach((b) => { b.disabled = true; });
       // Keep the first-paint guidance visible during the initial auto-load; only
@@ -1064,7 +1166,12 @@
           throw e;
         }
         const buf = await res.arrayBuffer();
-        await showStepFromArrayBuffer(buf, sample.label, onPhase);
+        await showStepFromArrayBuffer(buf, sample.label, onPhase, camState);
+        // This bundled sample is now on screen and restorable — record its key and
+        // update the shareable hash (auto-fit camera, or the restored one if this
+        // load came from a deep link).
+        currentSampleFile = sample.file;
+        writeHash();
         // Highlight the pill for the model now on screen.
         buttons.forEach((b) => {
           const active = b.dataset.file === sample.file;
@@ -1120,11 +1227,15 @@
       setLoadStatus(null);
       hint.textContent = coarsePointer ? t('reducedDataCoarse') : t('reducedDataFine');
     } else {
-      // Show the first bundled sample on page load. Arm the stall watchdog for
-      // this initial engine + model download so a slow/broken CDN doesn't hang
-      // forever.
+      // Show a bundled sample on page load. Arm the stall watchdog for this
+      // initial engine + model download so a slow/broken CDN doesn't hang forever.
+      // Parse a deep-link hash FIRST: a valid sample key loads that sample (with
+      // its saved camera, if any) instead of SAMPLES[0]; an unknown key or a
+      // malformed hash falls through to the normal default auto-load.
       startStallWatch();
-      loadSample(SAMPLES[0]);
+      const restore = parseHash();
+      if (restore) loadSample(restore.sample, restore.cam);
+      else loadSample(SAMPLES[0]);
     }
 
     // In reduced-data mode the boot-time stall watchdog is deferred, so the
