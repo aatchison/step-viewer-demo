@@ -58,6 +58,15 @@ python3 -m http.server 8000
 (occt-import-js loads its WASM over the network, so a plain `file://` open won't work —
 use a server.)
 
+## Contributing
+
+Want to add a sample, bump a dependency, or fix something? See
+[CONTRIBUTING.md](./CONTRIBUTING.md) — it covers the local-dev flow, the
+deliberate **zero-build** ground rules (ES modules + CDN importmap, no bundler,
+no `node_modules` at runtime), how to add a sample, how to bump the pinned
+three / occt versions, the pre-PR manual test checklist, and the PR conventions
+(keep it zero-build, preserve a11y and the `err.kind` error taxonomy).
+
 ## Development / CI
 
 The **site stays zero-build** — `index.html` loads three.js and occt-import-js from a
