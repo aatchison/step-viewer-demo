@@ -132,6 +132,7 @@
     #contrast-btn:focus-visible, #save-btn:focus-visible, #export-btn:focus-visible,
     #share-btn:focus-visible, #embed-btn:focus-visible,
     #measure-btn:focus-visible, #measure-clear:focus-visible,
+    #section-btn:focus-visible, #section-flip:focus-visible, .sp-axis:focus-visible,
     #help-btn:focus-visible, #help-close:focus-visible, #gallery .sample:focus-visible,
     #share-fallback-close:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
@@ -155,11 +156,11 @@
     #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
-    #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+    #fit-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
       color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .35rem .7rem; }
-    #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear { display: inline-flex; align-items: center; gap: .35rem; }
-    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover, #measure-btn:hover, #measure-clear:hover { background: #232a35; border-color: #3a4150; }
+    #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn { display: inline-flex; align-items: center; gap: .35rem; }
+    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover, #embed-btn:hover, #measure-btn:hover, #measure-clear:hover, #section-btn:hover { background: #232a35; border-color: #3a4150; }
     /* Measure toggle active state — reuses the same accent on-state language as the
        wireframe toggle / gallery pills (lifted text over a translucent blue fill
        with the accent border) so "measure mode is on" reads at a glance. Both the
@@ -168,6 +169,14 @@
        wins when not hovering. */
     #measure-btn.is-active { color: #eaf2ff; background: #1f3350cc; border-color: #4f9dff; }
     #measure-btn.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    /* Section toggle active state — same accent on-state language as the measure /
+       wireframe toggles and gallery pills (lifted text over a translucent blue
+       fill with the accent border) so "section mode is on" reads at a glance. Both
+       .is-active and aria-pressed are set in JS (per the measure-toggle pattern);
+       styling keys on .is-active. Placed after :hover so the active fill wins when
+       not hovering. */
+    #section-btn.is-active { color: #eaf2ff; background: #1f3350cc; border-color: #4f9dff; }
+    #section-btn.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Clear-measurement button is disabled until something is measured. */
     #measure-clear:disabled { opacity: .5; cursor: not-allowed; }
     #measure-clear:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
@@ -184,6 +193,56 @@
       border: 1px solid #4f9dff; border-radius: 6px; padding: .12rem .4rem;
       white-space: nowrap; box-shadow: 0 2px 8px #0008; }
     #measure-label[hidden] { display: none; }
+    /* Section / cross-section controls. A compact floating panel shown only while
+       Section mode is on (toggled from the header ⧈ button). Parked at the
+       bottom-left corner where the canvas is clear of the header (top), the
+       vertically-centered view-preset toolbar (left-center), the top-right gizmo +
+       model-info HUD, and the centered bottom cluster. Tokens mirror the gallery
+       pills / HUD (translucent panel fill, muted border, blur) so it reads as one
+       system. The panel itself is a normal interactive control cluster (pointer
+       events on). Hidden in embed mode alongside the rest of the chrome. */
+    :root.embed #section-panel { display: none !important; }
+    #section-panel { position: fixed; left: 1rem; bottom: 1rem; z-index: 11;
+      display: flex; flex-direction: column; gap: .45rem; width: min(52vw, 220px);
+      color: #e6edf3; background: var(--hc-panel-bg, #1b2029cc);
+      border: 1px solid var(--hc-border, #2a2f3a); border-radius: 10px;
+      padding: .55rem .6rem; backdrop-filter: blur(4px);
+      box-shadow: 0 6px 20px #0006; }
+    /* display:flex above overrides the hidden attribute's display:none — restore
+       it so the panel stays invisible until Section mode is turned on. */
+    #section-panel[hidden] { display: none; }
+    #section-panel .sp-title { font-size: .74rem; font-weight: 600; color: #cfe0ff;
+      letter-spacing: .2px; }
+    /* flex-wrap so the axis pills + flip never overflow the panel on the narrowest
+       phones (at 360px the 40px coarse-pointer targets can exceed the panel width);
+       the flip button then drops to a second line instead of clipping. */
+    #section-panel .sp-axes { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+    /* Axis + flip pills reuse the gallery-pill on/off language so the selected
+       axis and the flip state read at a glance. */
+    #section-panel .sp-axis, #section-panel .sp-flip { pointer-events: auto;
+      cursor: pointer; font: inherit; font-size: .78rem; font-weight: 600;
+      color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a);
+      border-radius: 6px; padding: .25rem .5rem; min-width: 1.9rem;
+      display: inline-flex; align-items: center; justify-content: center; }
+    #section-panel .sp-axis:hover, #section-panel .sp-flip:hover { background: #232a35;
+      border-color: #3a4150; }
+    #section-panel .sp-axis.is-active { color: #eaf2ff; background: #1f3350cc;
+      border-color: #4f9dff; }
+    #section-panel .sp-axis.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    #section-panel .sp-flip { margin-left: auto; } /* push flip to the right edge */
+    #section-panel .sp-flip.is-active { color: #eaf2ff; background: #1f3350cc;
+      border-color: #4f9dff; }
+    #section-panel .sp-flip.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
+    /* The cut-position slider. accent-color themes the native track/thumb to the
+       app blue; width:100% fills the panel. The slider is a static control (no
+       animation), so it is inherently reduced-motion safe. */
+    #section-panel .sp-slider { width: 100%; margin: 0; accent-color: #4f9dff;
+      cursor: pointer; }
+    /* Touch: give the axis/flip pills and the slider thumb a comfortable target. */
+    @media (pointer: coarse) {
+      #section-panel .sp-axis, #section-panel .sp-flip { min-height: 40px; min-width: 40px; }
+      #section-panel .sp-slider { height: 40px; }
+    }
     /* Non-shareable state: a user-opened file has no restorable link, so the
        button is disabled (updateShareState) — dim it and drop the pointer. The
        Export GLB button is disabled the same way until a real model is loaded
@@ -421,7 +480,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -444,12 +503,12 @@
       #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
       #contrast-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
       #share-btn .btn-label, #embed-btn .btn-label,
-      #measure-btn .btn-label, #measure-clear .btn-label { display: none; }
+      #measure-btn .btn-label, #measure-clear .btn-label, #section-btn .btn-label { display: none; }
       #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
       #contrast-btn .btn-icon, #save-btn .btn-icon, #export-btn .btn-icon,
       #share-btn .btn-icon, #embed-btn .btn-icon,
-      #measure-btn .btn-icon, #measure-clear .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear { min-width: 44px; padding: .4rem;
+      #measure-btn .btn-icon, #measure-clear .btn-icon, #section-btn .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
       /* Preset cluster collapses to axis-sign glyphs on the same narrow
@@ -489,6 +548,15 @@
          Measure mode is on (or a measurement lingers); disabled until there's
          something to clear. Also reachable via the Esc key. -->
     <button id="measure-clear" type="button" hidden disabled title="Clear measurement (Esc)" aria-label="Clear measurement" data-i18n-attr="title:measureClearTitle;aria-label:measureClearAria"><span class="btn-icon" aria-hidden="true">✕</span><span class="btn-label" data-i18n="measureClearLabel">Clear</span></button>
+    <!-- Section / cross-section toggle. When active, a shared clipping plane cuts
+         through the loaded model (renderer.localClippingEnabled + per-material
+         clippingPlanes) so internal geometry — wall thickness, bores, pockets —
+         can be inspected. aria-pressed reflects the live state; when on it borrows
+         the accent on-state language of the measure / wireframe toggles (via
+         .is-active) so "section mode is on" reads at a glance. Turning it on shows
+         the axis / slider / flip panel (#section-panel). Collapses to the ⧈ glyph
+         under the same 600px / coarse-pointer rules as the other header buttons. -->
+    <button id="section-btn" type="button" title="Toggle section / cross-section clip plane" aria-label="Section / cross-section clip plane" aria-pressed="false" data-i18n-attr="title:sectionTitle;aria-label:sectionAria"><span class="btn-icon" aria-hidden="true">⧈</span><span class="btn-label" data-i18n="sectionLabel">Section</span></button>
     <!-- High-contrast toggle. aria-pressed reflects the live state (corrected by
          the module script on load from the persisted / OS preference); the ◑ glyph
          shows on narrow screens where the label collapses (see max-width:600px). -->
@@ -612,6 +680,21 @@
        aria-hidden — the numeric distance is announced through the #hint live
        region so it isn't read out twice. -->
   <div id="measure-label" hidden aria-hidden="true"></div>
+  <!-- Section / cross-section controls. Shown only while Section mode is on (the
+       header ⧈ toggle sets .hidden). Axis radios (X/Y/Z) set the clip-plane
+       normal; the range slider drives the plane's position across the model's
+       bounding box (live, in the render loop); the ⇄ flip button reverses which
+       half is kept. All wired in the module script (setSectionMode et al.). -->
+  <div id="section-panel" hidden role="group" aria-labelledby="section-panel-label">
+    <span id="section-panel-label" class="sp-title" data-i18n="sectionPanelTitle">Section</span>
+    <div class="sp-axes" role="radiogroup" aria-label="Section plane axis" data-i18n-attr="aria-label:sectionAxisAria">
+      <button type="button" class="sp-axis is-active" data-axis="x" role="radio" aria-checked="true" aria-label="Cut along the X axis" data-i18n-attr="aria-label:sectionAxisXAria">X</button>
+      <button type="button" class="sp-axis" data-axis="y" role="radio" aria-checked="false" aria-label="Cut along the Y axis" data-i18n-attr="aria-label:sectionAxisYAria">Y</button>
+      <button type="button" class="sp-axis" data-axis="z" role="radio" aria-checked="false" aria-label="Cut along the Z axis" data-i18n-attr="aria-label:sectionAxisZAria">Z</button>
+      <button type="button" id="section-flip" class="sp-flip" aria-pressed="false" title="Flip cut direction" aria-label="Flip the cut direction" data-i18n-attr="title:sectionFlipTitle;aria-label:sectionFlipAria"><span aria-hidden="true">⇄</span></button>
+    </div>
+    <input id="section-slider" class="sp-slider" type="range" min="0" max="1" step="0.005" value="0.5" aria-label="Section plane position" data-i18n-attr="aria-label:sectionSliderAria" />
+  </div>
   <!-- The visual spinner is decorative (aria-hidden); the staged status line
        below it is the accessible status channel (role=status / aria-live=polite)
        so first-load progress is announced once, not doubled with the spinner. -->
@@ -1427,6 +1510,137 @@
 
     updateMeasureClearState(); // reflect the initial (nothing measured) state
 
+    // --- Section / cross-section clip plane ------------------------------------
+    // A core CAD-inspection capability: cut through the model to inspect internal
+    // geometry (wall thickness, bores, pockets). three.js does this natively with
+    // no extra dependency via material clipping planes, so it stays zero-build.
+    //
+    // Approach — DoubleSide back-faces, not solid caps: the loaded materials
+    // already render with side: THREE.DoubleSide (see src/step.js), so the cut
+    // reveals the model's back-facing interior surfaces as a visible cross-section
+    // rather than leaving black holes where the front faces were removed. We
+    // deliberately do NOT build solid cap geometry (stencil capping is a much
+    // larger, non-zero-build effort); the double-sided interior read is the chosen,
+    // dependency-free approach.
+    //
+    // One shared THREE.Plane drives the cut for every mesh material. Because the
+    // array assigned to material.clippingPlanes holds that same plane object,
+    // mutating the plane's constant/normal in place (on slider drag / axis / flip)
+    // is reflected on the very next render — no reassignment, so the drag is live.
+    const sectionBtn = document.getElementById('section-btn');
+    const sectionPanel = document.getElementById('section-panel');
+    const sectionSlider = document.getElementById('section-slider');
+    const sectionFlipBtn = document.getElementById('section-flip');
+    const sectionAxisBtns = Array.from(document.querySelectorAll('#section-panel .sp-axis'));
+    const SECTION_AXES = {
+      x: new THREE.Vector3(1, 0, 0),
+      y: new THREE.Vector3(0, 1, 0),
+      z: new THREE.Vector3(0, 0, 1),
+    };
+    const sectionPlane = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0);
+    let sectionMode = false;
+    let sectionAxis = 'x';
+    let sectionFlip = false;
+
+    // Assign (or clear) the shared clip plane on every material in a group. When
+    // Section is on, each material gets the shared [sectionPlane]; when off, an
+    // empty array restores normal, un-clipped rendering. Traverses all materials
+    // (shaded meshes and, if already built, the decorative edge overlay) so the
+    // cut is consistent. Called on toggle and on every fresh load/swap so a model
+    // change mid-section keeps clipping.
+    function applyClipping(group) {
+      if (!group) return;
+      const planes = sectionMode ? [sectionPlane] : [];
+      group.traverse((obj) => {
+        if (!obj.material) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach((m) => { m.clippingPlanes = planes; });
+      });
+    }
+
+    // Position the shared plane from the current axis, flip, and slider value. The
+    // model is recentered on the origin by frameObject, so the slider value is a
+    // world-space cut coordinate along the axis. For an axis unit normal n and cut
+    // coordinate c, the plane keeps n·p + constant > 0; with constant = -c that
+    // keeps the +axis half (p·axis > c). Flip negates BOTH normal and constant so
+    // the opposite half is kept instead. Mutates the plane in place (live drag).
+    function updateSectionPlane() {
+      const sign = sectionFlip ? -1 : 1;
+      sectionPlane.normal.copy(SECTION_AXES[sectionAxis]).multiplyScalar(sign);
+      const c = parseFloat(sectionSlider.value);
+      sectionPlane.constant = -c * sign;
+    }
+
+    // Re-derive the slider min/max from the current model's bounding box along the
+    // active axis (the same Box3 math frameObject/updateModelInfo use), then place
+    // the plane. `resetToMid` recenters the cut (used on enable / axis change /
+    // model swap) so a fresh section starts as a clean half-cut through the middle.
+    function updateSectionRange(resetToMid) {
+      if (!currentModel) return;
+      const box = new THREE.Box3().setFromObject(currentModel);
+      if (box.isEmpty()) return;
+      const lo = box.min[sectionAxis];
+      const hi = box.max[sectionAxis];
+      const span = (hi - lo) || 1;
+      sectionSlider.min = lo;
+      sectionSlider.max = hi;
+      sectionSlider.step = span / 200;
+      const v = parseFloat(sectionSlider.value);
+      if (resetToMid || !isFinite(v) || v < lo || v > hi) {
+        sectionSlider.value = (lo + hi) / 2;
+      }
+      updateSectionPlane();
+    }
+
+    // Turn Section mode on/off. Enabling flips on the renderer's local clipping,
+    // shows the axis/slider/flip panel, derives the slider range from the model,
+    // and assigns the shared plane to every material. Disabling clears the planes
+    // (empty array) and turns local clipping back off, restoring normal rendering.
+    function setSectionMode(on) {
+      sectionMode = on;
+      renderer.localClippingEnabled = on;
+      sectionBtn.classList.toggle('is-active', on);
+      sectionBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      sectionPanel.hidden = !on;
+      if (on) {
+        updateSectionRange(true);      // derive range + place the plane
+        applyClipping(currentModel);   // assign the shared plane to all materials
+        hint.textContent = t('sectionOn');
+      } else {
+        applyClipping(currentModel);   // planes = [] → restore normal rendering
+        hint.textContent = t('sectionOff');
+      }
+    }
+    function toggleSection() { setSectionMode(!sectionMode); }
+    sectionBtn.addEventListener('click', toggleSection);
+
+    // Axis radios: set the plane normal and re-derive the slider range for the new
+    // axis (which resets the cut to the middle of that axis's extent).
+    sectionAxisBtns.forEach((b) => {
+      b.addEventListener('click', () => {
+        sectionAxis = b.dataset.axis;
+        sectionAxisBtns.forEach((o) => {
+          const active = o === b;
+          o.classList.toggle('is-active', active);
+          o.setAttribute('aria-checked', active ? 'true' : 'false');
+        });
+        updateSectionRange(true);
+      });
+    });
+
+    // Flip button: reverse which half of the model is kept (negate normal +
+    // constant, handled by updateSectionPlane reading sectionFlip).
+    sectionFlipBtn.addEventListener('click', () => {
+      sectionFlip = !sectionFlip;
+      sectionFlipBtn.setAttribute('aria-pressed', sectionFlip ? 'true' : 'false');
+      sectionFlipBtn.classList.toggle('is-active', sectionFlip);
+      updateSectionPlane();
+    });
+
+    // Slider drag: move the cut live. Only the shared plane's constant changes, so
+    // the render loop shows the new cut on the next frame without reassignment.
+    sectionSlider.addEventListener('input', updateSectionPlane);
+
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
     async function showStepFromArrayBuffer(buf, label, onPhase, camState) {
@@ -1452,6 +1666,12 @@
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
       frameObject(model); // frame at scale 1 before the transition shrinks it
+      // Reapply the section clip plane to the freshly loaded meshes so switching
+      // models mid-section keeps cutting. frameObject has just recentered the model
+      // on the origin, so re-derive the slider range from the new model's bbox and
+      // re-center the cut. When section is off, applyClipping assigns [] (no-op cut).
+      if (sectionMode) updateSectionRange(true);
+      applyClipping(model);
       // Deep-link restore: if a saved camera state came with the load (from the
       // URL hash), override frameObject's default placement with it, then let
       // controls.update() settle (and clamp to the just-set min/maxDistance). A
