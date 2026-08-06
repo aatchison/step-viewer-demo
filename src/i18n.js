@@ -191,6 +191,11 @@ const messages = {
     couldNotLoadConsole: 'Could not load {label} — see console',
     notStepFile: '{name} is not a .step/.stp file',
 
+    // --- Large-file size guard ---
+    sizeSoftWarn: '{label} is large ({size}) — parsing may be slow.',
+    sizeHardConfirm:
+      '{label} is very large ({size}). Parsing it may exhaust memory or freeze the tab. Load it anyway?',
+
     // --- Save image (PNG capture) ---
     captureFailed: "Couldn't save the image — the 3D view could not be captured.",
     captureNothing: 'Load a model first, then save the view as an image.',
@@ -370,6 +375,9 @@ const messages = {
     keyHint: ' · teclas: 1–4 ejemplos, R restablecer, W malla',
     loading: 'Cargando {label}…',
     loadedHint: '{label} · {zoom}',
+    sizeSoftWarn: '{label} es grande ({size}) — el análisis puede ser lento.',
+    sizeHardConfirm:
+      '{label} es muy grande ({size}). Analizarlo puede agotar la memoria o bloquear la pestaña. ¿Cargarlo de todos modos?',
   },
 };
 

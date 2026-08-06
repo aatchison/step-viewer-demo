@@ -2331,9 +2331,39 @@
       hint.textContent = t('loadedHint', { label, zoom: zoomHint });
     }
 
+    // --- Large-file guard ------------------------------------------------------
+    // Byte-size thresholds checked on EVERY load entry point before the buffer is
+    // handed to the parser (File.size for open/drag-drop, ArrayBuffer.byteLength
+    // for the fetched sample). occt-import-js parses against the tab's memory
+    // budget, so a multi-hundred-MB drop can exhaust memory or lock the tab with
+    // no warning. These constants are the single source of truth so open,
+    // drag-drop, and gallery-sample loads behave identically. Pure length checks
+    // against the buffer already in hand — no backend, no streaming.
+    const SOFT_LIMIT_BYTES = 40 * 1024 * 1024;   // 40 MB — non-blocking warn, then parse
+    const HARD_LIMIT_BYTES = 150 * 1024 * 1024;  // 150 MB — explicit confirm before parsing
+    const fmtMB = (bytes) => `${Math.round(bytes / (1024 * 1024))} MB`;
+
+    // Gate a load by byte size. Returns true to proceed, false to abort (the
+    // caller must leave the current model untouched). Soft-over: surface a
+    // non-blocking toast via the existing channel, then proceed. Hard-over:
+    // require an explicit confirm(); a cancel returns false so nothing is parsed.
+    function guardFileSize(bytes, label) {
+      if (bytes >= HARD_LIMIT_BYTES) {
+        return window.confirm(t('sizeHardConfirm', { label, size: fmtMB(bytes) }));
+      }
+      if (bytes >= SOFT_LIMIT_BYTES) {
+        showToast(t('sizeSoftWarn', { label, size: fmtMB(bytes) }));
+      }
+      return true;
+    }
+
     // Read a user-supplied File and load it, reporting failures via the hint.
     async function loadFile(file) {
       retryAction = () => loadFile(file); // Retry re-reads + re-loads this file
+      // Guard on File.size before reading the blob into memory or parsing. A
+      // hard-limit cancel returns immediately — the current model, hint, and
+      // loader are all left untouched (the loader was never armed for this load).
+      if (!guardFileSize(file.size, file.name)) return;
       hint.textContent = t('loading', { label: file.name });
       armStallOnFirstUserLoad(); // reduced-data: arm the watchdog on this first real load
       setLoading(true);
@@ -2503,6 +2533,14 @@
           throw e;
         }
         const buf = await res.arrayBuffer();
+        // Guard on the fetched buffer's byteLength before parsing. A hard-limit
+        // cancel returns; the finally block clears the loader/spinner and
+        // re-enables the gallery, leaving the current model untouched. Restore the
+        // prior hint so a stale "Loading…" line can't linger past the cancel.
+        if (!guardFileSize(buf.byteLength, sample.label)) {
+          if (currentModel) hint.textContent = t('loadedHint', { label: currentModelLabel, zoom: zoomHint });
+          return;
+        }
         await showStepFromArrayBuffer(buf, sample.label, onPhase, camState);
         // This bundled sample is now on screen and restorable — record its key and
         // update the shareable hash (auto-fit camera, or the restored one if this
