@@ -52,12 +52,29 @@ export async function initOcct() {
   return occtPromise;
 }
 
+// Discard the cached engine-init promise so the next initOcct() starts a fresh
+// download + init. Used by the UI's Retry after an engine/CDN load failure or a
+// stall: initOcct only self-clears the cache on rejection, so a still-pending
+// (hung) attempt would otherwise be re-awaited forever. Clearing it here lets a
+// retry kick off a genuinely new attempt.
+export function resetOcct() {
+  occtPromise = null;
+}
+
 // Parses a STEP file (as an ArrayBuffer / TypedArray) and returns a THREE.Group
 // of Meshes. Throws on parse failure so callers can handle it.
-export async function loadStepFromArrayBuffer(buf) {
+//
+// `onPhase` is an optional progress hook invoked with a stage tag so callers can
+// surface staged first-load feedback: 'engine' just before the occt/WASM engine
+// initializes (the ~10–15s first-load cost), then 'parse' just before the STEP
+// bytes are decoded. It fires on every call, but engine init is cached after the
+// first, so the 'engine' phase is effectively instantaneous on later loads.
+export async function loadStepFromArrayBuffer(buf, onPhase) {
+  if (onPhase) onPhase('engine');
   const occt = await initOcct();
   const fileBuffer = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
 
+  if (onPhase) onPhase('parse');
   const result = occt.ReadStepFile(fileBuffer, null);
   if (!result || !result.success) {
     // The engine loaded but the bytes were not valid/parseable STEP — tag it as

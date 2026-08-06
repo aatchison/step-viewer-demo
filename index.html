@@ -4,6 +4,22 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>STEP Viewer Demo</title>
+  <!-- Inline SVG favicon: a wireframe cube glyph (echoing the header wordmark)
+       in brand-blue #0b1220 stroke on a rounded #4f9dff tile. Data-URI so the
+       zero-build page needs no extra asset request. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%234f9dff'/%3E%3Cpath%20d='M16%206%20L25%2011%20L25%2021%20L16%2026%20L7%2021%20L7%2011%20Z%20M16%206%20L16%2016%20M16%2016%20L25%2011%20M16%2016%20L7%2011'%20fill='none'%20stroke='%230b1220'%20stroke-width='1.8'%20stroke-linejoin='round'%20stroke-linecap='round'/%3E%3C/svg%3E" />
+  <!-- Social / SEO meta. og:url + og:image point at the published GitHub Pages
+       site and the docs screenshot so shared links render a summary card. -->
+  <meta name="description" content="A zero-build, in-browser STEP (ISO 10303) CAD file viewer — drag in a .step/.stp file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
+  <meta property="og:title" content="STEP Viewer Demo" />
+  <meta property="og:description" content="A zero-build, in-browser STEP (ISO 10303) CAD file viewer — drag in a .step/.stp file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://aatchison.github.io/step-viewer-demo/" />
+  <meta property="og:image" content="https://aatchison.github.io/step-viewer-demo/docs/screenshot.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="STEP Viewer Demo" />
+  <meta name="twitter:description" content="A zero-build, in-browser STEP (ISO 10303) CAD file viewer — drag in a .step/.stp file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
+  <meta name="twitter:image" content="https://aatchison.github.io/step-viewer-demo/docs/screenshot.png" />
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -136,6 +152,18 @@
       animation: spin 0.8s linear infinite; pointer-events: none; }
     #spinner.active { display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* Staged first-load status line — sits just below the centered spinner and
+       names the current phase ('Loading 3D engine…' → 'Parsing STEP model…').
+       Anchored to the viewport center like the spinner (top:50% + margin-top
+       clears the 42px spinner's lower half at every width), so no layout math
+       depends on the breakpoint. Muted token to match the hint; click-through so
+       it never blocks orbit drags. No animation, so it's inherently
+       reduced-motion safe. */
+    #load-status { position: fixed; top: 50%; left: 50%; z-index: 15;
+      transform: translateX(-50%); margin: 34px 0 0; display: none;
+      max-width: min(90vw, 320px); text-align: center; font-size: .82rem;
+      color: #8b949e; pointer-events: none; }
+    #load-status.active { display: block; }
     /* Reduced-motion: stop the perpetual spinner rotation and show a static
        loading indicator instead (the JS render loop also halts the placeholder
        spin under the same query). */
@@ -149,6 +177,32 @@
       padding: .6rem .9rem; box-shadow: 0 6px 20px #0008; pointer-events: none;
       opacity: 0; transition: opacity .2s ease; }
     #toast.active { opacity: 1; pointer-events: auto; }
+    /* Persistent engine-load failure panel. Distinct from the transient parse
+       toast above: an occt/WASM engine failure (offline / CDN down) is not
+       self-clearing, so this stays put — with a friendly line and a Retry button
+       — until the user re-attempts or a load finally succeeds. Centered on the
+       viewport where the spinner sat (which showEngineError clears), so it reads
+       as the loader's failure state. Tokens mirror the help dialog / HUD
+       (translucent #12161d fill, #2a2f3a border, blur) so it's one system; the
+       message uses the toast's soft-red text token, the Retry button the accent
+       primary-action tokens. Width caps below the narrowest phone so it never
+       overflows at 360px. */
+    #engine-error { position: fixed; top: 50%; left: 50%; z-index: 30;
+      transform: translate(-50%, -50%); display: flex; flex-direction: column;
+      align-items: center; gap: .7rem; max-width: min(90vw, 340px);
+      text-align: center; color: #e6edf3; background: #12161df2;
+      border: 1px solid #2a2f3a; border-radius: 12px; padding: 1rem 1.1rem;
+      box-shadow: 0 10px 30px #000a; backdrop-filter: blur(6px); }
+    /* display:flex overrides the hidden attribute's display:none — restore it so
+       the panel stays invisible until an engine failure surfaces it. */
+    #engine-error[hidden] { display: none; }
+    #engine-error .ee-msg { margin: 0; font-size: .9rem; line-height: 1.4;
+      color: #ffddd8; }
+    #engine-retry { pointer-events: auto; cursor: pointer; font: inherit;
+      font-size: .82rem; font-weight: 600; color: #0b1220; background: #4f9dff;
+      border: 1px solid #4f9dff; border-radius: 6px; padding: .4rem .9rem; }
+    #engine-retry:hover { background: #6fb0ff; border-color: #6fb0ff; }
+    #engine-retry:focus-visible { outline: 2px solid #4f9dff; outline-offset: 2px; }
     /* Model-info HUD — a subtle read-out of the current model's name, triangle
        count, and bounding-box dimensions (medium-severity polish: these were
        computed then discarded). Parked at the top-right just under the
@@ -276,8 +330,26 @@
     <span class="mi-name"></span>
     <span class="mi-stats"></span>
   </div>
-  <div id="spinner" class="active" role="status" aria-label="Loading"></div>
+  <!-- The visual spinner is decorative (aria-hidden); the staged status line
+       below it is the accessible status channel (role=status / aria-live=polite)
+       so first-load progress is announced once, not doubled with the spinner. -->
+  <div id="spinner" class="active" aria-hidden="true"></div>
+  <!-- Staged first-load feedback: painted in static markup so 'Loading 3D
+       engine…' shows before the ES module (and multi-MB three.js + occt/WASM
+       download) run. The module advances it to 'Parsing STEP model…' and clears
+       it on first render. Only shown for the initial auto-load. -->
+  <p id="load-status" class="active" role="status" aria-live="polite">Loading 3D engine…</p>
   <div id="toast" role="alert"></div>
+  <!-- Persistent engine-load failure state. Shown by showEngineError() on an
+       'init'-kind failure (occt/WASM engine / CDN download) or when the stall
+       watchdog fires, so a broken/slow engine download surfaces a real, friendly
+       message with a Retry action instead of an eternal spinner or a toast that
+       vanishes. role=alert announces it; the Retry button re-attempts the last
+       load (gallery pick or dropped file). Hidden until an engine failure. -->
+  <div id="engine-error" role="alert" hidden>
+    <p class="ee-msg">Couldn't load the 3D engine — check your connection.</p>
+    <button id="engine-retry" type="button">Retry</button>
+  </div>
   <div id="drop-overlay"><span>Drop a .step / .stp file to load</span></div>
 
   <script type="importmap">
@@ -293,7 +365,7 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
     import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
-    import { loadStepFromArrayBuffer } from './src/step.js';
+    import { loadStepFromArrayBuffer, resetOcct } from './src/step.js';
 
     const app = document.getElementById('app');
     // alpha:true so the canvas clears transparent — the page's radial-vignette
@@ -481,6 +553,48 @@
     // Show/hide the centered loading spinner while a STEP file parses.
     function setLoading(on) { spinner.classList.toggle('active', on); }
 
+    // Staged first-load status line under the spinner. Pass a phase string to
+    // show it, or null to clear. Only the initial auto-load drives this (see
+    // loadSample); subsequent loads keep the lighter bare spinner.
+    const loadStatus = document.getElementById('load-status');
+    function setLoadStatus(text) {
+      if (text == null) { loadStatus.classList.remove('active'); return; }
+      loadStatus.textContent = text;
+      loadStatus.classList.add('active');
+    }
+
+    // --- Persistent engine-load failure + Retry --------------------------------
+    // An occt/WASM engine failure (offline / CDN down) or a first-load stall is
+    // not self-clearing, so — unlike a per-file parse error's transient toast —
+    // it gets a persistent inline panel with a Retry button. `retryAction` holds
+    // a closure that re-runs whatever the last load attempt was (a gallery sample
+    // or a dropped/opened file); loadSample/loadFile set it before they run.
+    const engineError = document.getElementById('engine-error');
+    const engineRetry = document.getElementById('engine-retry');
+    const engineErrorMsg = engineError.querySelector('.ee-msg');
+    const ENGINE_ERROR_DEFAULT = "Couldn't load the 3D engine — check your connection.";
+    let retryAction = null;
+
+    function showEngineError(msg) {
+      engineErrorMsg.textContent = msg || ENGINE_ERROR_DEFAULT;
+      engineError.hidden = false;
+      // Don't spin forever behind the panel: stop the spinner and clear the
+      // staged status line so the failure state is the single thing on screen.
+      setLoading(false);
+      setLoadStatus(null);
+      engineRetry.focus(); // move focus to the action so it's reachable + announced
+    }
+    function hideEngineError() {
+      engineError.hidden = true;
+    }
+    engineRetry.addEventListener('click', () => {
+      hideEngineError();
+      // Force a genuinely fresh engine attempt: a stall may have left the previous
+      // init promise pending, which initOcct would otherwise re-await forever.
+      resetOcct();
+      if (retryAction) retryAction();
+    });
+
     // --- Model-info HUD -------------------------------------------------------
     // Surface the current model's name, triangle count, and bounding-box size —
     // basic CAD stats that were previously computed then discarded.
@@ -609,8 +723,12 @@
       clearTimeout(stallTimer);
       stallTimer = setTimeout(() => {
         if (firstRenderDone) return;
-        hint.textContent = 'Still loading… this is taking longer than usual — check your connection.';
-        showToast('Still loading… the 3D engine and model download is slow. Check your connection.');
+        // Don't spin forever: a first-load that hasn't rendered by now is treated
+        // as an engine-load failure. Surface the same persistent Retry panel the
+        // 'init' error path uses (Retry resets the pending occt attempt), rather
+        // than an eternal spinner plus a toast that self-dismisses.
+        hint.textContent = "Couldn't load the 3D engine — check your connection.";
+        showEngineError('Loading the 3D engine is taking too long — check your connection and retry.');
       }, STALL_MS);
     }
     function markFirstRender() {
@@ -618,6 +736,7 @@
       firstRenderDone = true;
       clearTimeout(stallTimer);
       setLoading(false); // clear the first-paint loader once real content is on screen
+      setLoadStatus(null); // and the staged first-load status line
     }
 
     // Apply the current wireframe state to every mesh material in a group.
@@ -683,8 +802,8 @@
 
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
-    async function showStepFromArrayBuffer(buf, label) {
-      const model = await loadStepFromArrayBuffer(buf);
+    async function showStepFromArrayBuffer(buf, label, onPhase) {
+      const model = await loadStepFromArrayBuffer(buf, onPhase);
       // Only tear down the old scene contents once the new parse succeeds.
       if (placeholder.parent) {
         scene.remove(placeholder);
@@ -703,11 +822,13 @@
       updateModelInfo(model, label); // refresh the name/tris/dims HUD for the swap
       startSwapIn(model); // ease the new model in (scale + fade) instead of popping
       markFirstRender(); // first successful render clears the loader + stall watch
+      hideEngineError(); // a successful load supersedes any engine-failure panel
       hint.textContent = `${label} · ${zoomHint}`;
     }
 
     // Read a user-supplied File and load it, reporting failures via the hint.
     async function loadFile(file) {
+      retryAction = () => loadFile(file); // Retry re-reads + re-loads this file
       hint.textContent = `Loading ${file.name}…`;
       setLoading(true);
       try {
@@ -716,7 +837,10 @@
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = `Could not load ${file.name} — see console`;
-        showToast(describeError(err, file.name));
+        // An engine/CDN failure isn't self-clearing — surface the persistent
+        // Retry panel. Per-file parse/http errors stay on the lighter toast.
+        if (err && err.kind === 'init') showEngineError();
+        else showToast(describeError(err, file.name));
       } finally {
         setLoading(false);
       }
@@ -737,11 +861,21 @@
     // Fetch + parse + render a bundled sample, reusing the model-swap path so the
     // placeholder / previous model is disposed exactly as with user files.
     async function loadSample(sample) {
+      retryAction = () => loadSample(sample); // Retry re-fetches + re-loads this sample
       const buttons = gallery.querySelectorAll('.sample');
       buttons.forEach((b) => { b.disabled = true; });
       // Keep the first-paint guidance visible during the initial auto-load; only
       // swap to a per-load "Loading…" message once the user is past first render.
       if (firstRenderDone) hint.textContent = `Loading ${sample.label}…`;
+      // The initial auto-load (before first render) gets staged textual status —
+      // engine init then parse — beneath the spinner; subsequent loads keep the
+      // lighter bare spinner. onPhase is only wired for that first load.
+      const staged = !firstRenderDone;
+      const onPhase = staged
+        ? (phase) => setLoadStatus(
+            phase === 'parse' ? 'Parsing STEP model…' : 'Loading 3D engine…')
+        : null;
+      if (staged) setLoadStatus('Loading 3D engine…');
       setLoading(true);
       try {
         const res = await fetch(`./samples/${sample.file}`);
@@ -753,7 +887,7 @@
           throw e;
         }
         const buf = await res.arrayBuffer();
-        await showStepFromArrayBuffer(buf, sample.label);
+        await showStepFromArrayBuffer(buf, sample.label, onPhase);
         // Highlight the pill for the model now on screen.
         buttons.forEach((b) => {
           const active = b.dataset.file === sample.file;
@@ -763,10 +897,15 @@
       } catch (err) {
         console.error('STEP load failed:', err);
         hint.textContent = `Could not load ${sample.label} — see console`;
-        showToast(describeError(err, sample.label));
+        // Engine/CDN failure → persistent Retry panel; parse/http → light toast.
+        if (err && err.kind === 'init') showEngineError();
+        else showToast(describeError(err, sample.label));
       } finally {
         buttons.forEach((b) => { b.disabled = false; });
         setLoading(false);
+        // Clear the staged status line too; on success markFirstRender already
+        // cleared it, on failure this ensures it doesn't linger past the toast.
+        if (staged) setLoadStatus(null);
       }
     }
 
