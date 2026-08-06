@@ -8,6 +8,21 @@
        in brand-blue #0b1220 stroke on a rounded #4f9dff tile. Data-URI so the
        zero-build page needs no extra asset request. -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='6'%20fill='%234f9dff'/%3E%3Cpath%20d='M16%206%20L25%2011%20L25%2021%20L16%2026%20L7%2021%20L7%2011%20Z%20M16%206%20L16%2016%20M16%2016%20L25%2011%20M16%2016%20L7%2011'%20fill='none'%20stroke='%230b1220'%20stroke-width='1.8'%20stroke-linejoin='round'%20stroke-linecap='round'/%3E%3C/svg%3E" />
+  <!-- Installable-PWA wiring. The web manifest makes the page add-to-home-screen
+       installable (name / standalone display / maskable icons); the SW below
+       (registered from the module) precaches the shell + engine for offline use.
+       All paths are relative ("./…") so scope stays under the GitHub Pages
+       subpath whether served from / or /step-viewer-demo/. theme-color matches
+       the #0e1116 shell so the standalone titlebar / iOS status bar blend in.
+       apple-touch-icon points at a real PNG because iOS Safari ignores the SVG
+       favicon for the home-screen icon. -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#0e1116" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="STEP Viewer" />
   <!-- Social / SEO meta. og:url + og:image point at the published GitHub Pages
        site and the docs screenshot so shared links render a summary card. -->
   <meta name="description" content="A zero-build, in-browser CAD file viewer for STEP, IGES, and BREP — drag in a .step/.stp/.iges/.brep file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
