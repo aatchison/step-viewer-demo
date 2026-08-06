@@ -20,8 +20,46 @@
   <meta name="twitter:title" content="STEP Viewer Demo" />
   <meta name="twitter:description" content="A zero-build, in-browser STEP (ISO 10303) CAD file viewer — drag in a .step/.stp file and inspect the 3D model with orbit controls, wireframe, and edge overlays." />
   <meta name="twitter:image" content="https://aatchison.github.io/step-viewer-demo/docs/screenshot.png" />
+  <!-- Apply the persisted high-contrast choice BEFORE first paint so the page
+       never flashes the default palette and then re-themes. A classic (non-
+       deferred) inline script runs synchronously here in <head>, ahead of body
+       render. A stored 'high'/'normal' is authoritative; with nothing stored we
+       leave the attribute off so CSS's @media (prefers-contrast: more) follows
+       the OS setting. Wrapped in try/catch for private-mode/blocked storage. -->
+  <script>
+    try {
+      var c = localStorage.getItem('step-viewer-contrast');
+      if (c === 'high' || c === 'normal') {
+        document.documentElement.setAttribute('data-contrast', c);
+      }
+    } catch (e) {}
+  </script>
   <style>
     :root { color-scheme: dark; }
+    /* --- High-contrast theme ---------------------------------------------------
+       Opt-in accessible-contrast palette. Activated when the user turns on the
+       header toggle (:root[data-contrast="high"]) OR their OS requests more
+       contrast via @media (prefers-contrast: more) — unless the toggle has been
+       explicitly switched OFF (data-contrast="normal"), which wins over the OS
+       query. Only CSS variables are set here; every themed token below reads
+       var(--hc-*, <today's value>), so with no high-contrast active the fallback
+       renders exactly as before (default is byte-for-byte unchanged). */
+    :root[data-contrast="high"] {
+      --hc-fg: #f4f8fc;      /* primary themed text */
+      --hc-muted: #d7dfe8;   /* hint / subtitle / stats — was #8b949e */
+      --hc-border: #9aa6b4;  /* control / pill / dialog borders — was #2a2f3a */
+      --hc-panel-bg: #0a0d12; /* opaque pill / HUD fill — was translucent #1b2029cc */
+      --hc-dialog-bg: #05070b; /* dialog fill — was #12161df2 */
+    }
+    @media (prefers-contrast: more) {
+      :root:not([data-contrast="normal"]) {
+        --hc-fg: #f4f8fc;
+        --hc-muted: #d7dfe8;
+        --hc-border: #9aa6b4;
+        --hc-panel-bg: #0a0d12;
+        --hc-dialog-bg: #05070b;
+      }
+    }
     * { box-sizing: border-box; }
     /* Depth backdrop: a subtle radial vignette (slightly lifted center, darker
        edges) sits behind the now-transparent WebGL canvas to give the scene
@@ -36,6 +74,13 @@
         radial-gradient(ellipse 125% 105% at 50% 40%, #1a212b 0%, #12161d 40%, #0d1015 72%, #090b0d 100%) fixed;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     #app { position: fixed; inset: 0; }
+    /* The 3D view is keyboard-focusable (tabindex=0) so it can be driven by the
+       Arrow/zoom/pan keys. Show the same accent ring the header controls use on
+       keyboard focus, but inset (outline-offset negative) because #app spans the
+       whole viewport — a positive offset would draw the ring off-screen. A plain
+       mouse click leaves it ring-free via :focus-visible. */
+    #app:focus { outline: none; }
+    #app:focus-visible { outline: 2px solid #4f9dff; outline-offset: -2px; }
     header { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
       display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .6rem 1rem;
       background: linear-gradient(#0e1116cc, #0e111600); pointer-events: none; }
@@ -47,7 +92,7 @@
     header h1 .glyph { font-size: 1.1rem; line-height: 1; }
     /* Muted tech subtitle — solid token instead of an opacity fade so it stays
        legible while still reading as secondary to the wordmark. */
-    header .tag { font-size: .72rem; font-weight: 400; color: #8b949e; }
+    header .tag { font-size: .72rem; font-weight: 400; color: var(--hc-muted, #8b949e); }
     header .spacer { flex: 1; }
     /* Primary action — accent-filled so "Open STEP file…" reads as the main call
        to action above the neutral wireframe/fit controls. Re-enable pointer events
@@ -59,7 +104,7 @@
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
-    #help-btn:focus-visible, #help-close:focus-visible,
+    #contrast-btn:focus-visible, #help-btn:focus-visible, #help-close:focus-visible,
     #gallery .sample:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
     /* Wireframe toggle lives in the header; re-enable clicks over the click-through bar. */
@@ -67,7 +112,7 @@
        action in the visual hierarchy. */
     #wire-toggle { pointer-events: auto; cursor: pointer; user-select: none;
       display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem;
-      color: #e6edf3; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
+      color: #e6edf3; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .3rem .6rem; }
     #wire-toggle:hover { background: #232a35; border-color: #3a4150; }
     #wire-toggle input { accent-color: #4f9dff; margin: 0; cursor: pointer; }
@@ -83,9 +128,22 @@
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
     #fit-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
-      color: #cfe0ff; background: #1b2029; border: 1px solid #2a2f3a; border-radius: 6px;
+      color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .35rem .7rem; }
     #fit-btn:hover { background: #232a35; border-color: #3a4150; }
+    /* High-contrast toggle — a header control mirroring the neutral fit/wireframe
+       buttons (icon-collapsible on narrow screens). aria-pressed reflects whether
+       high contrast is active; when pressed it borrows the same accent on-state
+       language as the wireframe toggle / gallery pills so "high contrast is on"
+       reads at a glance. */
+    #contrast-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+      color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a);
+      border-radius: 6px; padding: .35rem .7rem; display: inline-flex; align-items: center;
+      gap: .35rem; }
+    #contrast-btn:hover { background: #232a35; border-color: #3a4150; }
+    #contrast-btn[aria-pressed="true"] { color: #eaf2ff; background: #1f3350cc;
+      border-color: #4f9dff; }
+    #contrast-btn[aria-pressed="true"]:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Help affordance — a compact circular "?" button in the header that opens the
        keyboard-shortcuts panel. Neutral tokens like the fit/wireframe controls so
        it sits below the accent primary action; header is click-through so re-enable
@@ -93,7 +151,7 @@
        circle at every width. */
     #help-btn { pointer-events: auto; cursor: pointer; font: inherit;
       font-size: .9rem; font-weight: 700; line-height: 1; color: #cfe0ff;
-      background: #1b2029; border: 1px solid #2a2f3a; border-radius: 999px;
+      background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 999px;
       width: 1.9rem; height: 1.9rem; display: inline-flex; align-items: center;
       justify-content: center; flex: none; }
     #help-btn:hover { background: #232a35; border-color: #3a4150; }
@@ -104,16 +162,16 @@
        system. Centered by the native modal positioning; width caps below the
        narrowest phone so it never overflows. */
     #help-dialog { margin: auto; max-width: min(92vw, 340px); width: 100%;
-      color: #e6edf3; background: #12161df2; border: 1px solid #2a2f3a;
+      color: #e6edf3; background: var(--hc-dialog-bg, #12161df2); border: 1px solid var(--hc-border, #2a2f3a);
       border-radius: 12px; padding: 0; box-shadow: 0 10px 30px #000a;
       backdrop-filter: blur(6px); }
     #help-dialog::backdrop { background: #05070acc; }
     .help-head { display: flex; align-items: center; justify-content: space-between;
-      gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid #2a2f3a; }
+      gap: .75rem; padding: .75rem 1rem; border-bottom: 1px solid var(--hc-border, #2a2f3a); }
     .help-head h2 { margin: 0; font-size: .95rem; font-weight: 700;
       letter-spacing: .2px; }
     #help-close { cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1;
-      color: #8b949e; background: transparent; border: 1px solid transparent;
+      color: var(--hc-muted, #8b949e); background: transparent; border: 1px solid transparent;
       border-radius: 6px; width: 1.9rem; height: 1.9rem; display: inline-flex;
       align-items: center; justify-content: center; flex: none; }
     #help-close:hover { color: #e6edf3; background: #232a35; border-color: #3a4150; }
@@ -143,7 +201,7 @@
       padding: 0 1rem; pointer-events: none; }
     /* Solid muted token instead of an opacity fade so the first-paint guidance and
        interaction hints stay readable against the dark canvas. */
-    #hint { font-size: .8rem; color: #8b949e; max-width: min(92vw, 640px);
+    #hint { font-size: .8rem; color: var(--hc-muted, #8b949e); max-width: min(92vw, 640px);
       text-align: center; }
     /* Loading spinner — centered, shown while a STEP file parses. */
     #spinner { position: fixed; top: 50%; left: 50%; z-index: 15;
@@ -162,7 +220,7 @@
     #load-status { position: fixed; top: 50%; left: 50%; z-index: 15;
       transform: translateX(-50%); margin: 34px 0 0; display: none;
       max-width: min(90vw, 320px); text-align: center; font-size: .82rem;
-      color: #8b949e; pointer-events: none; }
+      color: var(--hc-muted, #8b949e); pointer-events: none; }
     #load-status.active { display: block; }
     /* Reduced-motion: stop the perpetual spinner rotation and show a static
        loading indicator instead (the JS render loop also halts the placeholder
@@ -215,21 +273,28 @@
     #model-info { position: fixed; top: 13rem; right: 1rem; z-index: 10;
       display: flex; flex-direction: column; align-items: flex-end; gap: .1rem;
       max-width: min(60vw, 220px); text-align: right; pointer-events: none;
-      background: #1b2029cc; border: 1px solid #2a2f3a; border-radius: 8px;
+      background: var(--hc-panel-bg, #1b2029cc); border: 1px solid var(--hc-border, #2a2f3a); border-radius: 8px;
       padding: .35rem .55rem; backdrop-filter: blur(4px); }
     /* display:flex above overrides the hidden attribute's default display:none —
        restore it so the panel stays invisible until the first model renders. */
     #model-info[hidden] { display: none; }
     #model-info .mi-name { max-width: 100%; font-size: .78rem; font-weight: 600;
       color: #cfe0ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #model-info .mi-stats { font-size: .7rem; color: #8b949e;
+    #model-info .mi-stats { font-size: .7rem; color: var(--hc-muted, #8b949e);
       font-variant-numeric: tabular-nums; }
+    /* Screen-reader-only utility: visually removed but present in the a11y tree.
+       Used for the natural-language model summary announced via #model-info's
+       polite live region (the visible name/stats are aria-hidden so the summary
+       is announced once, not twice). */
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0;
+      margin: -1px; overflow: hidden; clip: rect(0 0 0 0);
+      clip-path: inset(50%); white-space: nowrap; border: 0; }
     /* Sample gallery strip — one button per bundled model. Positioning is owned by
        #bottom-cluster; here it only lays the pills out (wrap + centered). */
     #gallery { width: 100%; display: flex; justify-content: center; flex-wrap: wrap;
       gap: .5rem; pointer-events: none; }
     #gallery .sample { pointer-events: auto; cursor: pointer; font: inherit;
-      font-size: .78rem; color: #cfe0ff; background: #1b2029cc; border: 1px solid #2a2f3a;
+      font-size: .78rem; color: #cfe0ff; background: var(--hc-panel-bg, #1b2029cc); border: 1px solid var(--hc-border, #2a2f3a);
       border-radius: 999px; padding: .3rem .8rem; backdrop-filter: blur(4px); }
     #gallery .sample:hover { background: #232a35; border-color: #3a4150; }
     #gallery .sample.is-active { color: #eaf2ff; background: #1f3350cc;
@@ -251,7 +316,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -270,27 +335,40 @@
        coarse block so these paddings win on equal specificity. */
     @media (max-width: 600px) {
       header { gap: .5rem; padding: .5rem .75rem; }
-      #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label { display: none; }
-      #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn { min-width: 44px; padding: .4rem;
+      #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
+      #contrast-btn .btn-label { display: none; }
+      #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
+      #contrast-btn .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn, #contrast-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
     }
   </style>
 </head>
 <body>
-  <div id="app" role="img"
-       aria-label="Interactive 3D view of the loaded STEP model. Drag to orbit, scroll or pinch to zoom."></div>
+  <!-- tabindex=0 makes the 3D view keyboard-focusable so a keyboard-only user can
+       Tab to it and drive the camera; the camera-key handler is scoped to this
+       element's focus (see the app keydown listener) so it never hijacks Tab or
+       the global 1–4 / W / ? shortcuts. aria-keyshortcuts advertises the camera
+       keys to assistive tech; the aria-label spells them out in prose. -->
+  <div id="app" role="img" tabindex="0"
+       aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight Plus Minus Home"
+       data-i18n-attr="aria-label:appAriaDefault"
+       aria-label="Interactive 3D view of the loaded STEP model. Drag to orbit, scroll or pinch to zoom. When focused: Arrow keys orbit, plus and minus keys zoom, Shift plus Arrow keys pan, and Home re-fits the view."></div>
   <header>
-    <h1><span class="glyph" aria-hidden="true">◈</span>STEP Viewer</h1>
-    <span class="tag">three.js · occt-import-js · demo</span>
+    <h1><span class="glyph" aria-hidden="true">◈</span><span data-i18n="appName">STEP Viewer</span></h1>
+    <span class="tag" data-i18n="tag">three.js · occt-import-js · demo</span>
     <span class="spacer"></span>
-    <label id="wire-toggle" title="Toggle wireframe (W)">
-      <input id="wire-check" type="checkbox" aria-label="Wireframe" /> <span class="btn-icon" aria-hidden="true">▦</span><span class="btn-label">Wireframe</span>
+    <label id="wire-toggle" title="Toggle wireframe (W)" data-i18n-attr="title:wireframeTitle">
+      <input id="wire-check" type="checkbox" aria-label="Wireframe" data-i18n-attr="aria-label:wireframeLabel" /> <span class="btn-icon" aria-hidden="true">▦</span><span class="btn-label" data-i18n="wireframeLabel">Wireframe</span>
     </label>
-    <button id="fit-btn" type="button" title="Fit / reset view (R or F, or double-click canvas)" aria-label="Fit view"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label">Fit view</span></button>
-    <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label">Open STEP file…</span></button>
-    <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog">?</button>
+    <button id="fit-btn" type="button" title="Fit / reset view (R or F, or double-click canvas)" aria-label="Fit view" data-i18n-attr="title:fitTitle;aria-label:fitAria"><span class="btn-icon" aria-hidden="true">⤢</span><span class="btn-label" data-i18n="fitLabel">Fit view</span></button>
+    <!-- High-contrast toggle. aria-pressed reflects the live state (corrected by
+         the module script on load from the persisted / OS preference); the ◑ glyph
+         shows on narrow screens where the label collapses (see max-width:600px). -->
+    <button id="contrast-btn" type="button" title="Toggle high contrast (C)" aria-label="High contrast" aria-pressed="false" data-i18n-attr="title:contrastTitle;aria-label:contrastAria"><span class="btn-icon" aria-hidden="true">◑</span><span class="btn-label" data-i18n="contrastLabel">Contrast</span></button>
+    <button id="open-btn" type="button" title="Open a STEP / STP file (or drag &amp; drop onto the view)" aria-label="Open STEP file" data-i18n-attr="title:openTitle;aria-label:openAria"><span class="btn-icon" aria-hidden="true">＋</span><span class="btn-label" data-i18n="openLabel">Open STEP file…</span></button>
+    <button id="help-btn" type="button" title="Keyboard shortcuts &amp; controls (press ?)" aria-label="Keyboard shortcuts and controls" aria-haspopup="dialog" data-i18n-attr="title:helpTitle;aria-label:helpAria">?</button>
     <input id="file-input" type="file" accept=".step,.stp" hidden />
   </header>
   <!-- Keyboard-shortcuts / controls help. Native <dialog> (opened via showModal)
@@ -300,22 +378,29 @@
        heading. -->
   <dialog id="help-dialog" aria-labelledby="help-title">
     <div class="help-head">
-      <h2 id="help-title">Shortcuts &amp; controls</h2>
-      <button id="help-close" type="button" aria-label="Close help">×</button>
+      <h2 id="help-title" data-i18n="helpHeading">Shortcuts &amp; controls</h2>
+      <button id="help-close" type="button" aria-label="Close help" data-i18n-attr="aria-label:helpCloseAria">×</button>
     </div>
     <ul class="help-list">
-      <li><span class="k">Drag</span><span class="d">Orbit the model</span></li>
-      <li><span class="k">Scroll</span><span class="d">Zoom in / out</span></li>
-      <li><span class="k">W</span><span class="d">Toggle wireframe</span></li>
-      <li><span class="k">F</span><span class="k">R</span><span class="d">Fit / reset view</span></li>
-      <li><span class="k">1</span><span class="k">4</span><span class="d">Load gallery samples</span></li>
-      <li><span class="k">Drop</span><span class="d">Open a .step / .stp file</span></li>
+      <li><span class="k" data-i18n="kDrag">Drag</span><span class="d" data-i18n="descOrbitModel">Orbit the model</span></li>
+      <li><span class="k" data-i18n="kScroll">Scroll</span><span class="d" data-i18n="descZoom">Zoom in / out</span></li>
+      <!-- Keyboard camera controls — active while the 3D view (Tab to it) is
+           focused; the arrows orbit, +/- dolly, Shift+arrows pan, Home re-fits. -->
+      <li><span class="k">←</span><span class="k">→</span><span class="k">↑</span><span class="k">↓</span><span class="d" data-i18n="descOrbitCamera">Orbit camera (view focused)</span></li>
+      <li><span class="k">+</span><span class="k">−</span><span class="d" data-i18n="descZoomCamera">Zoom camera in / out</span></li>
+      <li><span class="k">⇧</span><span class="k">←→↑↓</span><span class="d" data-i18n="descPan">Pan the view target</span></li>
+      <li><span class="k" data-i18n="kHome">Home</span><span class="d" data-i18n="descHome">Re-fit / reset view</span></li>
+      <li><span class="k">W</span><span class="d" data-i18n="descWireframe">Toggle wireframe</span></li>
+      <li><span class="k">C</span><span class="d" data-i18n="descContrast">Toggle high contrast</span></li>
+      <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
+      <li><span class="k">1</span><span class="k">4</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
+      <li><span class="k" data-i18n="kDrop">Drop</span><span class="d" data-i18n="descOpen">Open a .step / .stp file</span></li>
     </ul>
   </dialog>
   <!-- Bottom cluster: gallery stacked directly above the hint in a single
        container so they share layout and can never overlap. -->
   <div id="bottom-cluster">
-    <nav id="gallery" aria-label="Sample models"></nav>
+    <nav id="gallery" aria-label="Sample models" data-i18n-attr="aria-label:galleryAria"></nav>
     <!-- Doubles as the screen-reader announcement channel: aria-live=polite means
          load start / success / error text set here is read out to AT users. -->
     <div id="hint" aria-live="polite">Pick a model from the gallery below, or drag &amp; drop a .step / .stp file · drag to orbit, scroll or pinch to zoom · keys: 1–4 samples, R reset, W wireframe</div>
@@ -327,8 +412,12 @@
        model, populated on every load/swap (see updateModelInfo). Hidden until the
        first model renders. aria-live=polite announces stat changes to AT users. -->
   <div id="model-info" hidden aria-live="polite">
-    <span class="mi-name"></span>
-    <span class="mi-stats"></span>
+    <!-- Visible HUD text is aria-hidden: the live-region announcement comes from
+         the .mi-a11y summary below, so the model is described once (a natural
+         sentence) rather than twice (name + terse stats). -->
+    <span class="mi-name" aria-hidden="true"></span>
+    <span class="mi-stats" aria-hidden="true"></span>
+    <span class="mi-a11y sr-only"></span>
   </div>
   <!-- The visual spinner is decorative (aria-hidden); the staged status line
        below it is the accessible status channel (role=status / aria-live=polite)
@@ -338,7 +427,7 @@
        engine…' shows before the ES module (and multi-MB three.js + occt/WASM
        download) run. The module advances it to 'Parsing STEP model…' and clears
        it on first render. Only shown for the initial auto-load. -->
-  <p id="load-status" class="active" role="status" aria-live="polite">Loading 3D engine…</p>
+  <p id="load-status" class="active" role="status" aria-live="polite" data-i18n="loadStatusEngine">Loading 3D engine…</p>
   <div id="toast" role="alert"></div>
   <!-- Persistent engine-load failure state. Shown by showEngineError() on an
        'init'-kind failure (occt/WASM engine / CDN download) or when the stall
@@ -347,10 +436,10 @@
        vanishes. role=alert announces it; the Retry button re-attempts the last
        load (gallery pick or dropped file). Hidden until an engine failure. -->
   <div id="engine-error" role="alert" hidden>
-    <p class="ee-msg">Couldn't load the 3D engine — check your connection.</p>
-    <button id="engine-retry" type="button">Retry</button>
+    <p class="ee-msg" data-i18n="engineErrorDefault">Couldn't load the 3D engine — check your connection.</p>
+    <button id="engine-retry" type="button" data-i18n="retry">Retry</button>
   </div>
-  <div id="drop-overlay"><span>Drop a .step / .stp file to load</span></div>
+  <div id="drop-overlay"><span data-i18n="dropOverlay">Drop a .step / .stp file to load</span></div>
 
   <script type="importmap">
   {
@@ -366,6 +455,13 @@
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
     import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
     import { loadStepFromArrayBuffer, resetOcct } from './src/step.js';
+    import { t, applyStaticI18n } from './src/i18n.js';
+
+    // Populate all static markup strings from the localized table (and write the
+    // resolved <html lang>, done at i18n.js import time). Runs before any JS
+    // message builder below reads t(), and before the hint is composed, so the
+    // whole UI renders in the chosen locale from first module execution.
+    applyStaticI18n();
 
     const app = document.getElementById('app');
     // alpha:true so the canvas clears transparent — the page's radial-vignette
@@ -415,6 +511,10 @@
     // its footprint (see groundTo), so it reads as a floor the model rests on
     // instead of a fixed 10-unit plane the model floats above or clips through.
     let groundGrid = null;
+    // Last model size passed to groundTo, kept so the contrast toggle can rebuild
+    // the grid (its line colors are baked into geometry, not the material) at the
+    // same footprint without touching the camera.
+    let lastGroundSize = null;
     // Soft contact shadow that sits under the model on the grid so it reads as
     // resting on the floor instead of floating. A radial-gradient sprite (one
     // textured quad) rather than a real shadow map: it needs no per-model shadow
@@ -477,6 +577,7 @@
     // caller has already recentered the model on the origin, so the base sits at
     // y = -size.y/2. A tiny downward nudge avoids z-fighting with a flat base.
     function groundTo(size) {
+      lastGroundSize = size.clone(); // remember for a contrast-driven rebuild
       if (groundGrid) {
         scene.remove(groundGrid);
         groundGrid.geometry.dispose();
@@ -490,7 +591,8 @@
       const footprint = Math.max(size.x, size.z) || 1;
       const extent = footprint * 2.5; // a bit wider than the model so it reads as floor
       const baseY = -size.y / 2;
-      groundGrid = new THREE.GridHelper(extent, 20, 0x2a2f3a, 0x1b1f27);
+      const [gridCenterColor, gridLineColor] = gridColors();
+      groundGrid = new THREE.GridHelper(extent, 20, gridCenterColor, gridLineColor);
       groundGrid.position.y = baseY - footprint * 0.001;
       scene.add(groundGrid);
 
@@ -529,16 +631,14 @@
     // Touch devices orbit/zoom with gestures, not a scroll wheel — word the
     // interaction hint to match the pointer modality.
     const coarsePointer = matchMedia('(pointer: coarse)').matches;
-    const zoomHint = coarsePointer ? 'drag to orbit · pinch to zoom'
-                                   : 'drag to orbit · scroll to zoom';
+    const zoomHint = coarsePointer ? t('zoomPinch') : t('zoomScroll');
     // First-paint discoverability guidance, worded for the current pointer
     // modality. Shown from load (the static markup carries a generic version) and
     // kept on screen until the first model actually renders.
-    const dropHint = coarsePointer ? 'tap a model in the gallery below'
-                                    : 'pick a model from the gallery below, or drag & drop a .step / .stp file';
+    const dropHint = coarsePointer ? t('hintTapModel') : t('hintPickModel');
     // On touch devices there's no keyboard, so only surface the key shortcuts on
     // fine-pointer (mouse/keyboard) devices; touch users get the gesture hint only.
-    const keyHint = coarsePointer ? '' : ' · keys: 1–4 samples, R reset, W wireframe';
+    const keyHint = coarsePointer ? '' : t('keyHint');
     hint.textContent = `${dropHint} · ${zoomHint}${keyHint}`;
     const spinner = document.getElementById('spinner');
     const toast = document.getElementById('toast');
@@ -549,6 +649,31 @@
     // transition below and the placeholder-spin gate in the render loop). Live, so
     // a mid-session OS setting change is honored.
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+    // --- High-contrast scene state --------------------------------------------
+    // Declared here (near the other render-state flags) because the initial load
+    // path — groundTo (grid colors) and showStepFromArrayBuffer (edge style) —
+    // reads it. The persisted / OS choice was already applied to <html
+    // data-contrast> before first paint by the inline head script; the effective
+    // state: an explicit high/normal choice wins, otherwise follow the OS query.
+    const contrastQuery = matchMedia('(prefers-contrast: more)');
+    function contrastIsHigh() {
+      const attr = document.documentElement.getAttribute('data-contrast');
+      if (attr === 'high') return true;
+      if (attr === 'normal') return false;
+      return contrastQuery.matches;
+    }
+    let highContrast = contrastIsHigh();
+    // Feature-edge line styles. High contrast uses a darker, far more opaque
+    // stroke so the overlay reads crisply against the metal surface; the default
+    // is the original faint line, so the normal theme is byte-for-byte unchanged.
+    const EDGE_NORMAL = { color: 0x0a0d12, opacity: 0.35 };
+    const EDGE_HIGH = { color: 0x000000, opacity: 0.9 };
+    const currentEdgeStyle = () => (highContrast ? EDGE_HIGH : EDGE_NORMAL);
+    // Ground-grid line colors [centerLine, gridLines]. High contrast lifts both
+    // so the floor grid reads against the dark vignette; default matches today.
+    const gridColors = () =>
+      highContrast ? [0x8b98a8, 0x5a6472] : [0x2a2f3a, 0x1b1f27];
 
     // Show/hide the centered loading spinner while a STEP file parses.
     function setLoading(on) { spinner.classList.toggle('active', on); }
@@ -572,7 +697,7 @@
     const engineError = document.getElementById('engine-error');
     const engineRetry = document.getElementById('engine-retry');
     const engineErrorMsg = engineError.querySelector('.ee-msg');
-    const ENGINE_ERROR_DEFAULT = "Couldn't load the 3D engine — check your connection.";
+    const ENGINE_ERROR_DEFAULT = t('engineErrorDefault');
     let retryAction = null;
 
     function showEngineError(msg) {
@@ -601,6 +726,13 @@
     const modelInfo = document.getElementById('model-info');
     const miName = modelInfo.querySelector('.mi-name');
     const miStats = modelInfo.querySelector('.mi-stats');
+    const miA11y = modelInfo.querySelector('.mi-a11y');
+
+    // The canvas (#app, role=img) accessible name becomes a live per-model
+    // summary after a load (updateModelInfo); on a failure with nothing on
+    // screen it reverts to this non-model description rather than lying about a
+    // stale model. (The markup default covers the pre-first-load window.)
+    const APP_ARIA_EMPTY = t('appAriaEmpty');
 
     // Compact dimension formatting: whole numbers past 100, one decimal past 10,
     // two below — keeps a tiny 0.80 gear and a 250 block both legible.
@@ -634,9 +766,34 @@
       const tris = countTriangles(group);
       miName.textContent = label;
       miName.title = label; // full name on hover when the label is ellipsized
-      miStats.textContent =
-        `${tris.toLocaleString()} tris · ${fmtDim(size.x)} × ${fmtDim(size.y)} × ${fmtDim(size.z)}`;
+      miStats.textContent = t('modelStats', {
+        tris: tris.toLocaleString(),
+        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z),
+      });
       modelInfo.hidden = false;
+
+      // Compose a natural-language summary that reuses the same number/dimension
+      // formatting as the visible HUD, then (a) make it the canvas accessible
+      // name so AT users querying the view hear what's on screen, and (b) push it
+      // into the polite #model-info live region (.mi-a11y) so it's announced once
+      // per load. The visible .mi-name/.mi-stats are aria-hidden, so no duplicate.
+      const summary = t('modelSummary', {
+        label, tris: tris.toLocaleString(),
+        x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z),
+      });
+      app.setAttribute('aria-label', summary);
+      miA11y.textContent = summary;
+    }
+
+    // Revert the canvas accessible name + live summary to a non-model state.
+    // Called on a load failure when nothing valid is on screen, so AT users are
+    // told the view is empty instead of hearing a stale successful summary.
+    function resetModelInfo() {
+      app.setAttribute('aria-label', APP_ARIA_EMPTY);
+      miA11y.textContent = '';
+      miName.textContent = '';
+      miStats.textContent = '';
+      modelInfo.hidden = true;
     }
 
     // --- Model swap-in transition ---------------------------------------------
@@ -703,13 +860,10 @@
     // or 'parse' (invalid STEP bytes); anything else falls back to generic.
     function describeError(err, label) {
       const kind = err && err.kind;
-      if (kind === 'init')
-        return `Could not load ${label} — the 3D engine (occt/WASM) failed to download. Check your connection and reload.`;
-      if (kind === 'http')
-        return `Could not load ${label} — the file could not be fetched (${err.message}).`;
-      if (kind === 'parse')
-        return `Could not load ${label} — the file could not be parsed; it may be invalid or an unsupported STEP variant.`;
-      return `Could not load ${label} — the file may be invalid or unsupported.`;
+      if (kind === 'init') return t('errInit', { label });
+      if (kind === 'http') return t('errHttp', { label, message: err.message });
+      if (kind === 'parse') return t('errParse', { label });
+      return t('errGeneric', { label });
     }
 
     // First-paint loader + stall watchdog. The static spinner is cleared once the
@@ -727,8 +881,11 @@
         // as an engine-load failure. Surface the same persistent Retry panel the
         // 'init' error path uses (Retry resets the pending occt attempt), rather
         // than an eternal spinner plus a toast that self-dismisses.
-        hint.textContent = "Couldn't load the 3D engine — check your connection.";
-        showEngineError('Loading the 3D engine is taking too long — check your connection and retry.');
+        hint.textContent = t('engineErrorDefault');
+        // No model ever rendered — keep the canvas accessible name in its
+        // non-model state instead of the generic "loaded model" markup default.
+        if (!currentModel) resetModelInfo();
+        showEngineError(t('engineErrorStall'));
       }, STALL_MS);
     }
     function markFirstRender() {
@@ -803,7 +960,9 @@
     // Parse an ArrayBuffer and swap it into the scene, disposing whatever model
     // (or placeholder) is currently shown. `label` is used for the hint text.
     async function showStepFromArrayBuffer(buf, label, onPhase) {
-      const model = await loadStepFromArrayBuffer(buf, onPhase);
+      // Pass the active feature-edge style so a fresh load in high contrast builds
+      // its (idle-deferred) edge overlay crisp from the start, not faint-then-fixed.
+      const model = await loadStepFromArrayBuffer(buf, onPhase, currentEdgeStyle());
       // Only tear down the old scene contents once the new parse succeeds.
       if (placeholder.parent) {
         scene.remove(placeholder);
@@ -823,20 +982,25 @@
       startSwapIn(model); // ease the new model in (scale + fade) instead of popping
       markFirstRender(); // first successful render clears the loader + stall watch
       hideEngineError(); // a successful load supersedes any engine-failure panel
-      hint.textContent = `${label} · ${zoomHint}`;
+      hint.textContent = t('loadedHint', { label, zoom: zoomHint });
     }
 
     // Read a user-supplied File and load it, reporting failures via the hint.
     async function loadFile(file) {
       retryAction = () => loadFile(file); // Retry re-reads + re-loads this file
-      hint.textContent = `Loading ${file.name}…`;
+      hint.textContent = t('loading', { label: file.name });
+      armStallOnFirstUserLoad(); // reduced-data: arm the watchdog on this first real load
       setLoading(true);
       try {
         const buf = await file.arrayBuffer();
         await showStepFromArrayBuffer(buf, file.name);
       } catch (err) {
         console.error('STEP load failed:', err);
-        hint.textContent = `Could not load ${file.name} — see console`;
+        hint.textContent = t('couldNotLoadConsole', { label: file.name });
+        // Nothing valid rendered (a prior model, if any, is still on screen and
+        // keeps its accurate summary) — reset the accessible name so AT users
+        // aren't told a stale successful model is loaded.
+        if (!currentModel) resetModelInfo();
         // An engine/CDN failure isn't self-clearing — surface the persistent
         // Retry panel. Per-file parse/http errors stay on the lighter toast.
         if (err && err.kind === 'init') showEngineError();
@@ -849,11 +1013,13 @@
     // --- Sample gallery ---
     // Bundled models under ./samples/. Each parses via occt-import-js (verified
     // in CI-style node checks) and loads through the same path as user files.
+    // Labels route through the string table so gallery pills, the hint, and the
+    // model-info HUD all read the model name in the active locale.
     const SAMPLES = [
-      { file: 'sample.step',  label: 'Gear' },
-      { file: 'block.step',   label: 'Block' },
-      { file: 'tetra.step',   label: 'Tetrahedron' },
-      { file: 'pyramid.step', label: 'Pyramid' },
+      { file: 'sample.step',  label: t('sampleGear') },
+      { file: 'block.step',   label: t('sampleBlock') },
+      { file: 'tetra.step',   label: t('sampleTetra') },
+      { file: 'pyramid.step', label: t('samplePyramid') },
     ];
 
     const gallery = document.getElementById('gallery');
@@ -866,16 +1032,17 @@
       buttons.forEach((b) => { b.disabled = true; });
       // Keep the first-paint guidance visible during the initial auto-load; only
       // swap to a per-load "Loading…" message once the user is past first render.
-      if (firstRenderDone) hint.textContent = `Loading ${sample.label}…`;
+      if (firstRenderDone) hint.textContent = t('loading', { label: sample.label });
       // The initial auto-load (before first render) gets staged textual status —
       // engine init then parse — beneath the spinner; subsequent loads keep the
       // lighter bare spinner. onPhase is only wired for that first load.
       const staged = !firstRenderDone;
       const onPhase = staged
         ? (phase) => setLoadStatus(
-            phase === 'parse' ? 'Parsing STEP model…' : 'Loading 3D engine…')
+            phase === 'parse' ? t('loadStatusParse') : t('loadStatusEngine'))
         : null;
-      if (staged) setLoadStatus('Loading 3D engine…');
+      if (staged) setLoadStatus(t('loadStatusEngine'));
+      armStallOnFirstUserLoad(); // reduced-data: arm the watchdog on this first real load
       setLoading(true);
       try {
         const res = await fetch(`./samples/${sample.file}`);
@@ -896,7 +1063,10 @@
         });
       } catch (err) {
         console.error('STEP load failed:', err);
-        hint.textContent = `Could not load ${sample.label} — see console`;
+        hint.textContent = t('couldNotLoadConsole', { label: sample.label });
+        // Revert the accessible name only when nothing valid is on screen; a
+        // previously loaded model keeps its own (still-accurate) summary.
+        if (!currentModel) resetModelInfo();
         // Engine/CDN failure → persistent Retry panel; parse/http → light toast.
         if (err && err.kind === 'init') showEngineError();
         else showToast(describeError(err, sample.label));
@@ -917,15 +1087,44 @@
       btn.dataset.file = sample.file;
       btn.setAttribute('aria-pressed', 'false');
       // Surface the number-key shortcut (1–4) on the pill so it's discoverable.
-      btn.title = `${sample.label} (press ${i + 1})`;
+      btn.title = t('sampleTitle', { label: sample.label, n: i + 1 });
       btn.addEventListener('click', () => loadSample(sample));
       gallery.appendChild(btn);
     });
 
-    // Show the first bundled sample on page load. Arm the stall watchdog for this
-    // initial engine + model download so a slow/broken CDN doesn't hang forever.
-    startStallWatch();
-    loadSample(SAMPLES[0]);
+    // Respect prefers-reduced-data: on metered/limited connections, the heavy
+    // startup cost (three.js + occt/WASM engine + a multi-MB sample STEP file)
+    // must not be paid before the user asks. Read the query once at boot.
+    const reduceData = matchMedia('(prefers-reduced-data: reduce)').matches;
+
+    if (reduceData) {
+      // Nothing is downloading yet — clear the static "Loading 3D engine…"
+      // spinner + status line so the page doesn't imply a fetch is underway,
+      // and invite the user to pick a model. The gallery pills are keyboard-
+      // focusable buttons, so the reworded #hint prompt plus the pills form the
+      // keyboard-first entry point. The stall watchdog and the staged engine-
+      // loading spinner stay disarmed until the user's first real load (see
+      // armStallOnFirstUserLoad + the `staged` path in loadSample/loadFile),
+      // exactly honoring the reduced-data intent.
+      setLoading(false);
+      setLoadStatus(null);
+      hint.textContent = coarsePointer ? t('reducedDataCoarse') : t('reducedDataFine');
+    } else {
+      // Show the first bundled sample on page load. Arm the stall watchdog for
+      // this initial engine + model download so a slow/broken CDN doesn't hang
+      // forever.
+      startStallWatch();
+      loadSample(SAMPLES[0]);
+    }
+
+    // In reduced-data mode the boot-time stall watchdog is deferred, so the
+    // FIRST user-initiated load arms it (once) — a slow/broken engine download
+    // on that genuine request still can't spin forever. No-op after the first
+    // render, and in default mode (where boot already armed it) since reduceData
+    // is false. Called from both loadSample and loadFile.
+    function armStallOnFirstUserLoad() {
+      if (reduceData && !firstRenderDone) startStallWatch();
+    }
 
     // --- Wireframe toggle (checkbox + `W` key) ---
     const wireCheck = document.getElementById('wire-check');
@@ -939,6 +1138,55 @@
       applyWireframe(currentModel);
     }
     wireCheck.addEventListener('change', () => setWireframe(wireCheck.checked));
+
+    // --- High-contrast theme toggle (header button + `C` key) ---
+    // CSS themes the DOM via the data-contrast attribute (set pre-paint by the
+    // head script); here we wire the toggle, keep aria-pressed in sync, persist
+    // the choice, and push the higher-contrast colors into the WebGL scene
+    // (feature edges + ground grid) which CSS can't reach.
+    const contrastBtn = document.getElementById('contrast-btn');
+    const CONTRAST_KEY = 'step-viewer-contrast';
+
+    // Re-style the current model's feature-edge overlay in place for the active
+    // contrast mode. Edges are decorative LineSegments children of each mesh
+    // (built in an idle slot by step.js). The ground grid is a sibling in the
+    // scene, not inside currentModel, so traversing the model never touches it.
+    function applyEdgeContrast(group) {
+      if (!group) return;
+      const style = currentEdgeStyle();
+      group.traverse((obj) => {
+        if (!obj.isLineSegments || !obj.material) return;
+        obj.material.color.setHex(style.color);
+        obj.material.opacity = style.opacity;
+        obj.material.needsUpdate = true;
+      });
+    }
+
+    // Apply a high/normal choice: flip the flag, set the DOM attribute (drives the
+    // CSS palette), sync aria-pressed, optionally persist, then recolor the scene
+    // — rebuild the grid at its last framed size (no camera change; the swap-in
+    // fade is untouched and still reduced-motion aware) and recolor model edges.
+    function applyContrast(on, persist) {
+      highContrast = on;
+      document.documentElement.setAttribute('data-contrast', on ? 'high' : 'normal');
+      contrastBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      if (persist) {
+        try { localStorage.setItem(CONTRAST_KEY, on ? 'high' : 'normal'); } catch (e) {}
+      }
+      if (lastGroundSize) groundTo(lastGroundSize);
+      applyEdgeContrast(currentModel);
+    }
+
+    contrastBtn.setAttribute('aria-pressed', highContrast ? 'true' : 'false');
+    function toggleContrast() { applyContrast(!highContrast, true); }
+    contrastBtn.addEventListener('click', toggleContrast);
+    // Follow a live OS contrast change only while the user hasn't made an explicit
+    // choice (nothing stored) — an explicit toggle stays authoritative.
+    contrastQuery.addEventListener('change', (e) => {
+      let stored = null;
+      try { stored = localStorage.getItem(CONTRAST_KEY); } catch (err) {}
+      if (stored !== 'high' && stored !== 'normal') applyContrast(e.matches, false);
+    });
 
     // --- Shortcuts help dialog (header "?" button + `?` key) ---
     // Native <dialog>.showModal() gives Escape-to-close and focus trapping for
@@ -969,6 +1217,8 @@
       // closes it, Tab cycles its focus) instead of firing viewer shortcuts.
       if (helpDialog.open) return;
       if (e.key === 'w' || e.key === 'W') setWireframe(!wireframe);
+      // C toggles the high-contrast theme (mirrors the header toggle).
+      if (e.key === 'c' || e.key === 'C') toggleContrast();
       // R and F both re-fit/reset the view (same as the Fit button).
       if (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R') fitView();
       // Number keys 1–4 load the matching gallery sample (Gear/Block/Tetra/
@@ -985,6 +1235,103 @@
     // --- Reset / fit view (button, `F` key, double-click canvas) ---
     document.getElementById('fit-btn').addEventListener('click', fitView);
     renderer.domElement.addEventListener('dblclick', fitView);
+
+    // --- Keyboard-driven camera navigation -----------------------------------
+    // OrbitControls only listens to pointer/wheel events, so a keyboard-only user
+    // could never orbit, zoom, or pan. #app carries tabindex=0 (focusable) and
+    // this handler is attached to it, so the camera keys ONLY fire while the 3D
+    // view has focus — Tab still moves focus normally, and the document-level
+    // 1–4 / W / F / R / ? shortcuts (window keydown handler above) keep working
+    // regardless of focus because those keys aren't handled here. enableDamping
+    // is on; we mutate camera.position then call controls.update(), and the
+    // render loop's own controls.update() eases the damping out next frames.
+    const ORBIT_STEP = THREE.MathUtils.degToRad(5); // ~5° per Arrow press
+    const DOLLY_IN = 0.9;          // multiply distance to dolly in (zoom in)
+    const DOLLY_OUT = 1 / DOLLY_IN; // and its inverse to dolly out
+    const PAN_PIXELS = 40;          // Shift+Arrow pan step, in screen pixels
+    const POLAR_EPS = 0.000001;     // keep phi off the exact poles (avoids flip)
+    // Scratch vectors reused across presses so key handling allocates nothing.
+    const _offset = new THREE.Vector3();
+    const _spherical = new THREE.Spherical();
+    const _panOffset = new THREE.Vector3();
+    const _panV = new THREE.Vector3();
+
+    // Orbit around controls.target by spherical deltas: dTheta = azimuth (Left/
+    // Right), dPhi = polar (Up/Down). Clamps phi to the OrbitControls polar
+    // limits so the camera can't flip over the poles.
+    function orbitCamera(dTheta, dPhi) {
+      _offset.copy(camera.position).sub(controls.target);
+      _spherical.setFromVector3(_offset);
+      _spherical.theta += dTheta;
+      _spherical.phi += dPhi;
+      const minPhi = Math.max(controls.minPolarAngle, POLAR_EPS);
+      const maxPhi = Math.min(controls.maxPolarAngle, Math.PI - POLAR_EPS);
+      _spherical.phi = Math.max(minPhi, Math.min(maxPhi, _spherical.phi));
+      _spherical.makeSafe();
+      _offset.setFromSpherical(_spherical);
+      camera.position.copy(controls.target).add(_offset);
+      controls.update();
+    }
+
+    // Dolly the camera along its view ray by scaling the target distance,
+    // clamped to the existing controls.minDistance / maxDistance so keyboard
+    // zoom respects the same bounds as wheel zoom.
+    function dollyCamera(factor) {
+      _offset.copy(camera.position).sub(controls.target);
+      const r = Math.max(controls.minDistance,
+                         Math.min(controls.maxDistance, _offset.length() * factor));
+      _offset.setLength(r);
+      camera.position.copy(controls.target).add(_offset);
+      controls.update();
+    }
+
+    // Pan target + camera together by screen-space pixel deltas, mirroring
+    // OrbitControls' own pan math so it honors screenSpacePanning=false (vertical
+    // pan rides the ground plane, not the camera's tilted up axis).
+    function panCamera(deltaX, deltaY) {
+      _offset.copy(camera.position).sub(controls.target);
+      // Half the view height in world units at the target distance (perspective).
+      const targetDistance = _offset.length() * Math.tan((camera.fov / 2) * Math.PI / 180);
+      _panOffset.set(0, 0, 0);
+      // panLeft: along the camera's local X axis.
+      _panV.setFromMatrixColumn(camera.matrix, 0);
+      _panV.multiplyScalar(-(2 * deltaX * targetDistance / innerHeight));
+      _panOffset.add(_panV);
+      // panUp: screenSpacePanning=false → cross(up, cameraX) rides the ground.
+      if (controls.screenSpacePanning) {
+        _panV.setFromMatrixColumn(camera.matrix, 1);
+      } else {
+        _panV.setFromMatrixColumn(camera.matrix, 0);
+        _panV.crossVectors(camera.up, _panV);
+      }
+      _panV.multiplyScalar(2 * deltaY * targetDistance / innerHeight);
+      _panOffset.add(_panV);
+      camera.position.add(_panOffset);
+      controls.target.add(_panOffset);
+      controls.update();
+    }
+
+    app.addEventListener('keydown', (e) => {
+      // Let platform/global handlers own modified combos (except our own Shift
+      // pan) and the modal help state.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (helpDialog.open) return;
+      const shift = e.shiftKey;
+      let handled = true;
+      switch (e.key) {
+        case 'ArrowLeft':  shift ? panCamera(-PAN_PIXELS, 0) : orbitCamera(ORBIT_STEP, 0); break;
+        case 'ArrowRight': shift ? panCamera(PAN_PIXELS, 0) : orbitCamera(-ORBIT_STEP, 0); break;
+        case 'ArrowUp':    shift ? panCamera(0, PAN_PIXELS) : orbitCamera(0, -ORBIT_STEP); break;
+        case 'ArrowDown':  shift ? panCamera(0, -PAN_PIXELS) : orbitCamera(0, ORBIT_STEP); break;
+        case '+': case '=': dollyCamera(DOLLY_IN); break;   // '=' is the unshifted '+' key
+        case '-': case '_': dollyCamera(DOLLY_OUT); break;
+        case 'Home': fitView(); break;
+        default: handled = false;
+      }
+      // Swallow only the keys we act on, so Arrow-scroll / default zoom don't also
+      // fire; Tab, Escape, and every other key pass through untouched.
+      if (handled) e.preventDefault();
+    });
 
     // Clicking a face/axis of the gizmo snaps the camera to that view. Because
     // we moved the gizmo's render to the top-right but ViewHelper.handleClick
@@ -1042,7 +1389,7 @@
       const file = e.dataTransfer && e.dataTransfer.files[0];
       if (!file) return;
       if (!/\.(step|stp)$/i.test(file.name)) {
-        hint.textContent = `${file.name} is not a .step/.stp file`;
+        hint.textContent = t('notStepFile', { name: file.name });
         return;
       }
       loadFile(file);

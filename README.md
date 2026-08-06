@@ -15,6 +15,23 @@ you serve the folder and it runs.
   three.js — orbit / pan / zoom via `OrbitControls`.
 - Viewer polish: camera auto-fits to the model, a **wireframe** toggle (button or `W`
   key), a loading spinner while parsing, and a non-blocking error toast on bad input.
+- **Keyboard-navigable camera** — Tab to the 3D view and drive orbit / zoom / pan
+  entirely from the keyboard (see below), so the viewer is usable without a mouse.
+
+## Keyboard controls
+
+Most shortcuts work anywhere on the page. The **camera keys** are scoped to the 3D
+view — `Tab` to it first (it shows a focus ring), then:
+
+| Key | Action |
+|-----|--------|
+| `←` `→` `↑` `↓` | Orbit the camera (~5° per press) — Left/Right azimuth, Up/Down polar |
+| `+` `−` | Zoom (dolly) the camera in / out, clamped to the fit bounds |
+| `Shift` + arrows | Pan the view target |
+| `Home` | Re-fit / reset the view |
+
+Global shortcuts (work regardless of focus): `1`–`4` load the gallery samples,
+`W` toggles wireframe, `F` / `R` fit the view, `?` opens the shortcuts help.
 
 ## Live demo
 
