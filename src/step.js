@@ -48,7 +48,10 @@ import { buildGroupFromOcctResult, repackResultMesh } from './step-core.js';
 
 /** A stage tag passed to the optional progress hook. @typedef {'engine' | 'parse'} LoadPhase */
 
-const OCCT_VERSION = '0.0.23';
+// Exported so the UI (About panel, issue #113) can display the live engine
+// version instead of hardcoding it — a version bump here updates the panel
+// automatically. The three.js version is read at runtime from THREE.REVISION.
+export const OCCT_VERSION = '0.0.23';
 const OCCT_BASE = `https://cdn.jsdelivr.net/npm/occt-import-js@${OCCT_VERSION}/dist/`;
 
 // occt-import-js already bundles readers for three CAD formats — the engine reads

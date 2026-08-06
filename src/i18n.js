@@ -284,6 +284,20 @@ const messages = {
     tourOpenBody: 'Load a STEP, IGES, or BREP file from your device. You can also drop a file straight onto the view.',
     tourGizmoTitle: 'Orient the view',
     tourGizmoBody: 'The orientation gizmo up here shows which way is up. Drag anywhere on the model to orbit; scroll or pinch to zoom.',
+
+    // --- About / credits & versions dialog (issue #113) ---
+    aboutAria: 'About this viewer',
+    aboutTitle: 'About this viewer (credits & versions)',
+    aboutHeading: 'About this viewer',
+    aboutCloseAria: 'Close about',
+    aboutLede: 'A zero-build, browser-based viewer for STEP / IGES / BREP CAD files — parsed in WebAssembly and rendered with WebGL.',
+    aboutCreditsHeading: 'Built on',
+    aboutThreeRole: '— WebGL 3D rendering',
+    aboutOcctRole: '— STEP / IGES / BREP import (OpenCascade compiled to WebAssembly)',
+    aboutOcctNote: 'occt-import-js wraps Open CASCADE Technology, which is licensed under the LGPL-2.1 with an additional exception.',
+    aboutCdnNote: 'Both libraries load at runtime from the',
+    aboutVersionsHeading: 'Versions',
+    aboutRepoLabel: 'View source on GitHub',
   },
 
   // Second locale — a deliberately PARTIAL Spanish stub. Only some keys are

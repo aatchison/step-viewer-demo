@@ -3,7 +3,7 @@
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
     import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
     import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-    import { loadCadFromArrayBuffer, readerForExtension, resetOcct } from './step.js';
+    import { loadCadFromArrayBuffer, readerForExtension, resetOcct, OCCT_VERSION } from './step.js';
     import { countTriangles, SAMPLES as SAMPLE_MANIFEST } from './step-core.js';
     import { t, applyStaticI18n } from './i18n.js';
     import {
@@ -2624,6 +2624,12 @@
     updateShareState(); // reflect the initial (no-model) disabled state
     updateEmbedState();
 
+    // Shared guided-tour launcher. initTour() assigns this to its internal
+    // start(force) once wired, so other affordances (the About dialog's "Take the
+    // tour" button, issue #113) drive the exact same tour handler as the help
+    // dialog's button rather than duplicating the sequence.
+    let launchTour = null;
+
     // --- Shortcuts help dialog (header "?" button + `?` key) ---
     // Native <dialog>.showModal() gives Escape-to-close and focus trapping for
     // free; the × button and a backdrop click also dismiss it.
@@ -2822,6 +2828,10 @@
         requestAnimationFrame(() => { layout(); nextBtn.focus(); });
       }
 
+      // Expose start() so non-help affordances (e.g. the About dialog) can launch
+      // the same tour. `force` replays it regardless of the persisted seen flag.
+      launchTour = start;
+
       nextBtn.addEventListener('click', next);
       backBtn.addEventListener('click', prev);
       skipBtn.addEventListener('click', end);
@@ -2837,6 +2847,45 @@
       // Auto-show once on the first visit, after the initial paint/model settle so
       // the anchored controls have a stable layout to measure.
       addEventListener('load', () => { setTimeout(() => start(false), 500); });
+    })();
+
+    // --- About / credits & versions dialog (header ⓘ button, issue #113) ---
+    // Native <dialog>.showModal() gives Escape-to-close, focus-into-dialog on
+    // open, and focus-return-to-opener on close for free; the × button and a
+    // backdrop click also dismiss it — mirroring the help dialog exactly. The
+    // version strings are filled from the live runtime (THREE.REVISION and the
+    // OCCT_VERSION export) rather than hardcoded, so a version bump updates the UI.
+    (function initAbout() {
+      const aboutBtn = document.getElementById('about-btn');
+      const aboutDialog = document.getElementById('about-dialog');
+      const aboutClose = document.getElementById('about-close');
+      const aboutTourStart = document.getElementById('about-tour-start');
+      if (!aboutBtn || !aboutDialog) return; // markup absent — no-op
+
+      // Live version reads. THREE.REVISION is the loaded three.js version; the
+      // occt-import-js version is the single source of truth exported by step.js.
+      const threeVerEl = document.getElementById('about-three-ver');
+      const occtVerEl = document.getElementById('about-occt-ver');
+      if (threeVerEl) threeVerEl.textContent = `r${THREE.REVISION}`;
+      if (occtVerEl) occtVerEl.textContent = OCCT_VERSION;
+
+      function openAbout() { if (!aboutDialog.open && typeof aboutDialog.showModal === 'function') aboutDialog.showModal(); }
+      aboutBtn.addEventListener('click', openAbout);
+      aboutClose.addEventListener('click', () => aboutDialog.close());
+      // Backdrop click: showModal centers the panel, so a click whose target is
+      // the <dialog> element itself (not its content) landed on the backdrop.
+      aboutDialog.addEventListener('click', (e) => {
+        if (e.target === aboutDialog) aboutDialog.close();
+      });
+      // "Take the tour" launches the shared guided-tour handler. Close the dialog
+      // first and let its top-layer/backdrop tear down before the tour opens (so
+      // the tour's own focus/spotlight measures against a clean layout).
+      if (aboutTourStart) {
+        aboutTourStart.addEventListener('click', () => {
+          aboutDialog.close();
+          requestAnimationFrame(() => { if (typeof launchTour === 'function') launchTour(true); });
+        });
+      }
     })();
 
     addEventListener('keydown', (e) => {
