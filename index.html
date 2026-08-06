@@ -104,7 +104,8 @@
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
-    #contrast-btn:focus-visible, #save-btn:focus-visible, #share-btn:focus-visible,
+    #contrast-btn:focus-visible, #save-btn:focus-visible, #export-btn:focus-visible,
+    #share-btn:focus-visible,
     #help-btn:focus-visible, #help-close:focus-visible, #gallery .sample:focus-visible,
     #share-fallback-close:focus-visible {
       outline: 2px solid #4f9dff; outline-offset: 2px; border-color: #4f9dff; }
@@ -128,15 +129,17 @@
     #wire-toggle.is-active:hover { background: #244071cc; border-color: #6fb0ff; }
     /* Reset/Fit-view button — re-frames the model; header is click-through so
        re-enable pointer events here too. */
-    #fit-btn, #save-btn, #share-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+    #fit-btn, #save-btn, #export-btn, #share-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
       color: #cfe0ff; background: #1b2029; border: 1px solid var(--hc-border, #2a2f3a); border-radius: 6px;
       padding: .35rem .7rem; }
-    #save-btn, #share-btn { display: inline-flex; align-items: center; gap: .35rem; }
-    #fit-btn:hover, #save-btn:hover, #share-btn:hover { background: #232a35; border-color: #3a4150; }
+    #save-btn, #export-btn, #share-btn { display: inline-flex; align-items: center; gap: .35rem; }
+    #fit-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover { background: #232a35; border-color: #3a4150; }
     /* Non-shareable state: a user-opened file has no restorable link, so the
-       button is disabled (updateShareState) — dim it and drop the pointer. */
-    #share-btn:disabled { opacity: .5; cursor: not-allowed; }
-    #share-btn:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
+       button is disabled (updateShareState) — dim it and drop the pointer. The
+       Export GLB button is disabled the same way until a real model is loaded
+       (updateExportState). */
+    #share-btn:disabled, #export-btn:disabled { opacity: .5; cursor: not-allowed; }
+    #share-btn:disabled:hover, #export-btn:disabled:hover { background: #1b2029; border-color: var(--hc-border, #2a2f3a); }
     /* High-contrast toggle — a header control mirroring the neutral fit/wireframe
        buttons (icon-collapsible on narrow screens). aria-pressed reflects whether
        high contrast is active; when pressed it borrows the same accent on-state
@@ -350,7 +353,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn, #contrast-btn, #save-btn, #share-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn, #save-btn, #export-btn, #share-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -370,10 +373,12 @@
     @media (max-width: 600px) {
       header { gap: .5rem; padding: .5rem .75rem; }
       #wire-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
-      #contrast-btn .btn-label, #save-btn .btn-label, #share-btn .btn-label { display: none; }
+      #contrast-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
+      #share-btn .btn-label { display: none; }
       #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
-      #contrast-btn .btn-icon, #save-btn .btn-icon, #share-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn, #contrast-btn, #save-btn, #share-btn { min-width: 44px; padding: .4rem;
+      #contrast-btn .btn-icon, #save-btn .btn-icon, #export-btn .btn-icon,
+      #share-btn .btn-icon { display: inline-block; }
+      #fit-btn, #open-btn, #contrast-btn, #save-btn, #export-btn, #share-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
     }
@@ -406,6 +411,14 @@
          buttons; collapses to the ⤓ glyph under the same 600px / coarse-pointer
          rules as the other header buttons. -->
     <button id="save-btn" type="button" title="Save the current view as a PNG (S)" aria-label="Save image (PNG)" data-i18n-attr="title:saveTitle;aria-label:saveAria"><span class="btn-icon" aria-hidden="true">⤓</span><span class="btn-label" data-i18n="saveLabel">Save image</span></button>
+    <!-- Export-GLB control. Exports currentModel (the shaded MeshStandardMaterial
+         meshes with their normals) as a binary .glb via three's GLTFExporter,
+         excluding the decorative scene chrome (ground grid, contact-shadow quad,
+         deferred feature-edge LineSegments overlay). Starts disabled — enabled by
+         updateExportState once a real STEP model (not the placeholder) is loaded,
+         for both gallery samples and user-opened files. Collapses to the 📦 glyph
+         under the same 600px / coarse-pointer rules as the other header buttons. -->
+    <button id="export-btn" type="button" disabled title="Load a model first, then export it as a .glb" aria-label="Export model as GLB" data-i18n-attr="title:exportTitleDisabled;aria-label:exportAria"><span class="btn-icon" aria-hidden="true">📦</span><span class="btn-label" data-i18n="exportLabel">Export GLB</span></button>
     <!-- Copy-share-link control. Composes the full absolute URL (including the
          up-to-date view hash written by writeHash) and copies it via
          navigator.clipboard. Only bundled gallery samples encode a restorable
@@ -440,6 +453,7 @@
       <li><span class="k">W</span><span class="d" data-i18n="descWireframe">Toggle wireframe</span></li>
       <li><span class="k">C</span><span class="d" data-i18n="descContrast">Toggle high contrast</span></li>
       <li><span class="k">S</span><span class="d" data-i18n="descSave">Save image (PNG)</span></li>
+      <li><span class="k">E</span><span class="d" data-i18n="descExport">Export model as GLB</span></li>
       <li><span class="k">F</span><span class="k">R</span><span class="d" data-i18n="descFit">Fit / reset view</span></li>
       <li><span class="k">1</span><span class="k">4</span><span class="d" data-i18n="descSamples">Load gallery samples</span></li>
       <li><span class="k" data-i18n="kDrop">Drop</span><span class="d" data-i18n="descOpen">Open a .step / .stp file</span></li>
@@ -515,6 +529,7 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
     import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
+    import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
     import { loadStepFromArrayBuffer, resetOcct } from './src/step.js';
     import { t, applyStaticI18n } from './src/i18n.js';
 
@@ -1058,6 +1073,7 @@
       // link with only a sample key (no camera) leaves the auto-fit framing.
       if (camState) applyCameraState(camState);
       updateModelInfo(model, label); // refresh the name/tris/dims HUD for the swap
+      updateExportState(); // a real model is now loaded — enable the Export GLB button
       startSwapIn(model); // ease the new model in (scale + fade) instead of popping
       markFirstRender(); // first successful render clears the loader + stall watch
       hideEngineError(); // a successful load supersedes any engine-failure panel
@@ -1441,6 +1457,100 @@
     }
     saveBtn.addEventListener('click', saveImageSafe);
 
+    // --- Export GLB (header 📦 button + `E` key) -------------------------------
+    // Export the loaded model — the shaded MeshStandardMaterial meshes with their
+    // normals — as a binary glTF (.glb) so users can drop the tessellated result
+    // into Blender, a game engine, model-viewer, or another three.js scene.
+    // three's GLTFExporter is reachable through the existing three/addons/
+    // importmap entry, so this stays zero-build.
+    //
+    // We export currentModel only (never the scene), which already excludes the
+    // scene-level chrome (the ground grid and the contact-shadow quad are scene
+    // siblings, not children of currentModel). The one piece of decorative chrome
+    // that DOES live inside currentModel is the deferred feature-edge overlay —
+    // a LineSegments child added to each mesh by step.js — so we temporarily
+    // detach those before the export and re-attach them after, leaving the file
+    // with the actual part geometry and none of the viewer's line overlay.
+    const exportBtn = document.getElementById('export-btn');
+
+    // Enable the Export button only once a real STEP model is on screen (the
+    // spinning placeholder is not currentModel). Applies to both bundled samples
+    // and user-opened files — unlike Share, an export needs no restorable URL.
+    // The disabled title/aria-label explains that a model must be loaded first.
+    function updateExportState() {
+      const ready = !!currentModel;
+      exportBtn.disabled = !ready;
+      exportBtn.title = ready ? t('exportTitle') : t('exportTitleDisabled');
+      exportBtn.setAttribute('aria-label', ready ? t('exportAria') : t('exportTitleDisabled'));
+    }
+
+    function exportGLB() {
+      // Nothing meaningful to export before a real model is on screen.
+      if (!currentModel) { showToast(t('exportNothing')); return; }
+
+      // Temporarily lift the decorative feature-edge overlays out of the model so
+      // they don't land in the exported file. They're LineSegments children whose
+      // raycast was neutered (see step.js); collect them with their parents so we
+      // can restore the exact graph afterward.
+      const detached = [];
+      currentModel.traverse((obj) => {
+        if (obj.isLineSegments && obj.parent) {
+          detached.push({ node: obj, parent: obj.parent });
+        }
+      });
+      detached.forEach(({ node, parent }) => parent.remove(node));
+      let restored = false;
+      const restore = () => {
+        if (restored) return;
+        restored = true;
+        detached.forEach(({ node, parent }) => parent.add(node));
+      };
+
+      const finishFailure = (err) => {
+        restore();
+        console.error('GLB export failed:', err);
+        showToast(t('exportFailed'));
+      };
+
+      try {
+        const exporter = new GLTFExporter();
+        exporter.parse(
+          currentModel,
+          (result) => {
+            // Re-attach the edge overlay before touching the download so the live
+            // scene is whole again regardless of what happens next.
+            restore();
+            try {
+              // binary:true → result is an ArrayBuffer of GLB bytes.
+              const blob = new Blob([result], { type: 'model/gltf-binary' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${captureBasename(currentModelLabel)}.glb`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              // Revoke on the next tick: revoking synchronously can cancel the
+              // just-started download in some browsers, and never revoking leaks
+              // the object URL. A macrotask clears it after the download begins.
+              setTimeout(() => URL.revokeObjectURL(url), 0);
+            } catch (err) {
+              console.error('GLB export failed:', err);
+              showToast(t('exportFailed'));
+            }
+          },
+          finishFailure, // onError (GLTFExporter can reject asynchronously)
+          { binary: true }
+        );
+      } catch (err) {
+        // exporter.parse threw synchronously.
+        finishFailure(err);
+      }
+    }
+
+    exportBtn.addEventListener('click', exportGLB);
+    updateExportState(); // reflect the initial (no-model) disabled state
+
     // --- Copy shareable link (header 🔗 button) --------------------------------
     // Compose the full absolute URL for the current view and copy it to the
     // clipboard so users don't have to hunt the address bar (which can show a
@@ -1562,6 +1672,8 @@
       if (e.key === 'c' || e.key === 'C') toggleContrast();
       // S saves the current view as a PNG (mirrors the header ⤓ button).
       if (e.key === 's' || e.key === 'S') saveImageSafe();
+      // E exports the loaded model as a binary GLB (mirrors the header 📦 button).
+      if (e.key === 'e' || e.key === 'E') exportGLB();
       // R and F both re-fit/reset the view (same as the Fit button).
       if (e.key === 'f' || e.key === 'F' || e.key === 'r' || e.key === 'R') fitView();
       // Number keys 1–4 load the matching gallery sample (Gear/Block/Tetra/

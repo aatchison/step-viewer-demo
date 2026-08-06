@@ -33,6 +33,10 @@ const messages = {
     saveLabel: 'Save image',
     saveAria: 'Save image (PNG)',
     saveTitle: 'Save the current view as a PNG (S)',
+    exportLabel: 'Export GLB',
+    exportAria: 'Export model as GLB',
+    exportTitle: 'Export the loaded model as a binary glTF (.glb) (E)',
+    exportTitleDisabled: 'Load a model first, then export it as a .glb',
     shareLabel: 'Copy link',
     shareAria: 'Copy shareable link',
     shareTitle: 'Copy a shareable link to this view',
@@ -60,6 +64,7 @@ const messages = {
     descWireframe: 'Toggle wireframe',
     descContrast: 'Toggle high contrast',
     descSave: 'Save image (PNG)',
+    descExport: 'Export model as GLB',
     descFit: 'Fit / reset view',
     descSamples: 'Load gallery samples',
     descOpen: 'Open a .step / .stp file',
@@ -107,6 +112,10 @@ const messages = {
     captureFailed: "Couldn't save the image — the 3D view could not be captured.",
     captureNothing: 'Load a model first, then save the view as an image.',
 
+    // --- Export GLB ---
+    exportFailed: "Couldn't export the model — the GLB could not be generated.",
+    exportNothing: 'Load a model first, then export it as a GLB.',
+
     // --- describeError, keyed by failure kind ---
     errInit:
       'Could not load {label} — the 3D engine (occt/WASM) failed to download. Check your connection and reload.',
@@ -141,6 +150,13 @@ const messages = {
     saveLabel: 'Guardar imagen',
     saveAria: 'Guardar imagen (PNG)',
     saveTitle: 'Guardar la vista actual como PNG (S)',
+    exportLabel: 'Exportar GLB',
+    exportAria: 'Exportar modelo como GLB',
+    exportTitle: 'Exportar el modelo cargado como glTF binario (.glb) (E)',
+    exportTitleDisabled: 'Carga un modelo primero y luego expórtalo como .glb',
+    exportFailed: 'No se pudo exportar el modelo: no se pudo generar el GLB.',
+    exportNothing: 'Carga un modelo primero y luego expórtalo como GLB.',
+    descExport: 'Exportar modelo como GLB',
     shareLabel: 'Copiar enlace',
     shareAria: 'Copiar enlace para compartir',
     shareTitle: 'Copiar un enlace para compartir esta vista',
