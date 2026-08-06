@@ -258,7 +258,7 @@
     /* Clear keyboard-focus ring on the interactive controls. Mouse clicks stay
        ring-free via :focus-visible (only keyboard/programmatic focus shows it). */
     #open-btn:focus-visible, #fit-btn:focus-visible, #wire-toggle:focus-visible,
-    #contrast-btn:focus-visible, #blueprint-btn:focus-visible, #save-btn:focus-visible, #export-btn:focus-visible,
+    #contrast-btn:focus-visible, #blueprint-btn:focus-visible, #colorpart-btn:focus-visible, #save-btn:focus-visible, #export-btn:focus-visible,
     #share-btn:focus-visible, #embed-btn:focus-visible,
     #measure-btn:focus-visible, #measure-clear:focus-visible,
     #section-btn:focus-visible, #section-flip:focus-visible, .sp-axis:focus-visible,
@@ -467,6 +467,19 @@
     #blueprint-btn[aria-pressed="true"] { color: var(--on-fg); background: var(--on-fill);
       border-color: var(--accent); }
     #blueprint-btn[aria-pressed="true"]:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
+    /* Color-by-part toggle — a header control mirroring the neutral blueprint /
+       contrast buttons (icon-collapsible on narrow screens). aria-pressed reflects
+       whether color-by-part is active; when pressed it borrows the same accent
+       on-state language as the wireframe / blueprint toggles so "color by part is
+       on" reads at a glance. */
+    #colorpart-btn { pointer-events: auto; cursor: pointer; font: inherit; font-size: .8rem;
+      color: var(--ctrl-fg); background: var(--panel); border: 1px solid var(--hc-border, var(--border));
+      border-radius: 6px; padding: .35rem .7rem; display: inline-flex; align-items: center;
+      gap: .35rem; }
+    #colorpart-btn:hover { background: var(--panel-hover); border-color: var(--border-hover); }
+    #colorpart-btn[aria-pressed="true"] { color: var(--on-fg); background: var(--on-fill);
+      border-color: var(--accent); }
+    #colorpart-btn[aria-pressed="true"]:hover { background: var(--on-fill-hover); border-color: var(--accent-hover); }
     /* Help affordance — a compact circular "?" button in the header that opens the
        keyboard-shortcuts panel. Neutral tokens like the fit/wireframe controls so
        it sits below the accent primary action; header is click-through so re-enable
@@ -705,7 +718,7 @@
        bit more breathing room so they're comfortable to tap. */
     @media (pointer: coarse) {
       header { gap: 1rem; }
-      #open-btn, #fit-btn, #contrast-btn, #blueprint-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-height: 44px; padding: .5rem 1rem; }
+      #open-btn, #fit-btn, #contrast-btn, #blueprint-btn, #colorpart-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-height: 44px; padding: .5rem 1rem; }
       #wire-toggle { min-height: 44px; padding: .4rem .8rem; }
       #wire-toggle input { width: 20px; height: 20px; }
       #help-btn, #theme-btn { width: 44px; height: 44px; font-size: 1.05rem; }
@@ -726,16 +739,16 @@
     @media (max-width: 600px) {
       header { gap: .5rem; padding: .5rem .75rem; }
       #wire-toggle .btn-label, #material-toggle .btn-label, #fit-btn .btn-label, #open-btn .btn-label,
-      #contrast-btn .btn-label, #blueprint-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
+      #contrast-btn .btn-label, #blueprint-btn .btn-label, #colorpart-btn .btn-label, #save-btn .btn-label, #export-btn .btn-label,
       #share-btn .btn-label, #embed-btn .btn-label,
       #measure-btn .btn-label, #measure-clear .btn-label, #section-btn .btn-label,
       #select-fit-btn .btn-label { display: none; }
       #wire-toggle .btn-icon, #fit-btn .btn-icon, #open-btn .btn-icon,
-      #contrast-btn .btn-icon, #blueprint-btn .btn-icon, #save-btn .btn-icon, #export-btn .btn-icon,
+      #contrast-btn .btn-icon, #blueprint-btn .btn-icon, #colorpart-btn .btn-icon, #save-btn .btn-icon, #export-btn .btn-icon,
       #share-btn .btn-icon, #embed-btn .btn-icon,
       #measure-btn .btn-icon, #measure-clear .btn-icon, #section-btn .btn-icon,
       #select-fit-btn .btn-icon { display: inline-block; }
-      #fit-btn, #open-btn, #contrast-btn, #blueprint-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-width: 44px; padding: .4rem;
+      #fit-btn, #open-btn, #contrast-btn, #blueprint-btn, #colorpart-btn, #save-btn, #export-btn, #share-btn, #embed-btn, #measure-btn, #measure-clear, #section-btn, #select-fit-btn { min-width: 44px; padding: .4rem;
         display: inline-flex; align-items: center; justify-content: center; }
       #wire-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
       #material-toggle { min-width: 44px; padding: .4rem; gap: .3rem; justify-content: center; }
@@ -823,6 +836,18 @@
          toggles (via .is-active). Collapses to the 📐 glyph under the same 600px /
          coarse-pointer rules as the other header buttons. Also on the `B` key. -->
     <button id="blueprint-btn" type="button" title="Toggle blueprint / edge-only view (B)" aria-label="Blueprint (edge-only) view" aria-pressed="false" data-i18n-attr="title:blueprintTitle;aria-label:blueprintAria"><span class="btn-icon" aria-hidden="true">📐</span><span class="btn-label" data-i18n="blueprintLabel">Blueprint</span></button>
+    <!-- Color-by-part toggle. occt returns one mesh per solid, so a multi-body
+         assembly is a group of meshes that otherwise share one accent color and
+         render as an indistinguishable blob. When on, each mesh material.color is
+         set from a qualitative, colorblind-considerate palette by child index
+         (cycling if there are more parts than colors) — only material.color, so
+         the active material preset's metalness/roughness finish is preserved. On
+         off, each mesh is restored to its captured base color via the material
+         preset (non-destructive). aria-pressed reflects the live state; when on it
+         borrows the same accent on-state language as the other toggles (via
+         .is-active). Collapses to the 🎨 glyph under the same 600px / coarse-
+         pointer rules as the other header buttons. Also on the `P` key. -->
+    <button id="colorpart-btn" type="button" title="Color parts by solid (P)" aria-label="Color by part" aria-pressed="false" data-i18n-attr="title:colorPartTitle;aria-label:colorPartAria"><span class="btn-icon" aria-hidden="true">🎨</span><span class="btn-label" data-i18n="colorPartLabel">Color parts</span></button>
     <!-- Save-image control. Captures the current framed render (scene + gizmo) as
          a downloadable PNG (see saveImage). Neutral tokens like the fit/contrast
          buttons; collapses to the ⤓ glyph under the same 600px / coarse-pointer
@@ -906,6 +931,7 @@
       <li><span class="k">W</span><span class="d" data-i18n="descWireframe">Toggle wireframe</span></li>
       <li><span class="k">C</span><span class="d" data-i18n="descContrast">Toggle high contrast</span></li>
       <li><span class="k">B</span><span class="d" data-i18n="descBlueprint">Toggle blueprint (edge-only) view</span></li>
+      <li><span class="k">P</span><span class="d" data-i18n="descColorPart">Toggle color by part</span></li>
       <li><span class="k">T</span><span class="d" data-i18n="descTheme">Toggle light / dark theme</span></li>
       <li><span class="k">S</span><span class="d" data-i18n="descSave">Save image (PNG)</span></li>
       <li><span class="k">E</span><span class="d" data-i18n="descExport">Export model as GLB</span></li>
@@ -1416,10 +1442,17 @@
       const tris = countTriangles(group);
       miName.textContent = label;
       miName.title = label; // full name on hover when the label is ellipsized
-      miStats.textContent = t('modelStats', {
+      let stats = t('modelStats', {
         tris: tris.toLocaleString(),
         x: fmtDim(size.x), y: fmtDim(size.y), z: fmtDim(size.z),
       });
+      // While color-by-part is active, note how many solids the assembly has
+      // (group child count) so the mode's per-part coloring has a read-out.
+      if (colorByPart) {
+        const parts = countParts(group);
+        stats += ' · ' + t(parts === 1 ? 'modelPartsOne' : 'modelParts', { parts });
+      }
+      miStats.textContent = stats;
       modelInfo.hidden = false;
 
       // Compose a natural-language summary that reuses the same number/dimension
@@ -2246,6 +2279,7 @@
       scene.add(model);
       applyWireframe(model); // honor the current toggle on the freshly loaded model
       applyMaterialPreset(model); // adopt the persisted material/lighting preset
+      applyColorByPart(model); // re-apply color-by-part hues over the preset finish
       // Re-assert blueprint mode on the freshly loaded model: force-build its edges
       // (idle build hasn't run yet), hide its faces, recolor edges + backdrop. The
       // outgoing model's force-built edges were freed by disposeGroup above (no
@@ -2631,11 +2665,100 @@
       materialToggle.classList.toggle('is-active', preset !== 'studio');
       if (persist) { try { localStorage.setItem(MATERIAL_KEY, preset); } catch (e) {} }
       applyMaterialPreset(currentModel);
+      // The preset repaints every mesh from its base/preset color, so re-assert the
+      // color-by-part hues on top when the mode is active (preset owns the finish,
+      // color-by-part owns the hue). No-op when the mode is off.
+      applyColorByPart(currentModel);
     }
     // Sync the control to the resolved initial preset (no persist, no model yet).
     materialSelect.value = materialPreset;
     materialToggle.classList.toggle('is-active', materialPreset !== 'studio');
     materialSelect.addEventListener('change', () => setMaterialPreset(materialSelect.value, true));
+
+    // --- Color-by-part mode (multi-solid assemblies) --------------------------
+    // occt-import-js returns one resultMesh per solid, and step.js builds one
+    // THREE.Mesh per solid straight into the group — so a multi-body assembly is
+    // already `group.children` of separate meshes, but they all share the same
+    // accent/occt color and render as one indistinguishable blob. Color-by-part
+    // gives each mesh a distinct hue by child index so the parts read apart, a
+    // core CAD-inspection need. It drives ONLY material.color — the active
+    // material preset still owns metalness/roughness/opacity (the finish) — so it
+    // composes with Studio/Technical/Clay/X-ray rather than replacing them.
+    //
+    // Palette: a qualitative, colorblind-considerate set (Paul Tol's 'muted'
+    // scheme plus a couple of extra hues — 10 distinct colors chosen to stay
+    // separable under the common deutan/protan/tritan confusions). Indices cycle
+    // with `% length` so assemblies with more parts than colors still get a legal
+    // color for every mesh.
+    const PART_PALETTE = [
+      0x332288, // indigo
+      0x88ccee, // cyan
+      0x44aa99, // teal
+      0x117733, // green
+      0x999933, // olive
+      0xddcc77, // sand
+      0xcc6677, // rose
+      0x882255, // wine
+      0xaa4499, // purple
+      0xee8866, // orange
+    ];
+    const COLORPART_KEY = 'stepviewer.colorbypart';
+
+    // Assign each mesh a palette color by child index (cycling), touching only
+    // material.color so the current preset's finish (metalness/roughness/opacity)
+    // is preserved. No-ops when the mode is off — the OFF restore path re-runs the
+    // material preset (see setColorByPart), which repaints each mesh from its
+    // captured `userData.baseColor` (Studio) or the preset's own hue, making the
+    // toggle fully non-destructive. Iterates group.children directly (all group
+    // children are meshes; the deferred edge LineSegments are children of each
+    // mesh, not of the group) so the per-part index matches the visible solids.
+    function applyColorByPart(group) {
+      if (!group || !colorByPart) return;
+      let i = 0;
+      group.children.forEach((mesh) => {
+        if (!mesh.isMesh || !mesh.material) return;
+        const hex = PART_PALETTE[i % PART_PALETTE.length];
+        i += 1;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mats.forEach((m) => { m.color.setHex(hex); m.needsUpdate = true; });
+      });
+    }
+
+    // Count the solids (mesh children) in a group — used to note part count in the
+    // HUD while color-by-part is active. The edge overlay is a child of each mesh,
+    // not of the group, so group.children are exactly the solids.
+    function countParts(group) {
+      if (!group) return 0;
+      return group.children.filter((c) => c.isMesh).length;
+    }
+
+    // Resolve the persisted toggle (default off so the out-of-the-box look is the
+    // machined-metal accent). Read before the first model loads so the initial
+    // showStepFromArrayBuffer applies it.
+    let colorByPart = false;
+    (function readStoredColorByPart() {
+      try { colorByPart = localStorage.getItem(COLORPART_KEY) === '1'; } catch (e) {}
+    })();
+
+    const colorPartBtn = document.getElementById('colorpart-btn');
+    function setColorByPart(on, persist) {
+      colorByPart = on;
+      colorPartBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      colorPartBtn.classList.toggle('is-active', on);
+      if (persist) { try { localStorage.setItem(COLORPART_KEY, on ? '1' : '0'); } catch (e) {} }
+      // ON: paint palette hues over the current preset finish. OFF: re-run the
+      // material preset, which restores each mesh's captured baseColor (Studio) or
+      // the preset's own color + finish — a non-destructive round-trip.
+      if (on) applyColorByPart(currentModel);
+      else applyMaterialPreset(currentModel);
+      // Refresh the HUD so the part-count note appears/disappears with the mode.
+      if (currentModel && currentModelLabel != null) updateModelInfo(currentModel, currentModelLabel);
+    }
+    // Sync the control to the resolved initial state (no persist, no model yet).
+    colorPartBtn.setAttribute('aria-pressed', colorByPart ? 'true' : 'false');
+    colorPartBtn.classList.toggle('is-active', colorByPart);
+    function toggleColorByPart() { setColorByPart(!colorByPart, true); }
+    colorPartBtn.addEventListener('click', toggleColorByPart);
 
     // --- High-contrast theme toggle (header button + `C` key) ---
     // CSS themes the DOM via the data-contrast attribute (set pre-paint by the
@@ -3245,6 +3368,8 @@
       if (e.key === 'c' || e.key === 'C') toggleContrast();
       // B toggles the blueprint / edge-only view (mirrors the header 📐 button).
       if (e.key === 'b' || e.key === 'B') toggleBlueprint();
+      // P toggles color-by-part (mirrors the header 🎨 button).
+      if (e.key === 'p' || e.key === 'P') toggleColorByPart();
       // T toggles the light/dark theme (mirrors the header ☀/🌙 toggle).
       if (e.key === 't' || e.key === 'T') toggleTheme();
       // S saves the current view as a PNG (mirrors the header ⤓ button).
